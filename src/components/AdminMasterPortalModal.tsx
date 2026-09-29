@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { JobListing, Parish, JobSector, ApplicationStatus, RecruiterAccount, EmployerInvoice } from '../types';
 import {
   X,
@@ -97,6 +98,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
 
   // Job editing modal state
   const [editingJob, setEditingJob] = useState<JobListing | null>(null);
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   // Settings form state
   const [siteName, setSiteName] = useState(siteSettings.siteName || 'Nature Island Careers');
@@ -244,7 +246,14 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-emerald-900/30 overflow-hidden my-6 flex flex-col max-h-[90vh]">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Admin Master Control & Console"
+        tabIndex={-1}
+        className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-emerald-900/30 overflow-hidden my-6 flex flex-col max-h-[90vh]"
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -787,6 +796,38 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
+                    onClick={() => setBackgroundImageUrl('/src/assets/images/dominica_trafalgar_falls_1790716659754.jpg')}
+                    className={`p-2.5 rounded-lg border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      backgroundImageUrl.includes('trafalgar_falls')
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-bold'
+                        : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-medium'
+                    }`}
+                  >
+                    <span className="text-base">🏞️</span>
+                    <div>
+                      <div className="text-[11px] leading-tight font-bold">Trafalgar Falls</div>
+                      <div className="text-[9px] text-slate-400">Twin Falls Dominica Attraction</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundImageUrl('/src/assets/images/dominica_emerald_pool_1790716670674.jpg')}
+                    className={`p-2.5 rounded-lg border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      backgroundImageUrl.includes('emerald_pool')
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-bold'
+                        : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-medium'
+                    }`}
+                  >
+                    <span className="text-base">🌿</span>
+                    <div>
+                      <div className="text-[11px] leading-tight font-bold">Emerald Pool</div>
+                      <div className="text-[9px] text-slate-400">UNESCO World Heritage Park</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setBackgroundImageUrl('/nature_island_photo.svg')}
                     className={`p-2.5 rounded-lg border text-left flex items-center gap-2 transition-all cursor-pointer ${
                       backgroundImageUrl === '/nature_island_photo.svg'
@@ -796,7 +837,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                   >
                     <span className="text-base">🌴</span>
                     <div>
-                      <div className="text-[11px] leading-tight">Nature Island Photo</div>
+                      <div className="text-[11px] leading-tight">Scotts Head View</div>
                       <div className="text-[9px] text-slate-400">Emerald Peaks & Rainforest</div>
                     </div>
                   </button>

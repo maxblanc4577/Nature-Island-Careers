@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { Parish, JobSector } from '../types';
 import {
   X,
@@ -51,6 +52,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'jobseeker_register',
 }) => {
   const { registerJobseeker, registerClient, loginUser, users } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [mode, setMode] = useState<'jobseeker_register' | 'client_register' | 'login'>(initialMode);
 
@@ -120,7 +122,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={
+          mode === 'jobseeker_register'
+            ? 'Job Seeker Registration'
+            : mode === 'client_register'
+            ? 'Client / Employer Registration'
+            : 'Sign In to Dominica Careers'
+        }
+        tabIndex={-1}
+        className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200"
+      >
         
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-stone-200 bg-stone-50 flex items-center justify-between">

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { Parish, JobSector, EmploymentType, WorkModel, JobListing } from '../types';
 import {
   X,
@@ -21,6 +22,7 @@ interface PostJobModalProps {
 
 export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) => {
   const { currentRecruiter, createJob } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [isGlobalRemote, setIsGlobalRemote] = useState(false);
   const [employerCountry, setEmployerCountry] = useState('United States');
@@ -135,7 +137,14 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-emerald-900/20 my-8 overflow-hidden">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Post a Job Classified"
+        tabIndex={-1}
+        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-emerald-900/20 my-8 overflow-hidden"
+      >
         {/* Modal Header */}
         <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-emerald-950 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">

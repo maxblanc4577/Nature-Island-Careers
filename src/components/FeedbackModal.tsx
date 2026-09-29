@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { X, MessageSquare, Star, CheckCircle2, Send } from 'lucide-react';
 
 interface FeedbackModalProps {
@@ -9,6 +10,7 @@ interface FeedbackModalProps {
 
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
   const { submitFeedback } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [role, setRole] = useState<'Job Seeker' | 'Employer / Recruiter' | 'General Public'>('Job Seeker');
   const [category, setCategory] = useState<'Candidate Experience' | 'Recruiter Tools' | 'Listing Accuracy' | 'Labour Policy & Wages'>('Candidate Experience');
@@ -45,7 +47,14 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-emerald-900/20 overflow-hidden">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Community Feedback"
+        tabIndex={-1}
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-emerald-900/20 overflow-hidden"
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">

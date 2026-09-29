@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { SubscriptionPlan } from '../types';
 import {
   X,
@@ -24,6 +25,7 @@ export const SubscriptionCheckoutModal: React.FC<SubscriptionCheckoutModalProps>
   onSuccess,
 }) => {
   const { currentUser, subscribeClientPlan } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>('Enterprise Growth Partner');
   const [paymentMethod, setPaymentMethod] = useState<
@@ -63,7 +65,14 @@ export const SubscriptionCheckoutModal: React.FC<SubscriptionCheckoutModalProps>
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dominica Employer Subscription Gateway"
+        tabIndex={-1}
+        className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200"
+      >
         
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-stone-200 bg-stone-50 flex items-center justify-between">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { JobListing, Parish } from '../types';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { X, UploadCloud, FileText, CheckCircle2, Shield, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface ApplyModalProps {
@@ -101,9 +102,18 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
     onClose();
   };
 
+  const modalRef = useModalKeyboard({ isOpen: isOpen && Boolean(job), onClose: resetAndClose });
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={job.title}
+        tabIndex={-1}
+        className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200"
+      >
         
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-stone-200 bg-stone-50 flex items-center justify-between">

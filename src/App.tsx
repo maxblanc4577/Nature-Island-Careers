@@ -18,6 +18,7 @@ import { InterviewSchedulerModal } from './components/InterviewSchedulerModal';
 import { ExportPdfReportModal } from './components/ExportPdfReportModal';
 import { StripePaymentModal } from './components/StripePaymentModal';
 import { AdminMasterPortalModal } from './components/AdminMasterPortalModal';
+import { ShareJobModal } from './components/ShareJobModal';
 import { MyApplicationsDashboard } from './components/MyApplicationsDashboard';
 import { RecruiterPortal } from './components/RecruiterPortal';
 import { AdminAnalytics } from './components/AdminAnalytics';
@@ -69,6 +70,23 @@ function DominicaJobBoardContent() {
   const [isExportPdfOpen, setIsExportPdfOpen] = useState(false);
   const [isStripeModalOpen, setIsStripeModalOpen] = useState(false);
   const [isMasterAdminOpen, setIsMasterAdminOpen] = useState(false);
+  const [jobToShare, setJobToShare] = useState<JobListing | null>(null);
+
+  // Auto-open job detail if URL query param ?job=<id> is present
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const jobId = params.get('job');
+      if (jobId && jobs.length > 0) {
+        const found = jobs.find((j) => j.id === jobId);
+        if (found) {
+          setSelectedJobForDetail(found);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [jobs]);
 
   // Dynamic Site Settings state
   const [siteSettings, setSiteSettings] = useState(() => {
@@ -334,6 +352,7 @@ function DominicaJobBoardContent() {
                           onSelect={() => setSelectedJobForDetail(job)}
                           onApply={() => setJobToApply(job)}
                           onQuickApply={() => setJobToApply(job)}
+                          onShare={(job) => setJobToShare(job)}
                         />
                       ))}
                     </div>
@@ -383,6 +402,7 @@ function DominicaJobBoardContent() {
                       onSelect={() => setSelectedJobForDetail(job)}
                       onApply={() => setJobToApply(job)}
                       onQuickApply={() => setJobToApply(job)}
+                      onShare={(job) => setJobToShare(job)}
                     />
                   ))}
                 </div>
@@ -572,6 +592,14 @@ function DominicaJobBoardContent() {
           applicationId={interviewData.applicationId}
           candidateName={interviewData.candidateName}
           jobTitle={interviewData.jobTitle}
+        />
+      )}
+
+      {jobToShare && (
+        <ShareJobModal
+          job={jobToShare}
+          isOpen={Boolean(jobToShare)}
+          onClose={() => setJobToShare(null)}
         />
       )}
     </div>

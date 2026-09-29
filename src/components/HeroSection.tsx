@@ -41,7 +41,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   backgroundImageUrl = '/nature_island_photo.jpg',
   siteName = 'Nature Island Careers',
 }) => {
-  const [bgMode, setBgMode] = React.useState<'photo_scotts' | 'photo_mountains' | 'photo_tropical' | 'flag'>('photo_scotts');
+  const [bgMode, setBgMode] = React.useState<'photo_scotts' | 'trafalgar_falls' | 'emerald_pool' | 'flag'>('photo_scotts');
 
   // Remember last 3 user-entered search queries
   const [recentSearches, setRecentSearches] = React.useState<string[]>(() => {
@@ -94,10 +94,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const currentBg =
     bgMode === 'photo_scotts'
       ? (backgroundImageUrl && !backgroundImageUrl.endsWith('.svg') ? backgroundImageUrl : '/nature_island_photo.jpg')
-      : bgMode === 'photo_mountains'
-      ? '/nature_island_mountains.jpg'
-      : bgMode === 'photo_tropical'
-      ? '/nature_island_tropical.jpg'
+      : bgMode === 'trafalgar_falls'
+      ? '/src/assets/images/dominica_trafalgar_falls_1790716659754.jpg'
+      : bgMode === 'emerald_pool'
+      ? '/src/assets/images/dominica_emerald_pool_1790716670674.jpg'
       : '/dominica_flag.svg';
 
   const isPhoto = bgMode !== 'flag';
@@ -140,27 +140,27 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
                 bgMode === 'photo_scotts' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
               }`}
-              title="Nature Island Scotts Head Coastal Photo"
+              title="Nature Island Scotts Head Coastal Peninsula"
             >
-              🌴 Nature Photo 1
+              🌴 Scotts Head
             </button>
             <button
-              onClick={() => setBgMode('photo_mountains')}
+              onClick={() => setBgMode('trafalgar_falls')}
               className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
-                bgMode === 'photo_mountains' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
+                bgMode === 'trafalgar_falls' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
               }`}
-              title="Emerald Mountain Ridges Photo"
+              title="Dominica Trafalgar Twin Falls Attraction Site"
             >
-              ⛰️ Photo 2
+              🏞️ Trafalgar Falls
             </button>
             <button
-              onClick={() => setBgMode('photo_tropical')}
+              onClick={() => setBgMode('emerald_pool')}
               className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
-                bgMode === 'photo_tropical' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
+                bgMode === 'emerald_pool' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
               }`}
-              title="Tropical Island Coast Photo"
+              title="Dominica Emerald Pool Morne Trois Pitons National Park"
             >
-              🌊 Photo 3
+              🌿 Emerald Pool
             </button>
             <button
               onClick={() => setBgMode('flag')}

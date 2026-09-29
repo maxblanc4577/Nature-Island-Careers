@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import {
   X,
   Shield,
@@ -22,6 +23,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   onSuccess,
 }) => {
   const { adminLogin } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [email, setEmail] = useState('info@natureislandcareers.com');
   const [password, setPassword] = useState('natureislandcareers');
@@ -54,7 +56,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Admin Control Login"
+        tabIndex={-1}
+        className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200"
+      >
         
         {/* Header */}
         <div className="p-5 bg-gradient-to-r from-emerald-950 via-teal-900 to-stone-900 text-white flex items-center justify-between">

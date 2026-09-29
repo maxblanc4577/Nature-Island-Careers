@@ -1,7 +1,8 @@
 import React from 'react';
 import { JobListing, JobSector } from '../types';
 import { useJobContext } from '../context/JobContext';
-import { Bookmark, BookmarkCheck, ArrowRight, ShieldCheck, Laptop, Sparkles, Globe, Zap } from 'lucide-react';
+import { ShareJobModal } from './ShareJobModal';
+import { Bookmark, BookmarkCheck, ArrowRight, ShieldCheck, Laptop, Sparkles, Globe, Zap, Share2 } from 'lucide-react';
 
 interface JobCardProps {
   job: JobListing;
@@ -9,6 +10,7 @@ interface JobCardProps {
   onApply: (job: JobListing) => void;
   onQuickApply?: (job: JobListing) => void;
   onOpenAiGuidance?: (sector: JobSector) => void;
+  onShare?: (job: JobListing) => void;
 }
 
 export const JobCard: React.FC<JobCardProps> = ({
@@ -17,16 +19,27 @@ export const JobCard: React.FC<JobCardProps> = ({
   onApply,
   onQuickApply,
   onOpenAiGuidance,
+  onShare,
 }) => {
   const { toggleSaveJob, isJobSaved } = useJobContext();
   const saved = isJobSaved(job.id);
   const [isPulsing, setIsPulsing] = React.useState(false);
+  const [showShareModal, setShowShareModal] = React.useState(false);
 
   const handleToggleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsPulsing(true);
     toggleSaveJob(job.id);
     setTimeout(() => setIsPulsing(false), 550);
+  };
+
+  const handleShareClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onShare) {
+      onShare(job);
+    } else {
+      setShowShareModal(true);
+    }
   };
 
   return (
@@ -68,30 +81,42 @@ export const JobCard: React.FC<JobCardProps> = ({
             )}
           </div>
 
-          <button
-            onClick={handleToggleSave}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-              isPulsing
-                ? 'animate-heartbeat text-emerald-600 bg-emerald-50'
-                : 'text-stone-400 hover:text-emerald-800 hover:bg-stone-50'
-            }`}
-            title={saved ? 'Remove saved vacancy' : 'Save vacancy'}
-            aria-label="Bookmark job"
-          >
-            {saved ? (
-              <BookmarkCheck
-                className={`w-4 h-4 text-emerald-700 fill-emerald-100 ${
-                  isPulsing ? 'text-emerald-600 fill-emerald-300' : ''
-                }`}
-              />
-            ) : (
-              <Bookmark
-                className={`w-4 h-4 ${
-                  isPulsing ? 'text-emerald-600 fill-emerald-200' : ''
-                }`}
-              />
-            )}
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={handleShareClick}
+              className="p-1.5 rounded-lg text-stone-400 hover:text-emerald-800 hover:bg-stone-50 transition-colors cursor-pointer"
+              title="Share job opportunity"
+              aria-label="Share job"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handleToggleSave}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isPulsing
+                  ? 'animate-heartbeat text-emerald-600 bg-emerald-50'
+                  : 'text-stone-400 hover:text-emerald-800 hover:bg-stone-50'
+              }`}
+              title={saved ? 'Remove saved vacancy' : 'Save vacancy'}
+              aria-label="Bookmark job"
+            >
+              {saved ? (
+                <BookmarkCheck
+                  className={`w-4 h-4 text-emerald-700 fill-emerald-100 ${
+                    isPulsing ? 'text-emerald-600 fill-emerald-300' : ''
+                  }`}
+                />
+              ) : (
+                <Bookmark
+                  className={`w-4 h-4 ${
+                    isPulsing ? 'text-emerald-600 fill-emerald-200' : ''
+                  }`}
+                />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Primary Job Title */}
@@ -158,6 +183,15 @@ export const JobCard: React.FC<JobCardProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={handleShareClick}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-stone-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg font-medium transition-colors cursor-pointer text-xs border border-stone-200"
+            title="Share job opportunity"
+          >
+            <Share2 className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Share</span>
+          </button>
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onSelect(job);
@@ -185,6 +219,13 @@ export const JobCard: React.FC<JobCardProps> = ({
         </div>
       </div>
 
+      {showShareModal && (
+        <ShareJobModal
+          job={job}
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
     </article>
   );
 };

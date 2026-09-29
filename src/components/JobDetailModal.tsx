@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { JobListing } from '../types';
 import { useJobContext } from '../context/JobContext';
-import { X, MapPin, Building, Calendar, DollarSign, ShieldCheck, CheckCircle2, Bookmark, BookmarkCheck, Globe } from 'lucide-react';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
+import { ShareJobModal } from './ShareJobModal';
+import { X, MapPin, Building, Calendar, DollarSign, ShieldCheck, CheckCircle2, Bookmark, BookmarkCheck, Globe, Share2 } from 'lucide-react';
 
 interface JobDetailModalProps {
   job: JobListing | null;
@@ -17,13 +19,22 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
   onOpenAlert,
 }) => {
   const { toggleSaveJob, isJobSaved } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen: Boolean(job), onClose });
+  const [showShareModal, setShowShareModal] = useState(false);
 
   if (!job) return null;
   const saved = isJobSaved(job.id);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={job.title}
+        tabIndex={-1}
+        className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+      >
         
         {/* Modal Top Bar */}
         <div className="p-4 sm:p-6 border-b border-stone-200 flex items-start justify-between gap-4 bg-stone-50/70">
@@ -49,7 +60,15 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
             </h2>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <button
+              onClick={() => setShowShareModal(true)}
+              className="p-2 text-stone-500 hover:text-emerald-800 hover:bg-stone-200/60 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+              title="Share job opportunity"
+            >
+              <Share2 className="w-4 h-4 text-emerald-700" />
+              <span className="hidden sm:inline">Share</span>
+            </button>
             <button
               onClick={() => toggleSaveJob(job.id)}
               className="p-2 text-stone-400 hover:text-emerald-800 hover:bg-stone-200/60 rounded-xl transition-colors cursor-pointer"
@@ -248,6 +267,14 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
         </div>
 
       </div>
+
+      {showShareModal && (
+        <ShareJobModal
+          job={job}
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
     </div>
   );
 };

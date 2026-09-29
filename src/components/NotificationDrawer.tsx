@@ -1,5 +1,6 @@
 import React from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { X, Bell, Check, CheckCheck, Info, CheckCircle2, AlertTriangle, Calendar, Mail } from 'lucide-react';
 
 interface NotificationDrawerProps {
@@ -9,6 +10,7 @@ interface NotificationDrawerProps {
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose }) => {
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead, requestBrowserNotificationPermission } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
   const [browserPerm, setBrowserPerm] = React.useState<NotificationPermission>(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
@@ -50,7 +52,14 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
       />
 
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col">
+        <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Dominica Notifications"
+          tabIndex={-1}
+          className="w-screen max-w-md bg-white shadow-2xl flex flex-col"
+        >
           {/* Drawer Header */}
           <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
             <div className="flex items-center space-x-2.5">

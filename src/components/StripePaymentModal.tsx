@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { SubscriptionPlan, Parish } from '../types';
 import {
   X,
@@ -96,6 +97,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
   initialPlan,
 }) => {
   const { currentRecruiter, currentUser, subscribeClientPlan, addInvoice, toggleRecruiterAutoRenew } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [selectedPkgId, setSelectedPkgId] = useState<string>(
     initialPlan === 'Enterprise Growth Partner'
@@ -197,7 +199,14 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Nature Island Careers Payment Gateway"
+        tabIndex={-1}
+        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6"
+      >
         {/* Stripe Header Banner */}
         <div className="bg-[#635BFF] text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-3">

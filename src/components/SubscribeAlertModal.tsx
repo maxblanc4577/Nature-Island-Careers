@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { Parish, JobSector } from '../types';
 import { X, BellRing, Mail, MapPin, CheckCircle2, ShieldCheck, Sparkles, User } from 'lucide-react';
 
@@ -10,6 +11,7 @@ interface SubscribeAlertModalProps {
 
 export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen, onClose }) => {
   const { subscribeToAlert } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -76,7 +78,14 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-emerald-900/20 overflow-hidden">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Nature Island Careers Alerts"
+        tabIndex={-1}
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-emerald-900/20 overflow-hidden"
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">

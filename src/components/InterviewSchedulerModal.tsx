@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { InterviewDetails } from '../types';
 import { X, Calendar, Clock, Video, MapPin, CheckCircle2, Send } from 'lucide-react';
 
@@ -19,6 +20,7 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
   jobTitle,
 }) => {
   const { scheduleInterview } = useJobContext();
+  const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [date, setDate] = useState('2026-10-05');
   const [time, setTime] = useState('10:00 AM AST');
@@ -51,7 +53,14 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-emerald-900/20 overflow-hidden">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Schedule Interview"
+        tabIndex={-1}
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-emerald-900/20 overflow-hidden"
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
