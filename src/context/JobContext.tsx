@@ -15,6 +15,8 @@ import {
   UserAccount,
   ClientSubscription,
   SubscriptionPlan,
+  EmployerInvoice,
+  StripeSettings,
 } from '../types';
 import {
   INITIAL_JOBS,
@@ -24,7 +26,15 @@ import {
   INITIAL_SYNC_RECORDS,
   INITIAL_FEEDBACK,
   INITIAL_USERS,
+  INITIAL_INVOICES,
+  INITIAL_STRIPE_SETTINGS,
 } from '../data/mockData';
+import {
+  notifySavedJobStatusChange,
+  notifyNewJobMatch,
+  requestBrowserNotificationPermission,
+  getBrowserNotificationPermission,
+} from '../utils/browserNotifications';
 
 interface JobContextType {
   // Role & Recruiter
@@ -33,6 +43,15 @@ interface JobContextType {
   currentRecruiter: RecruiterAccount;
   setCurrentRecruiterId: (id: string) => void;
   recruiters: RecruiterAccount[];
+
+  // Invoices & Stripe Billing
+  invoices: EmployerInvoice[];
+  addInvoice: (invoice: Omit<EmployerInvoice, 'id'>) => EmployerInvoice;
+  stripeSettings: StripeSettings;
+  updateStripeSettings: (settings: Partial<StripeSettings>) => void;
+  toggleRecruiterAutoRenew: (recruiterId: string, enabled: boolean) => void;
+  sendRecruiterReminders: (contactEmail?: string) => { sentCount: number; messages: string[] };
+  notifySubscriptionExpired: (employerName: string, plan: string, expiryDate?: string) => void;
 
   // User Authentication & Registration
   currentUser: UserAccount | null;
@@ -125,6 +144,7 @@ interface JobContextType {
   latestDispatchedEmail: EmailNotification | null;
   dismissLatestEmail: () => void;
   sendManualTestAlert: (targetEmail: string) => void;
+  requestBrowserNotificationPermission: () => Promise<NotificationPermission>;
 
   // Alerts Subscriptions
   alerts: JobAlertSubscription[];
@@ -216,12 +236,30 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('dominica_admin_logged') === 'true';
   });
 
+  const [invoices, setInvoices] = useState<EmployerInvoice[]>(() => {
+    const saved = localStorage.getItem('dominica_employer_invoices');
+    return saved ? JSON.parse(saved) : INITIAL_INVOICES;
+  });
+
+  const [stripeSettings, setStripeSettings] = useState<StripeSettings>(() => {
+    const saved = localStorage.getItem('dominica_stripe_settings');
+    return saved ? JSON.parse(saved) : INITIAL_STRIPE_SETTINGS;
+  });
+
   const [latestDispatchedEmail, setLatestDispatchedEmail] = useState<EmailNotification | null>(null);
 
   // Sync to local storage
   useEffect(() => {
     localStorage.setItem('dominica_jobs', JSON.stringify(jobs));
   }, [jobs]);
+
+  useEffect(() => {
+    localStorage.setItem('dominica_employer_invoices', JSON.stringify(invoices));
+  }, [invoices]);
+
+  useEffect(() => {
+    localStorage.setItem('dominica_stripe_settings', JSON.stringify(stripeSettings));
+  }, [stripeSettings]);
 
   useEffect(() => {
     localStorage.setItem('dominica_applications', JSON.stringify(applications));
@@ -431,7 +469,12 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const adminLogin = (email: string, pass: string) => {
-    if (email.toLowerCase().includes('admin') || pass.length >= 4) {
+    const cleanEmail = email.trim().toLowerCase();
+    const validEmails = [
+      'info@natureislandcareers.com',
+      'info@natureislandcarees.com',
+    ];
+    if (validEmails.includes(cleanEmail) && pass === 'natureislandcareers') {
       setIsAdminLoggedIn(true);
       setActiveRole('admin');
       return true;
@@ -442,6 +485,160 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const adminLogout = () => {
     setIsAdminLoggedIn(false);
     setActiveRole('jobseeker');
+  };
+
+  const getSiteContactEmail = (): string => {
+    try {
+      const saved = localStorage.getItem('natureisland_site_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.contactEmail) return parsed.contactEmail;
+      }
+    } catch {
+      // ignore
+    }
+    return 'info@natureislandcareers.com';
+  };
+
+  const addInvoice = (invoiceData: Omit<EmployerInvoice, 'id'>) => {
+    const newInvoice: EmployerInvoice = {
+      ...invoiceData,
+      id: `inv-${Date.now()}`,
+      paymentIntentId:
+        invoiceData.paymentIntentId ||
+        `pi_live_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}XCD`,
+      timestamp:
+        invoiceData.timestamp ||
+        new Date().toISOString().replace('T', ' ').substring(0, 19) + ' AST',
+      currency: invoiceData.currency || 'XCD',
+      stripeFeeXCD:
+        invoiceData.stripeFeeXCD ||
+        Number(((invoiceData.amountXCD * 0.029) + 0.81).toFixed(2)),
+    };
+    setInvoices((prev) => [newInvoice, ...prev]);
+    return newInvoice;
+  };
+
+  const notifySubscriptionExpired = (employerName: string, plan: string, expiryDate?: string) => {
+    const siteContactEmail = getSiteContactEmail();
+    const dateStr = expiryDate || new Date().toISOString().split('T')[0];
+    const emailNotif: EmailNotification = {
+      id: `notif-site-subexp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      recipientEmail: siteContactEmail,
+      recipientName: 'Nature Island Careers Operations Desk',
+      subject: `[Subscription Expiry Alert] Employer Subscription Expired: ${employerName}`,
+      previewText: `Employer ${employerName}'s ${plan} subscription has expired on ${dateStr}. Notice delivered to site contact.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+          <div style="border-bottom: 2px solid #b91c1c; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: #b91c1c; margin: 0;">Subscription Expiry Alert · Nature Island Careers</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automatic Background Service Notice to ${siteContactEmail}</p>
+          </div>
+          <p style="font-size: 14px; color: #1e293b;">The following employer subscription has expired or lapsed:</p>
+          <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            <p style="margin: 0; color: #991b1b; font-weight: bold;"><strong>Employer:</strong> ${employerName}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Plan:</strong> ${plan}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Expiration Date:</strong> ${dateStr}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Action Required:</strong> Contact employer regarding subscription renewal options.</p>
+          </div>
+          <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+            Dominica Labour Exchange Automated Background Service · Delivered to ${siteContactEmail}
+          </p>
+        </div>
+      `,
+      type: 'status_update',
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      isRead: false,
+    };
+    dispatchEmail(emailNotif);
+  };
+
+  const updateStripeSettings = (updates: Partial<StripeSettings>) => {
+    setStripeSettings((prev) => ({ ...prev, ...updates }));
+  };
+
+  const toggleRecruiterAutoRenew = (recruiterId: string, enabled: boolean) => {
+    setStripeSettings((prev) => ({ ...prev, autoRenewEnabled: enabled }));
+    const rec = recruiters.find((r) => r.id === recruiterId) || currentRecruiter;
+    const notif: EmailNotification = {
+      id: `notif-autorenew-${Date.now()}`,
+      recipientEmail: rec.email,
+      recipientName: rec.contactPerson || rec.companyName,
+      subject: `Stripe Auto-Renewal Updated: ${enabled ? 'ENABLED' : 'PAUSED'}`,
+      previewText: `Monthly recurring Stripe billing status updated for ${rec.companyName}.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 580px; margin: 0 auto; padding: 20px; border: 1px solid #cbd5e1; border-radius: 8px;">
+          <h3 style="color: #065f46; margin-top: 0;">Nature Island Careers · Subscription Management</h3>
+          <p style="font-size: 14px; color: #334155;">
+            Monthly recurring Stripe billing is now <strong>${enabled ? 'ACTIVE' : 'PAUSED'}</strong> for ${rec.companyName}.
+          </p>
+          <p style="font-size: 13px; color: #64748b;">
+            When active, your job posting quota automatically refreshes every 30 days without interruption.
+          </p>
+        </div>
+      `,
+      type: 'status_update',
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      isRead: false,
+    };
+    dispatchEmail(notif);
+  };
+
+  const sendRecruiterReminders = (contactEmail: string = 'info@natureislandcareers.com') => {
+    const now = new Date();
+    const nowStr = now.toISOString().replace('T', ' ').substring(0, 16);
+    let sentCount = 0;
+    const messages: string[] = [];
+
+    recruiters.forEach((rec) => {
+      const recJobs = jobs.filter(
+        (j) => j.recruiterId === rec.id || j.company.toLowerCase() === rec.companyName.toLowerCase()
+      );
+      const pendingApplicants = applications.filter(
+        (a) => recJobs.some((j) => j.id === a.jobId) && a.status === 'Applied'
+      );
+
+      const notifSub: EmailNotification = {
+        id: `notif-reminder-${rec.id}-${Date.now()}`,
+        recipientEmail: rec.email,
+        recipientName: rec.contactPerson || rec.companyName,
+        subject: `[Automated Reminder] Pending Postings & Subscription Renewal · ${rec.companyName}`,
+        previewText: `Upcoming monthly renewal notice and review of ${recJobs.length} active listings from Nature Island Careers.`,
+        bodyHtml: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+            <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
+              <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Employer Alert</h2>
+              <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Official Recruiter Reminder Service (${contactEmail})</p>
+            </div>
+            <p style="font-size: 14px; color: #1e293b;">Dear ${rec.contactPerson || rec.companyName},</p>
+            <p style="font-size: 13px; color: #334155; line-height: 1.5;">
+              This is a scheduled reminder regarding your organization's recruitment postings and subscription renewal on Dominica's official job exchange:
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin: 16px 0; font-size: 13px;">
+              <p style="margin: 0; color: #0f172a;"><strong>Employer Organization:</strong> ${rec.companyName} (${rec.locality})</p>
+              <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Active Published Listings:</strong> ${recJobs.length} vacancies</p>
+              <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Pending Unscreened Applicants:</strong> ${pendingApplicants.length} candidate dossiers awaiting review</p>
+              <p style="margin: 4px 0 0 0; color: #065f46;"><strong>Stripe Monthly Subscription:</strong> Auto-renew active (EC$ 350 / month). Billing method: Stripe Card on file.</p>
+            </div>
+            <p style="font-size: 13px; color: #475569;">
+              To approve pending postings, review candidate dossiers, or update payment settings, please log into your Recruiter Command Center. Inquiries may be directed to <strong>${contactEmail}</strong>.
+            </p>
+            <p style="font-size: 12px; color: #94a3b8; margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+              Commonwealth of Dominica National Labour Exchange · Sent via ${contactEmail}
+            </p>
+          </div>
+        `,
+        type: 'job_alert',
+        timestamp: nowStr,
+        isRead: false,
+      };
+
+      dispatchEmail(notifSub);
+      sentCount++;
+      messages.push(`Reminder dispatched to ${rec.companyName} (${rec.email})`);
+    });
+
+    return { sentCount, messages };
   };
 
   const myApplications = applications.filter(
@@ -592,10 +789,83 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       dispatchEmail(emailNotif);
     });
+
+    // Background service: automatically trigger email notification to the site contact email
+    const siteContactEmail = getSiteContactEmail();
+    const siteAdminJobNotice: EmailNotification = {
+      id: `notif-site-newjob-${Date.now()}`,
+      recipientEmail: siteContactEmail,
+      recipientName: 'Nature Island Careers Operations Team',
+      subject: `[New Job Created] ${newJob.title} by ${newJob.company} (${newJob.parish})`,
+      previewText: `New classified vacancy published: ${newJob.title} at ${newJob.company}. Salary: EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()}.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+          <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Platform Administrator Alert</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automatic Notification to Site Contact (${siteContactEmail})</p>
+          </div>
+          <p style="font-size: 14px; color: #1e293b;">A new job posting has just been published on Nature Island Careers:</p>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            <p style="margin: 0; color: #0f172a;"><strong>Position:</strong> ${newJob.title}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Employer:</strong> ${newJob.company}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Parish:</strong> ${newJob.parish} (${newJob.locality})</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Sector:</strong> ${newJob.sector}</p>
+            <p style="margin: 4px 0 0 0; color: #065f46; font-weight: bold;"><strong>Salary Range:</strong> EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()} / ${newJob.salaryPeriod}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Work Model:</strong> ${newJob.workModel} · ${newJob.employmentType}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Application Deadline:</strong> ${newJob.applicationDeadline}</p>
+          </div>
+          <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+            Delivered automatically to site contact email (${siteContactEmail}) via Background Service.
+          </p>
+        </div>
+      `,
+      type: 'status_update',
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      isRead: false,
+      relatedJobId: newJob.id,
+    };
+    dispatchEmail(siteAdminJobNotice);
+
+    // Browser notification: check if newly posted job matches user's previous search criteria
+    try {
+      const savedSearchesRaw = localStorage.getItem('natureisland_recent_searches');
+      if (savedSearchesRaw) {
+        const recentQueries: string[] = JSON.parse(savedSearchesRaw);
+        for (const query of recentQueries) {
+          if (!query || query.trim().length === 0) continue;
+          const q = query.toLowerCase().trim();
+          const isMatch =
+            newJob.title.toLowerCase().includes(q) ||
+            newJob.company.toLowerCase().includes(q) ||
+            newJob.sector.toLowerCase().includes(q) ||
+            newJob.locality.toLowerCase().includes(q) ||
+            newJob.description.toLowerCase().includes(q) ||
+            newJob.parish.toLowerCase().includes(q);
+
+          if (isMatch) {
+            notifyNewJobMatch(newJob.title, newJob.company, newJob.parish, query);
+            break;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const updateJob = (id: string, updates: Partial<JobListing>) => {
     setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...updates } : j)));
+    if (savedJobIds.includes(id)) {
+      const job = jobs.find((j) => j.id === id);
+      if (job) {
+        const statusSummary = updates.applicationDeadline
+          ? `Deadline updated to ${updates.applicationDeadline}`
+          : updates.employmentType
+          ? `Type updated to ${updates.employmentType}`
+          : 'Details updated';
+        notifySavedJobStatusChange(job.title, job.company, statusSummary);
+      }
+    }
   };
 
   const deleteJob = (id: string) => {
@@ -771,6 +1041,12 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     dispatchEmail(statusEmail);
+
+    // Browser notification: notify applicant / saved job status change
+    const isSaved = savedJobIds.includes(app.jobId);
+    if (isSaved || currentUser?.email === app.applicantEmail) {
+      notifySavedJobStatusChange(app.jobTitle, app.companyName, newStatus);
+    }
   };
 
   // Rate candidate
@@ -1135,6 +1411,29 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     document.body.removeChild(link);
   };
 
+  // Background service: audit employer subscriptions and alert site contact email if expired
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    users.forEach((u) => {
+      if (u.role === 'client' && u.subscription) {
+        const isExpired =
+          u.subscription.status === 'expired' ||
+          (u.subscription.renewsAt && u.subscription.renewsAt < today);
+        if (isExpired) {
+          const alertKey = `notified_sub_exp_${u.id}_${u.subscription.renewsAt}`;
+          if (!sessionStorage.getItem(alertKey)) {
+            sessionStorage.setItem(alertKey, 'true');
+            notifySubscriptionExpired(
+              u.companyName || u.name,
+              u.subscription.plan,
+              u.subscription.renewsAt
+            );
+          }
+        }
+      }
+    });
+  }, [users]);
+
   return (
     <JobContext.Provider
       value={{
@@ -1143,6 +1442,14 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentRecruiter,
         setCurrentRecruiterId,
         recruiters,
+        // Invoices & Stripe Billing
+        invoices,
+        addInvoice,
+        stripeSettings,
+        updateStripeSettings,
+        toggleRecruiterAutoRenew,
+        sendRecruiterReminders,
+        notifySubscriptionExpired,
         // User Auth & Subscription
         currentUser,
         users,
@@ -1181,6 +1488,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         latestDispatchedEmail,
         dismissLatestEmail,
         sendManualTestAlert,
+        requestBrowserNotificationPermission,
         alerts,
         subscribeToAlert,
         toggleAlertActive,

@@ -95,7 +95,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
   onSuccess,
   initialPlan,
 }) => {
-  const { currentRecruiter, currentUser, subscribeClientPlan } = useJobContext();
+  const { currentRecruiter, currentUser, subscribeClientPlan, addInvoice, toggleRecruiterAutoRenew } = useJobContext();
 
   const [selectedPkgId, setSelectedPkgId] = useState<string>(
     initialPlan === 'Enterprise Growth Partner'
@@ -104,6 +104,8 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
       ? 'pkg-nep'
       : 'pkg-featured'
   );
+
+  const [billingCadence, setBillingCadence] = useState<'monthly' | 'one_time'>('monthly');
 
   // Stripe form fields
   const [cardNumber, setCardNumber] = useState('4242 •••• •••• 4242');
@@ -128,6 +130,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
     amountUSD: number;
     date: string;
     packageName: string;
+    billingInterval: 'monthly' | 'one_time';
   } | null>(null);
 
   if (!isOpen) return null;
@@ -154,6 +157,28 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
         subscribeClientPlan(currentUser.id, currentPkg.planKey, 'Credit/Debit Card (XCD)');
       }
 
+      // Record official Employer Invoice in JobContext
+      const cleanDigits = cardNumber.replace(/\D/g, '');
+      const last4 = cleanDigits.slice(-4) || '4242';
+      addInvoice({
+        recruiterId: currentRecruiter?.id || 'rec_fort_young',
+        companyName: cardholderName,
+        invoiceNumber: `INV-DOM-2026-${Math.floor(100 + Math.random() * 900)}`,
+        date: new Date().toISOString().split('T')[0],
+        plan: currentPkg.name,
+        amountXCD: currentPkg.priceXCD,
+        amountUSD: Math.round(Number(priceUSD)),
+        billingInterval: billingCadence,
+        status: 'Paid',
+        paymentMethod: `Stripe •••• ${last4} (${cleanDigits.startsWith('4') ? 'Visa' : 'Mastercard'})`,
+        receiptUrl: `https://pay.stripe.com/receipts/invoices/${chargeId}`,
+        stripeSubscriptionId: billingCadence === 'monthly' ? `sub_stripe_${Math.random().toString(36).substring(2, 9)}` : undefined,
+      });
+
+      if (billingCadence === 'monthly' && currentRecruiter) {
+        toggleRecruiterAutoRenew(currentRecruiter.id, true);
+      }
+
       setReceiptData({
         chargeId,
         paymentIntentId,
@@ -161,12 +186,13 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
         amountUSD: Number(priceUSD),
         date: new Date().toLocaleString(),
         packageName: currentPkg.name,
+        billingInterval: billingCadence,
       });
 
       setIsProcessing(false);
       setPaymentSuccess(true);
       if (onSuccess) onSuccess();
-    }, 1600);
+    }, 1500);
   };
 
   return (
@@ -220,6 +246,12 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
                 <span className="font-bold text-slate-900">{receiptData.packageName}</span>
               </div>
               <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                <span className="text-slate-500">Billing Cadence:</span>
+                <span className="font-bold text-emerald-800">
+                  {receiptData.billingInterval === 'monthly' ? 'Monthly Recurring Subscription (Stripe Auto-Renew)' : '30-Day Listing Pass'}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200/80 pb-2">
                 <span className="text-slate-500">Stripe Charge ID:</span>
                 <span className="font-mono text-slate-800">{receiptData.chargeId}</span>
               </div>
@@ -238,7 +270,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
             </div>
 
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              A formal Stripe receipt and invoice has been dispatched to <strong>{billingEmail}</strong>.
+              A formal Stripe receipt and invoice has been recorded in your <strong>Billing History</strong> and dispatched to <strong>{billingEmail}</strong>.
             </p>
 
             <div className="pt-2 flex justify-center gap-3">
@@ -261,6 +293,33 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
           </div>
         ) : (
           <form onSubmit={handleStripeSubmit} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto">
+            {/* Billing Cadence Toggle */}
+            <div className="bg-slate-100 p-1.5 rounded-xl flex gap-1 text-xs font-bold border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setBillingCadence('monthly')}
+                className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  billingCadence === 'monthly'
+                    ? 'bg-[#635BFF] text-white shadow-xs font-black'
+                    : 'text-slate-600 hover:text-slate-950'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Monthly Recurring Subscription (Auto-Renew)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCadence('one_time')}
+                className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  billingCadence === 'one_time'
+                    ? 'bg-slate-900 text-white shadow-xs font-black'
+                    : 'text-slate-600 hover:text-slate-950'
+                }`}
+              >
+                <span>Single 30-Day Listing Pass</span>
+              </button>
+            </div>
+
             {/* Step 1: Select Classified Package */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">

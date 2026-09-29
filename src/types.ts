@@ -85,6 +85,37 @@ export interface JobListing {
 
 export type SubscriptionPlan = 'Standard Local Employer' | 'Enterprise Growth Partner' | 'NEP Partner Tier';
 
+export interface EmployerInvoice {
+  id: string;
+  recruiterId: string;
+  companyName: string;
+  invoiceNumber: string;
+  date: string;
+  plan: string;
+  amountXCD: number;
+  amountUSD: number;
+  billingInterval: 'monthly' | 'one_time' | 'annual';
+  status: 'Paid' | 'Processing' | 'Renewal Pending';
+  paymentMethod: string;
+  receiptUrl?: string;
+  stripeSubscriptionId?: string;
+  paymentIntentId?: string;
+  timestamp?: string;
+  stripeFeeXCD?: number;
+  currency?: string;
+}
+
+export interface StripeSettings {
+  mode: 'test' | 'live';
+  publishableKey: string;
+  secretKey: string;
+  webhookSecret: string;
+  currencyPeg: number;
+  monthlyDiscountPercent: number;
+  autoRenewEnabled: boolean;
+  lastWebhookPing?: string;
+}
+
 export interface ClientSubscription {
   plan: SubscriptionPlan;
   priceXCD: number;

@@ -23,9 +23,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 }) => {
   const { adminLogin } = useJobContext();
 
-  const [email, setEmail] = useState('admin@dominica.gov.dm');
-  const [password, setPassword] = useState('DominicaLabour2026!');
-  const [pin, setPin] = useState('7670');
+  const [email, setEmail] = useState('info@natureislandcareers.com');
+  const [password, setPassword] = useState('natureislandcareers');
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -45,13 +44,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       } else {
         setError(true);
       }
-    }, 600);
+    }, 500);
   };
 
   const handleFillDemo = () => {
-    setEmail('admin@dominica.gov.dm');
-    setPassword('DominicaLabour2026!');
-    setPin('7670');
+    setEmail('info@natureislandcareers.com');
+    setPassword('natureislandcareers');
   };
 
   return (
@@ -59,23 +57,23 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-purple-950 via-purple-900 to-stone-900 text-white flex items-center justify-between">
+        <div className="p-5 bg-gradient-to-r from-emerald-950 via-teal-900 to-stone-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-800 text-purple-200 rounded-xl">
+            <div className="p-2 bg-emerald-800 text-emerald-200 rounded-xl">
               <Shield className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-base font-bold font-display">
-                Administrator Secure Portal
+                Administrator Master Access
               </h2>
-              <p className="text-xs text-purple-200/80">
-                Commonwealth of Dominica Labour Division
+              <p className="text-xs text-emerald-200/80">
+                Nature Island Careers & Stripe Billing Portal
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-purple-300 hover:text-white rounded-lg cursor-pointer"
+            className="p-1.5 text-emerald-300 hover:text-white rounded-lg cursor-pointer"
             aria-label="Close admin login"
           >
             <X className="w-5 h-5" />
@@ -85,23 +83,23 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         {/* Form Body */}
         <div className="p-5 sm:p-6 text-xs text-stone-800 space-y-4">
           
-          <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-purple-950 text-[11px] flex items-start justify-between gap-2">
+          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950 text-[11px] flex items-start justify-between gap-2">
             <div>
-              <strong>Authorized Personnel Only:</strong> Access National Labour Exchange metrics, database synchronization, and employer subscription audits.
+              <strong>Secure Admin Authentication:</strong> Full privileges to edit site configuration, manage Stripe payment portal, automate employer recurring billing, and update Dominica job listings.
             </div>
             <button
               type="button"
               onClick={handleFillDemo}
-              className="text-[10px] bg-purple-800 text-white font-semibold px-2 py-1 rounded shrink-0 hover:bg-purple-900 cursor-pointer"
+              className="text-[10px] bg-emerald-800 text-white font-semibold px-2.5 py-1 rounded shrink-0 hover:bg-emerald-900 cursor-pointer shadow-2xs"
             >
-              Fill Demo
+              Fill Admin
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3.5">
             <div>
               <label className="block font-semibold text-stone-900 mb-1">
-                Admin Government Email *
+                Admin Email (Username) *
               </label>
               <div className="relative">
                 <input
@@ -109,15 +107,16 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@dominica.gov.dm"
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-purple-700 font-mono"
+                  placeholder="info@natureislandcareers.com"
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono"
                 />
               </div>
+              <p className="text-[10px] text-stone-400 mt-1">Authorized email: info@natureislandcareers.com</p>
             </div>
 
             <div>
               <label className="block font-semibold text-stone-900 mb-1">
-                Security Password *
+                Admin Master Password *
               </label>
               <div className="relative">
                 <input
@@ -125,31 +124,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-purple-700"
+                  placeholder="natureislandcareers"
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-stone-900 mb-1">
-                Dominica Division Security PIN (4-Digits) *
-              </label>
-              <input
-                type="text"
-                required
-                maxLength={4}
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="7670"
-                className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-purple-700 font-mono tracking-widest text-center text-sm font-bold"
-              />
+              <p className="text-[10px] text-stone-400 mt-1">Designated master key: natureislandcareers</p>
             </div>
 
             {error && (
               <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-1.5 text-[11px]">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>Invalid administrator credentials. Please check your email or PIN.</span>
+                <span>Invalid credentials! Authorized email is <strong>info@natureislandcareers.com</strong> with password <strong>natureislandcareers</strong>.</span>
               </div>
             )}
 
@@ -157,17 +142,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 border border-stone-300 rounded-lg text-stone-700 cursor-pointer"
+                className="px-4 py-2 border border-stone-300 rounded-lg text-stone-700 cursor-pointer hover:bg-stone-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-5 py-2 bg-purple-900 hover:bg-purple-950 text-white rounded-lg font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                className="px-5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
               >
                 <KeyRound className="w-3.5 h-3.5" />
-                <span>{loading ? 'Authenticating...' : 'Authenticate & Enter'}</span>
+                <span>{loading ? 'Authenticating...' : 'Unlock Admin Master Portal'}</span>
               </button>
             </div>
           </form>

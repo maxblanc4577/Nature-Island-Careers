@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 
 function DominicaJobBoardContent() {
-  const { jobs, savedJobIds } = useJobContext();
+  const { jobs, savedJobIds, isAdminLoggedIn } = useJobContext();
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<'jobs' | 'remote' | 'applications' | 'recruiter' | 'analytics' | 'career'>('jobs');
@@ -199,6 +199,14 @@ function DominicaJobBoardContent() {
     setSortBy('recent');
   };
 
+  const handleOpenAdminMasterPortal = () => {
+    if (isAdminLoggedIn) {
+      setIsMasterAdminOpen(true);
+    } else {
+      setIsAdminLoginOpen(true);
+    }
+  };
+
   return (
     <div
       className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 selection:bg-emerald-500 selection:text-white relative"
@@ -221,8 +229,7 @@ function DominicaJobBoardContent() {
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
-        onOpenStripe={() => setIsStripeModalOpen(true)}
-        onOpenAdminPortal={() => setIsMasterAdminOpen(true)}
+        onOpenAdminPortal={handleOpenAdminMasterPortal}
         siteSettings={siteSettings}
       />
 
@@ -326,6 +333,7 @@ function DominicaJobBoardContent() {
                           job={job}
                           onSelect={() => setSelectedJobForDetail(job)}
                           onApply={() => setJobToApply(job)}
+                          onQuickApply={() => setJobToApply(job)}
                         />
                       ))}
                     </div>
@@ -374,6 +382,7 @@ function DominicaJobBoardContent() {
                       job={job}
                       onSelect={() => setSelectedJobForDetail(job)}
                       onApply={() => setJobToApply(job)}
+                      onQuickApply={() => setJobToApply(job)}
                     />
                   ))}
                 </div>
@@ -433,7 +442,15 @@ function DominicaJobBoardContent() {
         }}
         onOpenAlert={() => setIsSubscribeAlertOpen(true)}
         onOpenFeedback={() => setIsFeedbackOpen(true)}
-        onOpenAdminPortal={() => setIsMasterAdminOpen(true)}
+        onOpenAdminPortal={handleOpenAdminMasterPortal}
+        onOpenCareerGuide={() => {
+          setActiveTab('career');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onOpenSalaryTrends={() => {
+          setActiveTab('analytics');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
       />
 
       {/* Floating Simulated Email Alert Toast */}
@@ -518,7 +535,7 @@ function DominicaJobBoardContent() {
         onClose={() => setIsAdminLoginOpen(false)}
         onSuccess={() => {
           setIsAdminLoginOpen(false);
-          setActiveTab('analytics');
+          setIsMasterAdminOpen(true);
         }}
       />
 

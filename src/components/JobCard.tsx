@@ -1,12 +1,13 @@
 import React from 'react';
 import { JobListing, JobSector } from '../types';
 import { useJobContext } from '../context/JobContext';
-import { Bookmark, BookmarkCheck, ArrowRight, ShieldCheck, Laptop, Sparkles, Globe } from 'lucide-react';
+import { Bookmark, BookmarkCheck, ArrowRight, ShieldCheck, Laptop, Sparkles, Globe, Zap } from 'lucide-react';
 
 interface JobCardProps {
   job: JobListing;
   onSelect: (job: JobListing) => void;
   onApply: (job: JobListing) => void;
+  onQuickApply?: (job: JobListing) => void;
   onOpenAiGuidance?: (sector: JobSector) => void;
 }
 
@@ -14,10 +15,19 @@ export const JobCard: React.FC<JobCardProps> = ({
   job,
   onSelect,
   onApply,
+  onQuickApply,
   onOpenAiGuidance,
 }) => {
   const { toggleSaveJob, isJobSaved } = useJobContext();
   const saved = isJobSaved(job.id);
+  const [isPulsing, setIsPulsing] = React.useState(false);
+
+  const handleToggleSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsPulsing(true);
+    toggleSaveJob(job.id);
+    setTimeout(() => setIsPulsing(false), 550);
+  };
 
   return (
     <article className="group bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 shadow-xs hover:border-emerald-700/50 hover:shadow-md transition-all duration-200 flex flex-col justify-between">
@@ -59,15 +69,27 @@ export const JobCard: React.FC<JobCardProps> = ({
           </div>
 
           <button
-            onClick={() => toggleSaveJob(job.id)}
-            className="p-1.5 text-stone-400 hover:text-emerald-800 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer shrink-0"
+            onClick={handleToggleSave}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
+              isPulsing
+                ? 'animate-heartbeat text-emerald-600 bg-emerald-50'
+                : 'text-stone-400 hover:text-emerald-800 hover:bg-stone-50'
+            }`}
             title={saved ? 'Remove saved vacancy' : 'Save vacancy'}
             aria-label="Bookmark job"
           >
             {saved ? (
-              <BookmarkCheck className="w-4 h-4 text-emerald-700 fill-emerald-100" />
+              <BookmarkCheck
+                className={`w-4 h-4 text-emerald-700 fill-emerald-100 ${
+                  isPulsing ? 'text-emerald-600 fill-emerald-300' : ''
+                }`}
+              />
             ) : (
-              <Bookmark className="w-4 h-4" />
+              <Bookmark
+                className={`w-4 h-4 ${
+                  isPulsing ? 'text-emerald-600 fill-emerald-200' : ''
+                }`}
+              />
             )}
           </button>
         </div>
@@ -135,17 +157,30 @@ export const JobCard: React.FC<JobCardProps> = ({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => onSelect(job)}
-            className="px-3 py-1.5 text-stone-700 hover:text-stone-950 hover:bg-stone-100 rounded-lg font-medium transition-colors cursor-pointer"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(job);
+            }}
+            className="px-3 py-1.5 text-stone-700 hover:text-stone-950 hover:bg-stone-100 rounded-lg font-medium transition-colors cursor-pointer text-xs"
           >
             Details
           </button>
           <button
-            onClick={() => onApply(job)}
-            className="flex items-center gap-1 px-3.5 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-semibold transition-colors shadow-xs cursor-pointer"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onQuickApply) {
+                onQuickApply(job);
+              } else {
+                onApply(job);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-bold transition-all shadow-xs cursor-pointer hover:shadow-sm text-xs"
+            title="Quick Apply without opening full details"
           >
-            <span>{job.isRemoteAssignment ? 'Apply for Gig' : 'Apply'}</span>
-            <ArrowRight className="w-3 h-3" />
+            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+            <span>Quick Apply</span>
           </button>
         </div>
       </div>

@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   TrendingUp,
   Laptop,
+  Clock,
+  History,
 } from 'lucide-react';
 
 interface HeroSectionProps {
@@ -40,6 +42,54 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   siteName = 'Nature Island Careers',
 }) => {
   const [bgMode, setBgMode] = React.useState<'photo_scotts' | 'photo_mountains' | 'photo_tropical' | 'flag'>('photo_scotts');
+
+  // Remember last 3 user-entered search queries
+  const [recentSearches, setRecentSearches] = React.useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('natureisland_recent_searches');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.slice(0, 3);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return ['Eco-Resort', 'Software Developer', 'Solar Energy'];
+  });
+  const [showRecentDropdown, setShowRecentDropdown] = React.useState(false);
+
+  const saveRecentSearch = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setRecentSearches((prev) => {
+      const filtered = prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, 3);
+      try {
+        localStorage.setItem('natureisland_recent_searches', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+  };
+
+  const handleSelectRecentSearch = (query: string) => {
+    setSearchQuery(query);
+    saveRecentSearch(query);
+    setShowRecentDropdown(false);
+  };
+
+  const handleClearRecentSearches = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRecentSearches([]);
+    try {
+      localStorage.removeItem('natureisland_recent_searches');
+    } catch {
+      // ignore
+    }
+  };
 
   const currentBg =
     bgMode === 'photo_scotts'
@@ -140,16 +190,63 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* Search Bar Container */}
         <div className="bg-white/10 backdrop-blur-md p-2.5 sm:p-3.5 rounded-2xl border border-white/20 shadow-2xl max-w-4xl mx-auto text-slate-800 text-left">
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-3 items-center">
-            {/* Keyword Input */}
+            {/* Keyword Input with Recent Searches Dropdown */}
             <div className="sm:col-span-5 relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setShowRecentDropdown(true)}
+                onBlur={() => {
+                  setTimeout(() => setShowRecentDropdown(false), 200);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    saveRecentSearch(searchQuery);
+                    setShowRecentDropdown(false);
+                  }
+                }}
                 placeholder="Job title, keywords, or company (e.g. Fort Young, Engineer)"
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
               />
+
+              {/* Small Dropdown List of Last 3 Searches */}
+              {showRecentDropdown && recentSearches.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden text-xs py-1.5 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+                    <span className="flex items-center gap-1 text-slate-600">
+                      <Clock className="w-3 h-3 text-emerald-600" />
+                      Recent Searches (Last 3)
+                    </span>
+                    <button
+                      type="button"
+                      onMouseDown={handleClearRecentSearches}
+                      className="text-slate-400 hover:text-rose-500 font-semibold cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {recentSearches.map((item, idx) => (
+                      <button
+                        key={`${item}-${idx}`}
+                        type="button"
+                        onMouseDown={() => handleSelectRecentSearch(item)}
+                        className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 flex items-center justify-between transition-colors cursor-pointer group"
+                      >
+                        <span className="font-semibold truncate flex items-center gap-2">
+                          <History className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600" />
+                          <span>{item}</span>
+                        </span>
+                        <span className="text-[10px] text-emerald-700 font-bold ml-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          Search &rarr;
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Parish Dropdown */}
@@ -179,6 +276,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <div className="sm:col-span-3 flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => saveRecentSearch(searchQuery)}
                 className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-extrabold text-sm py-2.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Search className="w-4 h-4" />

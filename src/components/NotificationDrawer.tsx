@@ -8,7 +8,22 @@ interface NotificationDrawerProps {
 }
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose }) => {
-  const { notifications, markNotificationAsRead, markAllNotificationsAsRead } = useJobContext();
+  const { notifications, markNotificationAsRead, markAllNotificationsAsRead, requestBrowserNotificationPermission } = useJobContext();
+  const [browserPerm, setBrowserPerm] = React.useState<NotificationPermission>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        return Notification.permission;
+      } catch {
+        return 'default';
+      }
+    }
+    return 'denied';
+  });
+
+  const handleEnableBrowserNotifs = async () => {
+    const res = await requestBrowserNotificationPermission();
+    setBrowserPerm(res);
+  };
 
   if (!isOpen) return null;
 
@@ -62,6 +77,32 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
                 <X className="w-5 h-5" />
               </button>
             </div>
+          </div>
+
+          {/* Browser Notification Status Card */}
+          <div className="mx-4 mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${browserPerm === 'granted' ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
+              <div>
+                <span className="font-bold text-slate-800 block">
+                  {browserPerm === 'granted' ? 'Browser Notifications Enabled' : 'Browser Notifications'}
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  {browserPerm === 'granted'
+                    ? 'Alerts for saved jobs & search matches are active'
+                    : 'Get live alerts for saved job changes & search matches'}
+                </span>
+              </div>
+            </div>
+            {browserPerm !== 'granted' && (
+              <button
+                type="button"
+                onClick={handleEnableBrowserNotifs}
+                className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-[11px] transition-colors cursor-pointer shrink-0"
+              >
+                Enable
+              </button>
+            )}
           </div>
 
           {/* Notifications List */}

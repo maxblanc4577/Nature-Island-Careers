@@ -4,15 +4,12 @@ import {
   Briefcase,
   Bell,
   PlusCircle,
-  BarChart3,
   User,
-  Compass,
   Laptop,
   CheckCircle2,
   Shield,
   LogOut,
   Building,
-  CreditCard,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -23,7 +20,6 @@ interface HeaderProps {
   onOpenAuth: () => void;
   onOpenAdminLogin: () => void;
   onOpenRemoteModal: () => void;
-  onOpenStripe?: () => void;
   onOpenAdminPortal?: () => void;
   siteSettings?: {
     siteName: string;
@@ -42,7 +38,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   onOpenAdminLogin,
   onOpenRemoteModal,
-  onOpenStripe,
   onOpenAdminPortal,
   siteSettings,
 }) => {
@@ -75,14 +70,6 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex items-center space-x-4 text-xs font-medium">
-            {onOpenStripe && (
-              <button
-                onClick={onOpenStripe}
-                className="text-amber-300 hover:text-amber-200 flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                <span>Stripe Portal</span>
-              </button>
-            )}
             <button
               onClick={onOpenRemoteModal}
               className="text-teal-300 hover:text-teal-200 flex items-center gap-1 transition-colors cursor-pointer"
@@ -90,29 +77,16 @@ export const Header: React.FC<HeaderProps> = ({
               <Laptop className="w-3.5 h-3.5" />
               <span>Dominica WIN Extended Visa</span>
             </button>
-            <span className="text-emerald-800">|</span>
-            {isAdminLoggedIn ? (
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={onOpenAdminPortal || onOpenAdminLogin}
-                  className="inline-flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded text-[11px] cursor-pointer transition-colors"
-                >
-                  <Shield className="w-3 h-3 text-amber-400" /> Admin Command Center
-                </button>
+            {isAdminLoggedIn && (
+              <>
+                <span className="text-emerald-800">|</span>
                 <button
                   onClick={adminLogout}
                   className="text-stone-400 hover:text-white text-[11px] underline cursor-pointer"
                 >
                   Exit Admin
                 </button>
-              </div>
-            ) : (
-              <button
-                onClick={onOpenAdminPortal || onOpenAdminLogin}
-                className="text-emerald-300/70 hover:text-white text-[11px] transition-colors cursor-pointer"
-              >
-                Government / Admin Portal
-              </button>
+              </>
             )}
           </div>
         </div>
@@ -136,8 +110,8 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="font-extrabold text-xl tracking-tight text-slate-900">Nature Island</span>
-                <span className="font-bold text-xl text-emerald-600">Careers</span>
+                <span className="font-extrabold text-[16px] tracking-tight text-slate-900">Nature Island</span>
+                <span className="font-bold text-[16px] text-emerald-600">Careers</span>
               </div>
               <p className="text-[10px] font-medium tracking-wide uppercase text-slate-600">
                 Dominica Classified & Career Hub
@@ -197,30 +171,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Building className="w-4 h-4 text-emerald-600" />
               <span>Employer Portal</span>
             </button>
-
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'analytics'
-                  ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200/60 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 text-amber-600" />
-              <span>Parish Salary Trends</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('career')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'career'
-                  ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200/60 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
-              }`}
-            >
-              <Compass className="w-4 h-4 text-indigo-600" />
-              <span>Career Guidance</span>
-            </button>
           </nav>
 
           {/* Action Buttons */}
@@ -238,22 +188,9 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
             </button>
-
-            {/* Stripe Payment Portal button */}
-            {onOpenStripe && (
-              <button
-                onClick={onOpenStripe}
-                className="hidden sm:inline-flex items-center gap-1.5 bg-[#635BFF] hover:bg-[#5249e6] text-white font-bold text-xs sm:text-sm px-3 py-2 rounded-lg shadow-sm transition-all cursor-pointer"
-                title="Stripe Employer Checkout Portal"
-              >
-                <CreditCard className="w-3.5 h-3.5 text-white" />
-                <span className="font-mono font-bold text-xs">stripe</span>
-                <span className="hidden xl:inline">Portal</span>
-              </button>
-            )}
-
-            {/* Post Job Button */}
-            <button
+ 
+             {/* Post Job Button */}
+             <button
               onClick={onOpenPostJob}
               className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs sm:text-sm px-3.5 py-2 rounded-lg shadow-sm shadow-emerald-700/20 transition-all hover:shadow-md cursor-pointer"
             >
@@ -331,22 +268,6 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             Employers
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`whitespace-nowrap px-2.5 py-1 rounded ${
-              activeTab === 'analytics' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
-            }`}
-          >
-            Salary Trends
-          </button>
-          <button
-            onClick={() => setActiveTab('career')}
-            className={`whitespace-nowrap px-2.5 py-1 rounded ${
-              activeTab === 'career' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
-            }`}
-          >
-            Career Advisor
           </button>
         </div>
       </div>
