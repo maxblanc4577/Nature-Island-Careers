@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
+  <defs>
+    <!-- Sky & Atmospheric Gradients -->
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="25%" stop-color="#065f46" />
+      <stop offset="50%" stop-color="#047857" />
+      <stop offset="75%" stop-color="#10b981" />
+      <stop offset="90%" stop-color="#6ee7b7" />
+      <stop offset="100%" stop-color="#fef08a" />
+    </linearGradient>
+
+    <!-- Morning Sun Glow -->
+    <radialGradient id="sunGlow" cx="65%" cy="32%" r="45%">
+      <stop offset="0%" stop-color="#fef9c3" stop-opacity="0.9" />
+      <stop offset="25%" stop-color="#fde047" stop-opacity="0.6" />
+      <stop offset="60%" stop-color="#34d399" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#047857" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Deep Distant Mountain Gradient (Morne Diablotins & Trois Pitons) -->
+    <linearGradient id="mountainDistGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" stop-opacity="0.85" />
+      <stop offset="40%" stop-color="#047857" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+
+    <!-- Mid Mountain Rainforest Ridge -->
+    <linearGradient id="mountainMidGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#047857" />
+      <stop offset="50%" stop-color="#065f46" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+
+    <!-- Foreground Mountain & Valley -->
+    <linearGradient id="foreRidgeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="40%" stop-color="#047857" />
+      <stop offset="100%" stop-color="#064e3b" />
+    </linearGradient>
+
+    <!-- Caribbean Coastal Ocean -->
+    <linearGradient id="seaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0d9488" />
+      <stop offset="35%" stop-color="#0f766e" />
+      <stop offset="70%" stop-color="#115e59" />
+      <stop offset="100%" stop-color="#042f2e" />
+    </linearGradient>
+
+    <!-- Rainforest Canopy Filter Texture -->
+    <filter id="canopyNoise" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise" />
+      <feColorMatrix type="matrix" values="0.1 0 0 0 0.05  0 0.4 0 0 0.2  0 0 0.1 0 0.1  0 0 0 0.25 0" />
+      <feComposite in2="SourceGraphic" in="gl" operator="in" />
+    </filter>
+
+    <!-- Mountain Mist & Clouds -->
+    <linearGradient id="mistGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="30%" stop-color="#ffffff" stop-opacity="0.25" />
+      <stop offset="55%" stop-color="#a7f3d0" stop-opacity="0.3" />
+      <stop offset="80%" stop-color="#ffffff" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Sky Base -->
+  <rect width="1920" height="1080" fill="url(#skyGrad)" />
+  <rect width="1920" height="1080" fill="url(#sunGlow)" />
+
+  <!-- Sun Rays streaming across Dominica's peaks -->
+  <g opacity="0.18">
+    <polygon points="1250,340 0,600 0,680" fill="#fef08a" />
+    <polygon points="1250,340 300,1080 450,1080" fill="#fef08a" />
+    <polygon points="1250,340 700,1080 880,1080" fill="#fef08a" />
+    <polygon points="1250,340 1100,1080 1350,1080" fill="#fef08a" />
+    <polygon points="1250,340 1600,1080 1850,1080" fill="#fef08a" />
+  </g>
+
+  <!-- Far Distant Peaks (Morne Diablotins - 4,747 ft) -->
+  <path d="M0,580 L180,480 L350,540 L520,410 L700,520 L940,380 L1150,490 L1340,360 L1520,470 L1720,410 L1920,530 L1920,1080 L0,1080 Z" fill="url(#mountainDistGrad)" />
+
+  <!-- Tropical Cloud / Mountain Mist over Far Peaks -->
+  <ellipse cx="600" cy="460" rx="350" ry="40" fill="url(#mistGrad)" />
+  <ellipse cx="1280" cy="420" rx="420" ry="50" fill="url(#mistGrad)" />
+  <ellipse cx="1650" cy="460" rx="280" ry="35" fill="url(#mistGrad)" />
+
+  <!-- Mid Ridge (Morne Trois Pitons National Park UNESCO World Heritage Rainforest) -->
+  <path d="M0,640 Q180,520 380,590 T800,510 T1220,560 T1640,490 T1920,580 L1920,1080 L0,1080 Z" fill="url(#mountainMidGrad)" />
+
+  <!-- Low Mountain Rainforest Mist -->
+  <path d="M100,600 Q300,560 550,590 T1100,570 T1600,550 T1920,620 L1920,670 L0,670 Z" fill="#d1fae5" opacity="0.18" />
+
+  <!-- Fore Ridge & Lush Valleys -->
+  <path d="M0,720 Q240,630 520,700 T1040,650 T1560,720 T1920,680 L1920,1080 L0,1080 Z" fill="url(#foreRidgeGrad)" />
+
+  <!-- Caribbean Sea Coastline (Roseau & Scotts Head Bay) -->
+  <path d="M0,860 Q400,820 850,850 T1500,830 T1920,870 L1920,1080 L0,1080 Z" fill="url(#seaGrad)" opacity="0.95" />
+
+  <!-- Ocean Waves & Shoreline Shimmer -->
+  <g opacity="0.25">
+    <path d="M0,880 Q450,865 920,875 T1920,885" stroke="#a7f3d0" stroke-width="3" fill="none" />
+    <path d="M0,915 Q500,900 1100,910 T1920,920" stroke="#6ee7b7" stroke-width="2.5" fill="none" />
+    <path d="M0,950 Q420,940 980,945 T1920,955" stroke="#34d399" stroke-width="2" fill="none" />
+    <path d="M0,990 Q600,980 1200,985 T1920,995" stroke="#99f6e4" stroke-width="2" fill="none" />
+  </g>
+
+  <!-- Foreground Tropical Rainforest Canopy & Palms on Left/Right -->
+  <!-- Left Side Tropical Foliage -->
+  <g fill="#022c22">
+    <path d="M0,660 Q80,720 120,850 Q60,940 0,980 Z" opacity="0.9" />
+    <path d="M0,740 Q150,780 180,900 Q80,970 0,1020 Z" opacity="0.85" />
+    <!-- Palm fronds silhouette -->
+    <path d="M-20,780 Q90,740 160,790 Q110,810 -20,810 Z" fill="#064e3b" />
+    <path d="M-20,830 Q120,800 190,860 Q130,880 -20,870 Z" fill="#047857" />
+    <path d="M-20,890 Q140,880 210,940 Q130,960 -20,930 Z" fill="#065f46" />
+  </g>
+
+  <!-- Right Side Tropical Foliage -->
+  <g fill="#022c22">
+    <path d="M1920,680 Q1820,740 1780,880 Q1850,960 1920,1000 Z" opacity="0.9" />
+    <path d="M1920,770 Q1760,820 1720,940 Q1820,1000 1920,1040 Z" opacity="0.85" />
+    <!-- Palm fronds silhouette -->
+    <path d="M1940,800 Q1820,770 1750,820 Q1810,840 1940,830 Z" fill="#064e3b" />
+    <path d="M1940,850 Q1800,830 1720,890 Q1790,910 1940,890 Z" fill="#047857" />
+  </g>
+
+  <!-- Subtle Vignette Frame -->
+  <rect width="1920" height="1080" fill="none" stroke="#022c22" stroke-width="1" opacity="0.1" />
+</svg>

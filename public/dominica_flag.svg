@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="100%" height="100%">
+  <defs>
+    <!-- Realistic 3D Waving Fabric Lighting -->
+    <linearGradient id="flagFolds" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.35"/>
+      <stop offset="8%" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="16%" stop-color="#000000" stop-opacity="0.30"/>
+      <stop offset="25%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="35%" stop-color="#000000" stop-opacity="0.25"/>
+      <stop offset="46%" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="58%" stop-color="#000000" stop-opacity="0.35"/>
+      <stop offset="70%" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="82%" stop-color="#000000" stop-opacity="0.30"/>
+      <stop offset="92%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.40"/>
+    </linearGradient>
+
+    <!-- Rich Tropical Green Silk Sheen -->
+    <linearGradient id="silkSheen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#006044"/>
+      <stop offset="30%" stop-color="#007A55"/>
+      <stop offset="70%" stop-color="#004D36"/>
+      <stop offset="100%" stop-color="#003525"/>
+    </linearGradient>
+
+    <!-- Central Red Medallion Glow -->
+    <radialGradient id="discGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#E11D48"/>
+      <stop offset="60%" stop-color="#BE123C"/>
+      <stop offset="100%" stop-color="#881337"/>
+    </radialGradient>
+
+    <!-- 5-Pointed Green Star with Gold Outline -->
+    <polygon id="greenStar" points="0,-18 5.5,-5.5 18,-5.5 8,3 11.5,16 0,8 -11.5,16 -8,3 -18,-5.5 -5.5,-5.5" fill="#10B981" stroke="#FBBF24" stroke-width="1.8"/>
+  </defs>
+
+  <!-- Green Field -->
+  <rect width="1200" height="600" fill="url(#silkSheen)"/>
+
+  <!-- Tri-color Cross (Vertical Stripes: Yellow, Black, White) -->
+  <rect x="510" y="0" width="60" height="600" fill="#FBBF24"/>
+  <rect x="570" y="0" width="60" height="600" fill="#0F172A"/>
+  <rect x="630" y="0" width="60" height="600" fill="#FFFFFF"/>
+
+  <!-- Tri-color Cross (Horizontal Stripes: Yellow, Black, White) -->
+  <rect x="0" y="210" width="1200" height="60" fill="#FBBF24"/>
+  <rect x="0" y="270" width="1200" height="60" fill="#0F172A"/>
+  <rect x="0" y="330" width="1200" height="60" fill="#FFFFFF"/>
+
+  <!-- Central Red Medallion Disc -->
+  <circle cx="600" cy="300" r="145" fill="url(#discGrad)" stroke="#FFE4E6" stroke-width="2" stroke-opacity="0.4"/>
+
+  <!-- 10 Green Stars (Ring representing Dominica's 10 parishes) -->
+  <use href="#greenStar" transform="translate(600, 192)"/>
+  <use href="#greenStar" transform="translate(663.5, 212.6)"/>
+  <use href="#greenStar" transform="translate(702.7, 266.6)"/>
+  <use href="#greenStar" transform="translate(702.7, 333.4)"/>
+  <use href="#greenStar" transform="translate(663.5, 387.4)"/>
+  <use href="#greenStar" transform="translate(600, 408)"/>
+  <use href="#greenStar" transform="translate(536.5, 387.4)"/>
+  <use href="#greenStar" transform="translate(497.3, 333.4)"/>
+  <use href="#greenStar" transform="translate(497.3, 266.6)"/>
+  <use href="#greenStar" transform="translate(536.5, 212.6)"/>
+
+  <!-- Sisserou Parrot (Imperial Amazon) Facing Hoist -->
+  <g id="sisserouParrot" transform="translate(565, 240) scale(0.74)">
+    <!-- Perch Branch (Golden brown) -->
+    <path d="M -5,115 Q 45,110 100,116 Q 50,126 -5,122 Z" fill="#92400E" stroke="#78350F" stroke-width="2"/>
+
+    <!-- Tail Feathers (Emerald & Forest green) -->
+    <path d="M 22,95 L 10,152 L 32,135 L 28,100 Z" fill="#047857"/>
+    <path d="M 28,95 L 28,168 L 42,132 L 38,100 Z" fill="#065F46"/>
+
+    <!-- Body & Belly (Imperial Purple / Sisserou Violet) -->
+    <path d="M 25,35 Q 10,65 18,98 Q 35,115 55,102 Q 65,80 60,50 Q 52,30 38,28 Z" fill="#7C3AED"/>
+    <!-- Feather Shading Lines -->
+    <path d="M 22,50 Q 32,60 38,48 Q 45,62 55,54" fill="none" stroke="#6D28D9" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 24,70 Q 34,80 40,68 Q 48,82 54,72" fill="none" stroke="#5B21B6" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Wing (Lush Green with Red & Black edging) -->
+    <path d="M 40,40 Q 60,42 76,65 Q 68,95 42,105 Q 35,80 38,45 Z" fill="#10B981" stroke="#047857" stroke-width="2"/>
+    <path d="M 48,55 Q 65,65 68,85 Q 55,95 45,95 Z" fill="#047857"/>
+    <path d="M 50,42 Q 62,45 60,55 Q 48,52 50,42 Z" fill="#EF4444"/>
+
+    <!-- Head & Crown (Lilac / Violet) -->
+    <path d="M 32,15 Q 45,10 52,22 Q 55,35 42,38 Q 28,38 25,28 Q 24,18 32,15 Z" fill="#A78BFA"/>
+    
+    <!-- Hooked Amber Beak -->
+    <path d="M 25,22 Q 12,24 10,32 Q 18,36 24,30 Z" fill="#F59E0B" stroke="#B45309" stroke-width="1.5"/>
+
+    <!-- Eye (Orange ring with dark pupil) -->
+    <circle cx="34" cy="22" r="4.5" fill="#EA580C"/>
+    <circle cx="34" cy="22" r="2.2" fill="#0F172A"/>
+    <circle cx="35" cy="21" r="0.8" fill="#FFFFFF"/>
+
+    <!-- Claws holding the branch -->
+    <ellipse cx="38" cy="114" rx="4" ry="2.5" fill="#F59E0B"/>
+    <ellipse cx="44" cy="115" rx="4" ry="2.5" fill="#F59E0B"/>
+  </g>
+
+  <!-- Waving Ripple Overlay across entire flag -->
+  <rect width="1200" height="600" fill="url(#flagFolds)" style="mix-blend-mode: overlay; pointer-events: none;"/>
+</svg>
