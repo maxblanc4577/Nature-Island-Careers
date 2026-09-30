@@ -358,3 +358,26 @@ export interface NetworkingEvent {
   calendarEnd: string;
 }
 
+export interface ResumeVersionHistoryEntry {
+  version: string;
+  timestamp: string;
+  author: string;
+  changeSummary: string;
+  snapshotContent: string;
+}
+
+export interface ResumeLibraryDocument {
+  id: string;
+  title: string;
+  docType: 'Resume' | 'Cover Letter';
+  sector: JobSector;
+  status: 'Active' | 'Draft' | 'Archived';
+  currentVersion: string;
+  lastModified: string;
+  parish: Parish;
+  tags: string[];
+  content: string;
+  versionHistory: ResumeVersionHistoryEntry[];
+}
+
+

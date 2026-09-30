@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { DOMINICA_NETWORKING_EVENTS } from '../data/resumeDefaults';
+import { ResumeLibrary } from './ResumeLibrary';
 import { NetworkingEvent, JobSector, JobListing } from '../types';
 import {
   Compass,
@@ -23,6 +24,7 @@ import {
   Zap,
   Building,
   Target,
+  FolderLock,
 } from 'lucide-react';
 
 interface Message {
@@ -103,7 +105,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
   const { jobs } = useJobContext();
 
   const [activeTab, setActiveTab] = useState<
-    'chat' | 'interview_prep' | 'networking_events'
+    'chat' | 'interview_prep' | 'networking_events' | 'resume_library'
   >('chat');
 
   // Chat State
@@ -342,6 +344,22 @@ export const CareerGuidanceAssistant: React.FC = () => {
         >
           <Calendar className="w-4 h-4 text-teal-600" />
           <span>Dominica Networking Events & Fairs</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('resume_library')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'resume_library'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <FolderLock className="w-4 h-4 text-amber-500" />
+          <span>Resume & Cover Letter Library</span>
+          <span className="bg-amber-400/20 text-amber-700 text-[10px] px-1.5 py-0.5 rounded font-black">
+            Version History
+          </span>
         </button>
       </div>
 
@@ -759,6 +777,13 @@ export const CareerGuidanceAssistant: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* TAB 4: RESUME & COVER LETTER LIBRARY */}
+      {activeTab === 'resume_library' && (
+        <div className="animate-in fade-in">
+          <ResumeLibrary />
         </div>
       )}
     </div>

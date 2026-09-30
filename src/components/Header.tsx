@@ -10,6 +10,7 @@ import {
   Shield,
   LogOut,
   Building,
+  Compass,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -152,12 +153,24 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
-              <span>My Applications</span>
+              <span>Candidate Hub & CV</span>
               {userApplicationsCount > 0 && (
                 <span className="ml-1.5 px-1.5 py-0.2 bg-emerald-600 text-white text-[11px] rounded-full font-bold">
                   {userApplicationsCount}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('career')}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'career'
+                  ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200/60 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+              }`}
+            >
+              <Compass className="w-4 h-4 text-emerald-600" />
+              <span>Career Guidance & Library</span>
             </button>
 
             <button
@@ -259,7 +272,15 @@ export const Header: React.FC<HeaderProps> = ({
               activeTab === 'applications' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
             }`}
           >
-            Applications ({userApplicationsCount})
+            Candidate Hub ({userApplicationsCount})
+          </button>
+          <button
+            onClick={() => setActiveTab('career')}
+            className={`whitespace-nowrap px-2.5 py-1 rounded ${
+              activeTab === 'career' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
+            }`}
+          >
+            Career Hub & Library
           </button>
           <button
             onClick={() => setActiveTab('recruiter')}
