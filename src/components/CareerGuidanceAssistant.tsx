@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { DOMINICA_NETWORKING_EVENTS } from '../data/resumeDefaults';
 import { ResumeLibrary } from './ResumeLibrary';
+import { CareerSkillsGapAnalyzer } from './CareerSkillsGapAnalyzer';
 import { NetworkingEvent, JobSector, JobListing } from '../types';
 import {
   Compass,
@@ -105,7 +106,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
   const { jobs } = useJobContext();
 
   const [activeTab, setActiveTab] = useState<
-    'chat' | 'interview_prep' | 'networking_events' | 'resume_library'
+    'chat' | 'interview_prep' | 'skills_gap' | 'networking_events' | 'resume_library'
   >('chat');
 
   // Chat State
@@ -330,6 +331,22 @@ export const CareerGuidanceAssistant: React.FC = () => {
           <span>Interview Prep Mode (Mock Interview)</span>
           <span className="bg-amber-400/20 text-amber-700 text-[10px] px-1.5 py-0.5 rounded font-black">
             Gemini AI
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('skills_gap')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'skills_gap'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Target className="w-4 h-4 text-amber-400" />
+          <span>Skills Gap Analysis</span>
+          <span className="bg-amber-400/20 text-amber-700 text-[10px] px-1.5 py-0.5 rounded font-black">
+            Trending Roles
           </span>
         </button>
 
@@ -777,6 +794,13 @@ export const CareerGuidanceAssistant: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* TAB 3: SKILLS GAP ANALYSIS */}
+      {activeTab === 'skills_gap' && (
+        <div className="animate-in fade-in">
+          <CareerSkillsGapAnalyzer jobs={jobs} />
         </div>
       )}
 
