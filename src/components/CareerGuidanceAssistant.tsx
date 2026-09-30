@@ -3,6 +3,7 @@ import { useJobContext } from '../context/JobContext';
 import { DOMINICA_NETWORKING_EVENTS } from '../data/resumeDefaults';
 import { ResumeLibrary } from './ResumeLibrary';
 import { CareerSkillsGapAnalyzer } from './CareerSkillsGapAnalyzer';
+import { InterviewPrepSimulation } from './InterviewPrepSimulation';
 import { NetworkingEvent, JobSector, JobListing } from '../types';
 import {
   Compass,
@@ -328,7 +329,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
           }`}
         >
           <Sparkles className="w-4 h-4 text-amber-300" />
-          <span>Interview Prep Mode (Mock Interview)</span>
+          <span>Interview Prep Simulation</span>
           <span className="bg-amber-400/20 text-amber-700 text-[10px] px-1.5 py-0.5 rounded font-black">
             Gemini AI
           </span>
@@ -499,189 +500,10 @@ export const CareerGuidanceAssistant: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: INTERVIEW PREP MODE */}
+      {/* TAB 2: INTERVIEW PREP SIMULATION */}
       {activeTab === 'interview_prep' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6 animate-in fade-in">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-            <div>
-              <div className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 uppercase tracking-wider bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 mb-1">
-                <Mic className="w-3.5 h-3.5 text-amber-600" />
-                <span>AI Mock Interview Simulator</span>
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 font-display">
-                Dominica Employer Mock Interview
-              </h2>
-              <p className="text-xs text-slate-500">
-                Practice answering authentic Caribbean behavioral and technical questions evaluated by Gemini AI.
-              </p>
-            </div>
-
-            {/* Target Job Selector */}
-            <div className="w-full sm:w-72">
-              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                Interviewing For:
-              </label>
-              <select
-                value={selectedJobId}
-                onChange={(e) => setSelectedJobId(e.target.value)}
-                className="w-full text-xs font-semibold p-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-700"
-              >
-                {jobs.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.title} at {j.company}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Active Question Box */}
-          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider bg-emerald-100/70 px-2.5 py-0.5 rounded-full font-mono">
-                Question {currentQuestionIndex + 1} of {questionsList.length}
-              </span>
-              <span className="text-xs text-slate-500">{selectedJob?.company} • {selectedJob?.locality}</span>
-            </div>
-
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-              "{currentQuestion.question}"
-            </h3>
-            <p className="text-xs text-slate-500 italic">
-              <strong>Interviewer Context:</strong> {currentQuestion.context}
-            </p>
-          </div>
-
-          {/* Candidate Answer Box */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Your Answer (Use the STAR Method: Situation, Task, Action, Result):
-              </label>
-              <button
-                type="button"
-                onClick={() => setCandidateAnswer(currentQuestion.sampleAnswer)}
-                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
-              >
-                Insert Sample Practice Answer
-              </button>
-            </div>
-
-            <textarea
-              rows={5}
-              value={candidateAnswer}
-              onChange={(e) => setCandidateAnswer(e.target.value)}
-              placeholder="Structure your response clearly: describe the situation, the action you took, and the positive result achieved..."
-              className="w-full text-xs sm:text-sm p-4 border border-slate-300 rounded-xl leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-700 bg-white"
-            />
-
-            <div className="flex items-center justify-between pt-1">
-              <button
-                type="button"
-                onClick={handleNextQuestion}
-                className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold cursor-pointer"
-              >
-                Skip / Next Question
-              </button>
-
-              <button
-                type="button"
-                onClick={handleEvaluateAnswer}
-                disabled={isEvaluating || !candidateAnswer.trim()}
-                className="px-6 py-2.5 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
-              >
-                {isEvaluating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-emerald-300" />
-                    <span>Evaluating with Gemini AI...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>Submit & Evaluate Answer</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* AI Evaluation Results */}
-          {evaluationResult && (
-            <div className="p-6 bg-slate-900 text-white rounded-2xl shadow-xl space-y-5 animate-in fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                <div>
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400">
-                    Gemini AI Assessment Report
-                  </span>
-                  <h4 className="text-xl font-bold text-white mt-0.5">
-                    Interview Answer Evaluation
-                  </h4>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Score</span>
-                    <span className="text-3xl font-black font-mono text-amber-400">
-                      {evaluationResult.score}/100
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleNextQuestion}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl cursor-pointer"
-                  >
-                    Next Question →
-                  </button>
-                </div>
-              </div>
-
-              {/* Strengths & Improvements Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div className="p-4 bg-slate-800/80 rounded-xl border border-emerald-500/30 space-y-2">
-                  <span className="font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>Key Strengths Identified</span>
-                  </span>
-                  <ul className="space-y-1.5 text-slate-200">
-                    {evaluationResult.strengths.map((s, i) => (
-                      <li key={i} className="flex items-start gap-1.5">
-                        <span className="text-emerald-400">✓</span>
-                        <span>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="p-4 bg-slate-800/80 rounded-xl border border-amber-500/30 space-y-2">
-                  <span className="font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <AlertCircle className="w-4 h-4 text-amber-400" />
-                    <span>Areas for Improvement</span>
-                  </span>
-                  <ul className="space-y-1.5 text-slate-200">
-                    {evaluationResult.improvements.map((imp, i) => (
-                      <li key={i} className="flex items-start gap-1.5">
-                        <span className="text-amber-400">▪</span>
-                        <span>{imp}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              {/* Exemplary Model Answer */}
-              {evaluationResult.modelAnswer && (
-                <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-xs space-y-1">
-                  <span className="font-bold text-emerald-300 uppercase tracking-wider block">
-                    ★ Model Answer for Dominica Employers:
-                  </span>
-                  <p className="text-slate-300 italic leading-relaxed">
-                    "{evaluationResult.modelAnswer}"
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
+        <div className="animate-in fade-in">
+          <InterviewPrepSimulation jobs={jobs} />
         </div>
       )}
 
