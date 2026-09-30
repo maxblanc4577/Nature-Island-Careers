@@ -281,3 +281,80 @@ export interface DatabaseSyncRecord {
   status: 'Completed' | 'Pending' | 'Flagged';
   checksum: string;
 }
+
+// Resume Builder & Career Suite Types
+export type ResumeTemplateLayout = 'modern' | 'classic' | 'creative';
+
+export interface ResumeExperience {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  highlights: string[];
+}
+
+export interface ResumeEducation {
+  id: string;
+  institution: string;
+  degree: string;
+  field: string;
+  location: string;
+  graduationYear: string;
+  honors?: string;
+}
+
+export interface ResumeCertification {
+  id: string;
+  name: string;
+  issuer: string;
+  year: string;
+  credentialId?: string;
+}
+
+export interface ResumeData {
+  fullName: string;
+  headline: string;
+  email: string;
+  phone: string;
+  parish: Parish;
+  locality: string;
+  dssNumber?: string; // Dominica Social Security / National ID
+  portfolioUrl?: string;
+  linkedinUrl?: string;
+  summary: string;
+  experiences: ResumeExperience[];
+  education: ResumeEducation[];
+  skills: string[];
+  certifications: ResumeCertification[];
+  languages: string[];
+}
+
+export interface ResumeVersion {
+  id: string;
+  title: string;
+  targetSector: JobSector;
+  layoutTemplate: ResumeTemplateLayout;
+  data: ResumeData;
+  updatedAt: string;
+}
+
+export interface NetworkingEvent {
+  id: string;
+  title: string;
+  category: 'Career Fair' | 'Industry Meetup' | 'Workshop' | 'Tech & Innovation';
+  date: string;
+  time: string;
+  venue: string;
+  parish: Parish;
+  organizer: string;
+  description: string;
+  isFree: boolean;
+  attendeesCount: number;
+  registrationUrl?: string;
+  calendarStart: string; // ISO or YYYYMMDDTHHmmssZ
+  calendarEnd: string;
+}
+
