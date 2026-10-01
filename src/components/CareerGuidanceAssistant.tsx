@@ -4,6 +4,9 @@ import { DOMINICA_NETWORKING_EVENTS } from '../data/resumeDefaults';
 import { ResumeLibrary } from './ResumeLibrary';
 import { CareerSkillsGapAnalyzer } from './CareerSkillsGapAnalyzer';
 import { InterviewPrepSimulation } from './InterviewPrepSimulation';
+import { VisualCareerPathing } from './VisualCareerPathing';
+import { ResumeParserTool } from './ResumeParserTool';
+import { DominicaIndustryNews } from './DominicaIndustryNews';
 import { NetworkingEvent, JobSector, JobListing } from '../types';
 import {
   Compass,
@@ -27,6 +30,9 @@ import {
   Building,
   Target,
   FolderLock,
+  TrendingUp,
+  FileText,
+  Globe,
 } from 'lucide-react';
 
 interface Message {
@@ -107,7 +113,14 @@ export const CareerGuidanceAssistant: React.FC = () => {
   const { jobs } = useJobContext();
 
   const [activeTab, setActiveTab] = useState<
-    'chat' | 'interview_prep' | 'skills_gap' | 'networking_events' | 'resume_library'
+    | 'chat'
+    | 'career_pathing'
+    | 'interview_prep'
+    | 'skills_gap'
+    | 'resume_parser'
+    | 'industry_news'
+    | 'networking_events'
+    | 'resume_library'
   >('chat');
 
   // Chat State
@@ -316,7 +329,23 @@ export const CareerGuidanceAssistant: React.FC = () => {
           }`}
         >
           <Bot className="w-4 h-4" />
-          <span>Dominica Career Advisor Chat</span>
+          <span>Dominica Advisor Chat</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('career_pathing')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'career_pathing'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4 text-emerald-500" />
+          <span>Visual Career Pathing</span>
+          <span className="bg-emerald-500/20 text-emerald-300 text-[10px] px-1.5 py-0.5 rounded font-black">
+            Recharts
+          </span>
         </button>
 
         <button
@@ -348,6 +377,38 @@ export const CareerGuidanceAssistant: React.FC = () => {
           <span>Skills Gap Analysis</span>
           <span className="bg-amber-400/20 text-amber-700 text-[10px] px-1.5 py-0.5 rounded font-black">
             Trending Roles
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('resume_parser')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'resume_parser'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-blue-500" />
+          <span>AI Resume Parser</span>
+          <span className="bg-blue-400/20 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-black">
+            Auto-Fill
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('industry_news')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'industry_news'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Globe className="w-4 h-4 text-teal-500" />
+          <span>Dominica Industry News</span>
+          <span className="bg-teal-400/20 text-teal-700 text-[10px] px-1.5 py-0.5 rounded font-black">
+            Grounded
           </span>
         </button>
 
@@ -500,14 +561,42 @@ export const CareerGuidanceAssistant: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: INTERVIEW PREP SIMULATION */}
+      {/* TAB 2: VISUAL CAREER PATHING */}
+      {activeTab === 'career_pathing' && (
+        <div className="animate-in fade-in">
+          <VisualCareerPathing />
+        </div>
+      )}
+
+      {/* TAB 3: INTERVIEW PREP SIMULATION */}
       {activeTab === 'interview_prep' && (
         <div className="animate-in fade-in">
           <InterviewPrepSimulation jobs={jobs} />
         </div>
       )}
 
-      {/* TAB 3: NETWORKING EVENTS & FAIRS */}
+      {/* TAB 4: SKILLS GAP ANALYSIS */}
+      {activeTab === 'skills_gap' && (
+        <div className="animate-in fade-in">
+          <CareerSkillsGapAnalyzer jobs={jobs} />
+        </div>
+      )}
+
+      {/* TAB 5: AI RESUME PARSER */}
+      {activeTab === 'resume_parser' && (
+        <div className="animate-in fade-in">
+          <ResumeParserTool />
+        </div>
+      )}
+
+      {/* TAB 6: DOMINICA INDUSTRY NEWS (SEARCH GROUNDED) */}
+      {activeTab === 'industry_news' && (
+        <div className="animate-in fade-in">
+          <DominicaIndustryNews />
+        </div>
+      )}
+
+      {/* TAB 7: NETWORKING EVENTS & FAIRS */}
       {activeTab === 'networking_events' && (
         <div className="space-y-6 animate-in fade-in">
           {/* Filter Bar */}
@@ -619,14 +708,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: SKILLS GAP ANALYSIS */}
-      {activeTab === 'skills_gap' && (
-        <div className="animate-in fade-in">
-          <CareerSkillsGapAnalyzer jobs={jobs} />
-        </div>
-      )}
-
-      {/* TAB 4: RESUME & COVER LETTER LIBRARY */}
+      {/* TAB 8: RESUME & COVER LETTER LIBRARY */}
       {activeTab === 'resume_library' && (
         <div className="animate-in fade-in">
           <ResumeLibrary />

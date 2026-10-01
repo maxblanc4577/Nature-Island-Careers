@@ -32,21 +32,40 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(false);
 
-    setTimeout(() => {
-      const ok = adminLogin(email, password);
-      setLoading(false);
-      if (ok) {
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: email, password }),
+      });
+      const data = await res.json();
+      if (res.ok && data.authorized) {
+        if (data.token) {
+          sessionStorage.setItem('natureisland_admin_token', data.token);
+        }
+        adminLogin(email, password);
+        setLoading(false);
         onSuccess();
         onClose();
-      } else {
-        setError(true);
+        return;
       }
-    }, 500);
+    } catch (err) {
+      console.warn('Server admin verify error:', err);
+    }
+
+    const ok = adminLogin(email, password);
+    setLoading(false);
+    if (ok) {
+      onSuccess();
+      onClose();
+    } else {
+      setError(true);
+    }
   };
 
   const handleFillDemo = () => {

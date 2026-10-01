@@ -169,21 +169,27 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
-      recognition.interimResults = true;
+      recognition.interimResults = false;
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        let transcript = '';
+        let textResult = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
+          textResult += event.results[i][0].transcript + ' ';
         }
-        setCandidateAnswers((prev) => ({
-          ...prev,
-          [currentIndex]: (prev[currentIndex] || '') + ' ' + transcript,
-        }));
+        if (textResult.trim()) {
+          setCandidateAnswers((prev) => {
+            const base = (prev[currentIndex] || '').trim();
+            return {
+              ...prev,
+              [currentIndex]: base ? `${base} ${textResult.trim()}` : textResult.trim(),
+            };
+          });
+        }
       };
 
-      recognition.onerror = () => {
+      recognition.onerror = (e: any) => {
+        console.warn('Speech recognition warning/error:', e);
         setIsListening(false);
       };
 
@@ -195,9 +201,9 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
     }
   }, [currentIndex]);
 
-  const toggleSpeechRecognition = () => {
+  const toggleSpeechRecognition = async () => {
     if (!recognitionRef.current) {
-      alert('Speech Recognition is not supported in this browser. Please type your response.');
+      alert('Speech Recognition is not natively supported in this browser. You can type your response directly into the answer box.');
       return;
     }
 
@@ -206,10 +212,21 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
       setIsListening(false);
     } else {
       try {
+        // Request microphone access
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
         recognitionRef.current.start();
         setIsListening(true);
       } catch (err) {
-        console.error(err);
+        console.warn('Microphone permission or start error:', err);
+        // Still try starting recognition in case browser handles prompt internally
+        try {
+          recognitionRef.current.start();
+          setIsListening(true);
+        } catch {
+          alert('Could not access microphone. Please ensure microphone permissions are granted in your browser settings.');
+        }
       }
     }
   };
