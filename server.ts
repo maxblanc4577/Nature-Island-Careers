@@ -13,7 +13,120 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = 3000;
 
-app.use(express.json({ limit: '25mb' }));
+// Body parsing with safe size limit
+app.use(express.json({ limit: '5mb' }));
+
+// 1. CORS & Security Headers Middleware
+app.use((req, res, next) => {
+  // CORS configuration
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-token, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Security Headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'microphone=(self)');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+// 2. In-Memory Sliding Window Rate Limiter for AI Endpoints
+interface RateLimitRecord {
+  count: number;
+  resetTime: number;
+}
+const rateLimitMap = new Map<string, RateLimitRecord>();
+
+// Clean up expired rate limit records periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000);
+
+const aiRateLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0].trim() || 'unknown-client';
+  const now = Date.now();
+  const windowMs = 60 * 1000; // 1 minute window
+  const maxRequests = 30; // 30 requests per minute per IP
+
+  let record = rateLimitMap.get(ip);
+  if (!record || now > record.resetTime) {
+    record = { count: 1, resetTime: now + windowMs };
+    rateLimitMap.set(ip, record);
+  } else {
+    record.count++;
+  }
+
+  res.setHeader('X-RateLimit-Limit', maxRequests);
+  res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - record.count));
+  res.setHeader('X-RateLimit-Reset', Math.ceil(record.resetTime / 1000));
+
+  if (record.count > maxRequests) {
+    const retryAfter = Math.ceil((record.resetTime - now) / 1000);
+    res.setHeader('Retry-After', retryAfter);
+    return res.status(429).json({
+      error: 'Rate limit exceeded for AI operations. Please wait a moment before trying again.',
+      retryAfterSeconds: retryAfter,
+    });
+  }
+
+  next();
+};
+
+// 3. Input Validation & Sanitization Helpers
+const sanitizeString = (input: unknown, maxLen = 2000): string => {
+  if (typeof input !== 'string') return '';
+  return input.trim().slice(0, maxLen);
+};
+
+const validateRequiredString = (
+  input: unknown,
+  fieldName: string,
+  maxLen = 2000
+): { valid: boolean; value: string; error?: string } => {
+  if (typeof input !== 'string' || !input.trim()) {
+    return { valid: false, value: '', error: `${fieldName} is required and must be a non-empty string.` };
+  }
+  if (input.length > maxLen) {
+    return { valid: false, value: '', error: `${fieldName} exceeds maximum allowed length of ${maxLen} characters.` };
+  }
+  return { valid: true, value: input.trim() };
+};
+
+// 4. Admin Authentication Guard Middleware
+const requireAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const adminSecret = process.env.ADMIN_PORTAL_SECRET || 'waitukubuli_admin_2026';
+  const expectedToken = `auth_${adminSecret}`;
+
+  const authHeader = req.headers.authorization;
+  const tokenFromHeader = authHeader?.startsWith('Bearer ')
+    ? authHeader.substring(7).trim()
+    : (req.headers['x-admin-token'] as string)?.trim();
+  const tokenFromBody = typeof req.body?.token === 'string' ? req.body.token.trim() : undefined;
+  const providedToken = tokenFromHeader || tokenFromBody;
+
+  if (!providedToken) {
+    return res.status(401).json({ error: 'Unauthorized: Admin authentication token required' });
+  }
+
+  if (providedToken !== expectedToken) {
+    return res.status(403).json({ error: 'Forbidden: Invalid administrative credentials' });
+  }
+
+  next();
+};
 
 // Initialize GoogleGenAI SDK server-side
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -35,12 +148,14 @@ if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
 }
 
 // 1. Dominica Career Guidance Endpoint
-app.post('/api/career/advice', async (req, res) => {
-  const { query, userProfile } = req.body;
-
-  if (!query) {
-    return res.status(400).json({ error: 'Query is required' });
+app.post('/api/career/advice', aiRateLimiter, async (req, res) => {
+  const queryValidation = validateRequiredString(req.body?.query, 'query', 2000);
+  if (!queryValidation.valid) {
+    return res.status(400).json({ error: queryValidation.error });
   }
+
+  const query = queryValidation.value;
+  const userProfile = req.body?.userProfile ? sanitizeString(JSON.stringify(req.body.userProfile), 3000) : '';
 
   if (aiClient) {
     try {
@@ -86,12 +201,23 @@ Provide actionable, encouraging, and accurate advice formatted with clear markdo
 });
 
 // 2. Dominica Mock Interview Evaluation Endpoint
-app.post('/api/career/interview-prep', async (req, res) => {
-  const { question, candidateAnswer, jobTitle, company, sector, experienceLevel } = req.body;
+app.post('/api/career/interview-prep', aiRateLimiter, async (req, res) => {
+  const questionVal = validateRequiredString(req.body?.question, 'question', 2000);
+  const answerVal = validateRequiredString(req.body?.candidateAnswer, 'candidateAnswer', 10000);
 
-  if (!question || !candidateAnswer) {
-    return res.status(400).json({ error: 'Question and answer are required' });
+  if (!questionVal.valid) {
+    return res.status(400).json({ error: questionVal.error });
   }
+  if (!answerVal.valid) {
+    return res.status(400).json({ error: answerVal.error });
+  }
+
+  const question = questionVal.value;
+  const candidateAnswer = answerVal.value;
+  const jobTitle = sanitizeString(req.body?.jobTitle, 200);
+  const company = sanitizeString(req.body?.company, 200);
+  const sector = sanitizeString(req.body?.sector, 200);
+  const experienceLevel = sanitizeString(req.body?.experienceLevel, 200);
 
   if (aiClient) {
     try {
@@ -165,8 +291,15 @@ Respond strictly in valid JSON format with keys:
 });
 
 // 2b. Gemini Interview Question Generator Endpoint
-app.post('/api/career/generate-simulation-questions', async (req, res) => {
-  const { sector, experienceLevel, targetRole, questionCount = 4, questionFocus = 'Mixed' } = req.body;
+app.post('/api/career/generate-simulation-questions', aiRateLimiter, async (req, res) => {
+  const sector = sanitizeString(req.body?.sector, 200) || 'Information Technology & Digital';
+  const experienceLevel = sanitizeString(req.body?.experienceLevel, 200) || 'Mid-Level Specialist';
+  const targetRole = sanitizeString(req.body?.targetRole, 200) || 'Professional Role';
+  const questionFocus = ['Mixed', 'Technical', 'Behavioral'].includes(req.body?.questionFocus)
+    ? req.body.questionFocus
+    : 'Mixed';
+  const rawCount = Number(req.body?.questionCount) || 4;
+  const questionCount = Math.max(1, Math.min(8, rawCount));
 
   if (aiClient) {
     try {
@@ -270,10 +403,39 @@ Respond strictly in valid JSON format:
 });
 
 // 3. AI Cover Letter Generator Endpoint
-app.post('/api/career/cover-letter', async (req, res) => {
+app.post('/api/career/cover-letter', aiRateLimiter, async (req, res) => {
   const { job, resumeData } = req.body;
 
-  if (aiClient && job && resumeData) {
+  if (!job || !resumeData || typeof job !== 'object' || typeof resumeData !== 'object') {
+    return res.status(400).json({ error: 'Valid job details and resumeData objects are required' });
+  }
+
+  const cleanResumeData = {
+    fullName: sanitizeString(resumeData.fullName, 200) || 'Candidate',
+    locality: sanitizeString(resumeData.locality, 100),
+    parish: sanitizeString(resumeData.parish, 100) || 'St. George',
+    headline: sanitizeString(resumeData.headline, 300) || 'Professional',
+    skills: Array.isArray(resumeData.skills)
+      ? resumeData.skills.slice(0, 30).map((s: any) => sanitizeString(s, 100)).filter(Boolean)
+      : [],
+    summary: sanitizeString(resumeData.summary, 3000),
+  };
+
+  const cleanJob = {
+    title: sanitizeString(job.title, 200) || 'Target Role',
+    company: sanitizeString(job.company, 200) || 'Dominican Organization',
+    parish: sanitizeString(job.parish, 100) || 'Dominica',
+    locality: sanitizeString(job.locality, 100) || '',
+    sector: sanitizeString(job.sector, 200) || 'Dominica Economy',
+    responsibilities: Array.isArray(job.responsibilities)
+      ? job.responsibilities.slice(0, 20).map((r: any) => sanitizeString(r, 300)).filter(Boolean)
+      : [],
+    requirements: Array.isArray(job.requirements)
+      ? job.requirements.slice(0, 20).map((r: any) => sanitizeString(r, 300)).filter(Boolean)
+      : [],
+  };
+
+  if (aiClient) {
     try {
       const response = await aiClient.models.generateContent({
         model: 'gemini-3.8-flash',
@@ -285,19 +447,19 @@ app.post('/api/career/cover-letter', async (req, res) => {
                 text: `You are an expert Caribbean career coach drafting a formal, compelling cover letter for a candidate applying to a position in the Commonwealth of Dominica (Waitukubuli).
 
 Candidate Details:
-Name: ${resumeData.fullName}
-Location: ${resumeData.locality || ''}, ${resumeData.parish}, Dominica
-Headline: ${resumeData.headline}
-Skills: ${resumeData.skills?.join(', ')}
-Summary: ${resumeData.summary}
+Name: ${cleanResumeData.fullName}
+Location: ${cleanResumeData.locality || ''}, ${cleanResumeData.parish}, Dominica
+Headline: ${cleanResumeData.headline}
+Skills: ${cleanResumeData.skills.join(', ')}
+Summary: ${cleanResumeData.summary}
 
 Target Job:
-Title: ${job.title}
-Company: ${job.company}
-Parish: ${job.parish} (${job.locality})
-Sector: ${job.sector}
-Responsibilities: ${job.responsibilities?.join('; ')}
-Requirements: ${job.requirements?.join('; ')}
+Title: ${cleanJob.title}
+Company: ${cleanJob.company}
+Parish: ${cleanJob.parish} (${cleanJob.locality})
+Sector: ${cleanJob.sector}
+Responsibilities: ${cleanJob.responsibilities.join('; ')}
+Requirements: ${cleanJob.requirements.join('; ')}
 
 Draft a warm, professional, and convincing cover letter formatted with formal date, address block, reference line, and closing. Highlight the candidate's dedication to Dominica's local economy and their direct fit for the role. Output only the cover letter text.`,
               },
@@ -316,12 +478,13 @@ Draft a warm, professional, and convincing cover letter formatted with formal da
 });
 
 // 4. Gemini Resume Parser Endpoint
-app.post('/api/career/parse-resume', async (req, res) => {
-  const { resumeText } = req.body;
-
-  if (!resumeText || typeof resumeText !== 'string' || !resumeText.trim()) {
-    return res.status(400).json({ error: 'Resume text is required' });
+app.post('/api/career/parse-resume', aiRateLimiter, async (req, res) => {
+  const textVal = validateRequiredString(req.body?.resumeText, 'resumeText', 25000);
+  if (!textVal.valid) {
+    return res.status(400).json({ error: textVal.error });
   }
+
+  const resumeText = textVal.value;
 
   if (aiClient) {
     try {
@@ -437,8 +600,8 @@ Respond strictly with valid JSON without markdown fences.`,
 });
 
 // 5. Dominica Industry News Endpoint with Google Search Grounding
-app.post('/api/career/dominica-news', async (req, res) => {
-  const { sector = 'All' } = req.body;
+app.post('/api/career/dominica-news', aiRateLimiter, async (req, res) => {
+  const sector = sanitizeString(req.body?.sector || 'All', 200);
 
   if (aiClient) {
     try {
@@ -546,7 +709,9 @@ Output strictly valid JSON with an array of 5 news items matching this format:
 
 // 6. Server-Side Admin Authentication Endpoint
 app.post('/api/admin/verify', (req, res) => {
-  const { username, password, token } = req.body;
+  const username = sanitizeString(req.body?.username, 100);
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
   const adminSecret = process.env.ADMIN_PORTAL_SECRET || 'waitukubuli_admin_2026';
 
   // Check token or credentials securely on the server
@@ -554,17 +719,15 @@ app.post('/api/admin/verify', (req, res) => {
     return res.json({ authorized: true, role: 'super_admin' });
   }
 
-  if (
-    (username === 'admin' || username === 'maxblanc4577@gmail.com') &&
-    password === adminSecret
-  ) {
+  const validAdminUsernames = ['admin', 'maxblanc4577@gmail.com', 'info@natureislandcareers.com'];
+  if (validAdminUsernames.includes(username.toLowerCase()) && password === adminSecret) {
     const sessionToken = `auth_${adminSecret}`;
     return res.json({
       authorized: true,
       token: sessionToken,
       user: {
         name: 'Dominica Labour Administrator',
-        email: 'maxblanc4577@gmail.com',
+        email: username,
         role: 'super_admin',
         parish: 'St. George',
       },
@@ -572,6 +735,20 @@ app.post('/api/admin/verify', (req, res) => {
   }
 
   return res.status(401).json({ authorized: false, error: 'Invalid administrative credentials' });
+});
+
+// 7. Protected Admin System Status Endpoint
+app.get('/api/admin/system-status', requireAdminAuth, (req, res) => {
+  res.json({
+    status: 'healthy',
+    environment: process.env.NODE_ENV || 'development',
+    serverUptimeSeconds: Math.floor(process.uptime()),
+    geminiAiConfigured: Boolean(aiClient),
+    geminiModel: 'gemini-3.8-flash',
+    securityHeadersActive: true,
+    rateLimitingActive: true,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // 2. Health check
