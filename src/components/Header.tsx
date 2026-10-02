@@ -11,11 +11,12 @@ import {
   LogOut,
   Building,
   Compass,
+  FileText,
 } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'jobs' | 'remote' | 'applications' | 'recruiter' | 'analytics' | 'career';
-  setActiveTab: (tab: 'jobs' | 'remote' | 'applications' | 'recruiter' | 'analytics' | 'career') => void;
+  activeTab: 'jobs' | 'remote' | 'applications' | 'resume_builder' | 'recruiter' | 'analytics' | 'career';
+  setActiveTab: (tab: 'jobs' | 'remote' | 'applications' | 'resume_builder' | 'recruiter' | 'analytics' | 'career') => void;
   onOpenPostJob: () => void;
   onOpenNotifications: () => void;
   onOpenAuth: () => void;
@@ -162,6 +163,18 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('resume_builder')}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'resume_builder'
+                  ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200/60 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+              }`}
+            >
+              <FileText className="w-4 h-4 text-emerald-600" />
+              <span>Resume Builder & PDF</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('career')}
               className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'career'
@@ -273,6 +286,14 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             Candidate Hub ({userApplicationsCount})
+          </button>
+          <button
+            onClick={() => setActiveTab('resume_builder')}
+            className={`whitespace-nowrap px-2.5 py-1 rounded ${
+              activeTab === 'resume_builder' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
+            }`}
+          >
+            Resume Builder & PDF
           </button>
           <button
             onClick={() => setActiveTab('career')}

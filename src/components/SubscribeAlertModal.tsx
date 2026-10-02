@@ -10,15 +10,27 @@ interface SubscribeAlertModalProps {
 }
 
 export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen, onClose }) => {
-  const { subscribeToAlert } = useJobContext();
+  const { subscribeToAlert, jobs } = useJobContext();
   const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [keyword, setKeyword] = useState('');
   const [selectedParish, setSelectedParish] = useState<Parish | 'All'>('All');
   const [selectedSector, setSelectedSector] = useState<JobSector | 'All'>('All');
-  const [frequency, setFrequency] = useState<'instant' | 'daily' | 'weekly'>('daily');
+  const [frequency, setFrequency] = useState<'instant' | 'daily' | 'weekly'>('instant');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [matchingCount, setMatchingCount] = useState(0);
+
+  // Compute live matching jobs count
+  const liveMatches = jobs.filter((j) => {
+    const parishMatch = selectedParish === 'All' || j.parish === selectedParish;
+    const sectorMatch = selectedSector === 'All' || j.sector === selectedSector;
+    const keywordMatch = !keyword.trim() ||
+      j.title.toLowerCase().includes(keyword.toLowerCase()) ||
+      j.description.toLowerCase().includes(keyword.toLowerCase());
+    return parishMatch && sectorMatch && keywordMatch;
+  }).length;
 
   if (!isOpen) return null;
 
@@ -67,13 +79,15 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
       parishes,
       sectors,
       frequency,
+      keyword: keyword.trim() || undefined,
     });
 
+    setMatchingCount(liveMatches);
     setIsSuccess(true);
     setTimeout(() => {
       setIsSuccess(false);
       onClose();
-    }, 1800);
+    }, 2200);
   };
 
   return (

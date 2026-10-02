@@ -751,6 +751,265 @@ app.get('/api/admin/system-status', requireAdminAuth, (req, res) => {
   });
 });
 
+// 8. Automated Job Alerts & Candidate Notification Backend Service
+interface JobAlertSubscriber {
+  id: string;
+  email: string;
+  name: string;
+  parishes: string[];
+  sectors: string[];
+  minSalary?: number;
+  keyword?: string;
+  frequency: 'instant' | 'daily' | 'weekly';
+  createdAt: string;
+  active: boolean;
+  notifiedCount: number;
+  lastNotifiedAt?: string;
+}
+
+interface AlertNotificationLog {
+  id: string;
+  subscriberEmail: string;
+  subscriberName: string;
+  jobId: string;
+  jobTitle: string;
+  company: string;
+  parish: string;
+  sector: string;
+  salaryText: string;
+  notifiedAt: string;
+  matchReasons: string[];
+}
+
+const jobAlertSubscribers: JobAlertSubscriber[] = [
+  {
+    id: 'sub-init-1',
+    email: 'marcus.blanc@waitukubuli.dm',
+    name: 'Marcus Blanc',
+    parishes: ['St. George', 'St. John'],
+    sectors: ['Information Technology & Digital', 'Renewable Energy & Geothermal'],
+    minSalary: 4000,
+    keyword: 'engineer',
+    frequency: 'instant',
+    createdAt: new Date().toISOString(),
+    active: true,
+    notifiedCount: 3,
+    lastNotifiedAt: new Date().toISOString(),
+  },
+  {
+    id: 'sub-init-2',
+    email: 'maxblanc4577@gmail.com',
+    name: 'Max Blanc',
+    parishes: ['St. George', 'St. Paul', 'St. Patrick'],
+    sectors: ['Eco-Tourism & Hospitality', 'Banking & Financial Services'],
+    frequency: 'daily',
+    createdAt: new Date().toISOString(),
+    active: true,
+    notifiedCount: 1,
+    lastNotifiedAt: new Date().toISOString(),
+  },
+];
+
+const alertNotificationLogs: AlertNotificationLog[] = [];
+
+// 8a. Register or Update Job Alert Subscription
+app.post('/api/alerts/subscribe', (req, res) => {
+  const { email, name, parishes, sectors, minSalary, keyword, frequency } = req.body;
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+    return res.status(400).json({ error: 'Valid email address is required for alert registration.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = sanitizeString(name, 100) || 'Dominica Candidate';
+  const cleanParishes = Array.isArray(parishes) ? parishes.map((p: any) => sanitizeString(p, 50)).filter(Boolean) : [];
+  const cleanSectors = Array.isArray(sectors) ? sectors.map((s: any) => sanitizeString(s, 100)).filter(Boolean) : [];
+  const cleanKeyword = sanitizeString(keyword, 100);
+  const cleanFrequency: 'instant' | 'daily' | 'weekly' = ['instant', 'daily', 'weekly'].includes(frequency)
+    ? frequency
+    : 'instant';
+  const cleanMinSalary = typeof minSalary === 'number' && minSalary > 0 ? minSalary : undefined;
+
+  const existingIndex = jobAlertSubscribers.findIndex((s) => s.email.toLowerCase() === cleanEmail);
+
+  if (existingIndex >= 0) {
+    jobAlertSubscribers[existingIndex] = {
+      ...jobAlertSubscribers[existingIndex],
+      name: cleanName,
+      parishes: cleanParishes,
+      sectors: cleanSectors,
+      keyword: cleanKeyword,
+      frequency: cleanFrequency,
+      minSalary: cleanMinSalary,
+      active: true,
+    };
+    return res.json({
+      success: true,
+      message: 'Job alert preferences successfully updated.',
+      subscriber: jobAlertSubscribers[existingIndex],
+      totalActiveSubscribers: jobAlertSubscribers.filter((s) => s.active).length,
+    });
+  }
+
+  const newSub: JobAlertSubscriber = {
+    id: `alert-sub-${Date.now()}`,
+    email: cleanEmail,
+    name: cleanName,
+    parishes: cleanParishes,
+    sectors: cleanSectors,
+    keyword: cleanKeyword,
+    frequency: cleanFrequency,
+    minSalary: cleanMinSalary,
+    createdAt: new Date().toISOString(),
+    active: true,
+    notifiedCount: 0,
+  };
+
+  jobAlertSubscribers.unshift(newSub);
+
+  return res.json({
+    success: true,
+    message: 'Registered for automated Dominica Job Alerts.',
+    subscriber: newSub,
+    totalActiveSubscribers: jobAlertSubscribers.filter((s) => s.active).length,
+  });
+});
+
+// 8b. Match New Job Against Subscribers and Trigger Automated Notifications
+app.post('/api/alerts/check-matches', (req, res) => {
+  const { job } = req.body;
+
+  if (!job || typeof job !== 'object') {
+    return res.status(400).json({ error: 'Valid job object is required to evaluate alert matches.' });
+  }
+
+  const jobTitle = sanitizeString(job.title, 200);
+  const jobCompany = sanitizeString(job.company, 200);
+  const jobSector = sanitizeString(job.sector, 200);
+  const jobParish = sanitizeString(job.parish, 100);
+  const jobDesc = sanitizeString(job.description, 2000).toLowerCase();
+  const jobMaxSalary = Number(job.maxSalary) || 0;
+  const salaryText = `EC$ ${(job.minSalary || 0).toLocaleString()} - EC$ ${(job.maxSalary || 0).toLocaleString()}`;
+
+  const matchedSubscribers: JobAlertSubscriber[] = [];
+  const notificationsGenerated: AlertNotificationLog[] = [];
+
+  for (const sub of jobAlertSubscribers) {
+    if (!sub.active) continue;
+
+    const reasons: string[] = [];
+
+    // Sector match
+    const sectorMatch =
+      sub.sectors.length === 0 ||
+      sub.sectors.some((sec) => sec.toLowerCase() === jobSector.toLowerCase() || sec === 'All');
+    if (sectorMatch) reasons.push(`Sector (${jobSector})`);
+
+    // Parish match
+    const parishMatch =
+      sub.parishes.length === 0 ||
+      sub.parishes.some(
+        (p) =>
+          p.toLowerCase() === jobParish.toLowerCase() ||
+          p === 'All' ||
+          p === 'Island-wide / Remote' ||
+          jobParish === 'Island-wide'
+      );
+    if (parishMatch) reasons.push(`Parish (${jobParish})`);
+
+    // Keyword match if specified
+    let keywordMatch = true;
+    if (sub.keyword && sub.keyword.trim()) {
+      const kw = sub.keyword.trim().toLowerCase();
+      keywordMatch =
+        jobTitle.toLowerCase().includes(kw) ||
+        jobDesc.includes(kw) ||
+        jobCompany.toLowerCase().includes(kw);
+      if (keywordMatch) reasons.push(`Keyword match: "${sub.keyword}"`);
+    }
+
+    // Salary match if specified
+    let salaryMatch = true;
+    if (sub.minSalary && sub.minSalary > 0) {
+      salaryMatch = jobMaxSalary >= sub.minSalary;
+      if (salaryMatch) reasons.push(`Salary threshold meets EC$ ${sub.minSalary}`);
+    }
+
+    if (sectorMatch && parishMatch && keywordMatch && salaryMatch) {
+      matchedSubscribers.push(sub);
+      sub.notifiedCount++;
+      sub.lastNotifiedAt = new Date().toISOString();
+
+      const notifLog: AlertNotificationLog = {
+        id: `notif-log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        subscriberEmail: sub.email,
+        subscriberName: sub.name,
+        jobId: job.id || `job-${Date.now()}`,
+        jobTitle,
+        company: jobCompany,
+        parish: jobParish,
+        sector: jobSector,
+        salaryText,
+        notifiedAt: new Date().toISOString(),
+        matchReasons: reasons,
+      };
+
+      alertNotificationLogs.unshift(notifLog);
+      notificationsGenerated.push(notifLog);
+    }
+  }
+
+  return res.json({
+    success: true,
+    jobTitle,
+    jobCompany,
+    matchesFound: matchedSubscribers.length,
+    notifications: notificationsGenerated,
+    notifiedSubscribers: matchedSubscribers.map((s) => ({ email: s.email, name: s.name })),
+  });
+});
+
+// 8c. Job Alert System Statistics & Logs
+app.get('/api/alerts/stats', (req, res) => {
+  res.json({
+    totalSubscribers: jobAlertSubscribers.length,
+    activeSubscribers: jobAlertSubscribers.filter((s) => s.active).length,
+    totalNotificationsDispatched: alertNotificationLogs.length,
+    recentDispatches: alertNotificationLogs.slice(0, 10),
+  });
+});
+
+// 8d. Test Manual Automated Alert Dispatch for a candidate
+app.post('/api/alerts/test-dispatch', (req, res) => {
+  const { email } = req.body;
+  const subscriber = jobAlertSubscribers.find((s) => s.email.toLowerCase() === (email || '').toLowerCase()) || jobAlertSubscribers[0];
+
+  const testNotif: AlertNotificationLog = {
+    id: `notif-test-${Date.now()}`,
+    subscriberEmail: subscriber.email,
+    subscriberName: subscriber.name,
+    jobId: 'job-geo-1',
+    jobTitle: 'Senior SCADA & High-Voltage Grid Systems Specialist',
+    company: 'Dominica Geothermal Development Co. (DGDC)',
+    parish: 'St. George',
+    sector: 'Renewable Energy & Geothermal',
+    salaryText: 'EC$ 7,500 - EC$ 9,800',
+    notifiedAt: new Date().toISOString(),
+    matchReasons: ['Target Sector: Renewable Energy', 'Parish: St. George', 'Instant Alert Preference'],
+  };
+
+  alertNotificationLogs.unshift(testNotif);
+  subscriber.notifiedCount++;
+  subscriber.lastNotifiedAt = new Date().toISOString();
+
+  res.json({
+    success: true,
+    message: `Test automated alert dispatched to ${subscriber.email}`,
+    notification: testNotif,
+  });
+});
+
 // 2. Health check
 app.get('/api/health', (req, res) => {
   res.json({

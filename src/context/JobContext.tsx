@@ -742,6 +742,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setJobs((prev) => [newJob, ...prev]);
 
+    // Notify backend alert service to trigger automated matching candidate notifications
+    fetch('/api/alerts/check-matches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: newJob }),
+    }).catch((err) => console.warn('Backend alert check notice:', err));
+
     // Check alerts and notify matching subscribers in real-time
     const matchingAlerts = alerts.filter(
       (a) =>
@@ -1283,6 +1290,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString().split('T')[0],
     };
     setAlerts((prev) => [newAlert, ...prev]);
+
+    // Sync subscription criteria with backend service
+    fetch('/api/alerts/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).catch((err) => console.warn('Backend alert subscribe sync notice:', err));
 
     // Send confirmation email
     const confirmEmail: EmailNotification = {

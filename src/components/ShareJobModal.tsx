@@ -28,16 +28,17 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
   onClose,
 }) => {
   const modalRef = useModalKeyboard({ isOpen: isOpen && Boolean(job), onClose });
-  const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedSummary, setCopiedSummary] = useState(false);
 
   if (!isOpen || !job) return null;
 
   // Generate unique URL with job query param / anchor
   const baseUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : 'https://natureislandcareers.com';
   const shareUrl = `${baseUrl}?job=${job.id}`;
-  const shareText = `Check out this career opportunity in Dominica: ${job.title} at ${job.company} (${job.parish}, EC$ ${job.minSalary.toLocaleString()} - EC$ ${job.maxSalary.toLocaleString()})`;
+  const shareText = `🇩🇲 Dominica Career Opportunity: ${job.title} at ${job.company}\n📍 Parish: ${job.parish} (${job.locality || 'Dominica'})\n💰 Compensation: EC$ ${job.minSalary.toLocaleString()} - EC$ ${job.maxSalary.toLocaleString()} / month\n🌐 Sector: ${job.sector}\n\n👉 Apply or view complete requirements:\n${shareUrl}`;
 
-  const handleCopy = async () => {
+  const handleCopyLink = async () => {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(shareUrl);
@@ -51,11 +52,33 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
         document.execCommand('copy');
         document.body.removeChild(textarea);
       }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2400);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2400);
     } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2400);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2400);
+    }
+  };
+
+  const handleCopySummary = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = shareText;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedSummary(true);
+      setTimeout(() => setCopiedSummary(false), 2400);
+    } catch {
+      setCopiedSummary(true);
+      setTimeout(() => setCopiedSummary(false), 2400);
     }
   };
 
@@ -123,49 +146,100 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
           </div>
 
           {/* Copy Unique Link Input */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
-              Unique Job Classified Link
-            </label>
-            <div className="flex items-center gap-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
+                Direct Classified URL
+              </label>
+              <span className="text-[10px] text-stone-400 font-medium">Click to select link</span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="relative flex-1">
                 <input
                   type="text"
                   readOnly
                   value={shareUrl}
                   onFocus={(e) => e.target.select()}
-                  className="w-full text-xs font-mono bg-stone-100 text-stone-800 border border-stone-300 rounded-lg px-3 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                  className="w-full text-xs font-mono bg-stone-100 text-stone-800 border border-stone-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-700"
                 />
               </div>
+
+              {/* Copy to Clipboard Primary Button */}
               <button
                 type="button"
-                onClick={handleCopy}
-                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs shrink-0 ${
-                  copied
-                    ? 'bg-emerald-600 text-white shadow-emerald-600/30'
-                    : 'bg-emerald-800 hover:bg-emerald-700 text-white'
+                onClick={handleCopyLink}
+                className={`relative overflow-hidden flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-sm shrink-0 active:scale-95 ${
+                  copiedLink
+                    ? 'bg-emerald-600 text-white ring-2 ring-emerald-500/50 shadow-emerald-600/30'
+                    : 'bg-emerald-800 hover:bg-emerald-700 text-white hover:shadow-md'
                 }`}
                 title="Copy link to clipboard"
               >
-                {copied ? (
-                  <>
-                    <Check className="w-4 h-4 text-white" />
-                    <span>Copied!</span>
-                  </>
+                {copiedLink ? (
+                  <span className="flex items-center gap-1.5 animate-in zoom-in-75 duration-200">
+                    <span className="w-4 h-4 bg-white text-emerald-700 rounded-full flex items-center justify-center shadow-xs">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </span>
+                    <span>Copied to Clipboard!</span>
+                  </span>
                 ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    <span>Copy Link</span>
-                  </>
+                  <span className="flex items-center gap-1.5">
+                    <Copy className="w-4 h-4 text-emerald-200" />
+                    <span>Copy to Clipboard</span>
+                  </span>
                 )}
               </button>
             </div>
-            {copied && (
-              <p className="text-[11px] text-emerald-700 font-medium animate-in fade-in flex items-center gap-1 mt-1">
-                <Check className="w-3.5 h-3.5" />
-                <span>Link copied to clipboard! Ready to paste and share.</span>
-              </p>
+
+            {/* Visual Feedback Confirmation Banner */}
+            {copiedLink && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2">
+                  <span className="w-4 h-4 bg-emerald-700 text-white rounded-full flex items-center justify-center text-[10px]">
+                    ✓
+                  </span>
+                  <span>Link copied to clipboard! Ready to paste into chat or documents.</span>
+                </div>
+                <span className="text-[10px] text-emerald-700 uppercase font-black tracking-wider">
+                  Success
+                </span>
+              </div>
             )}
+          </div>
+
+          {/* Quick Copy Formatted Post Snippet */}
+          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold text-stone-900 block">
+                Share Full Dominica Job Posting
+              </span>
+              <span className="text-[11px] text-stone-500 block">
+                Copies title, company, parish, salary range, and application URL formatted for WhatsApp and emails.
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopySummary}
+              className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 active:scale-95 ${
+                copiedSummary
+                  ? 'bg-teal-600 text-white ring-2 ring-teal-500/50'
+                  : 'bg-white hover:bg-stone-100 text-stone-800 border border-stone-300 shadow-2xs'
+              }`}
+            >
+              {copiedSummary ? (
+                <span className="flex items-center gap-1 animate-in zoom-in-75 duration-200">
+                  <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                  <span>Summary Copied!</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Copy className="w-3.5 h-3.5 text-stone-600" />
+                  <span>Copy Job Summary</span>
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Direct Social / Messaging Share Channels */}

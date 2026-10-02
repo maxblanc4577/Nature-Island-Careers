@@ -23,6 +23,7 @@ import { MyApplicationsDashboard } from './components/MyApplicationsDashboard';
 import { RecruiterPortal } from './components/RecruiterPortal';
 import { AdminAnalytics } from './components/AdminAnalytics';
 import { CareerGuidanceAssistant } from './components/CareerGuidanceAssistant';
+import { ResumeBuilder } from './components/ResumeBuilder';
 import { Footer } from './components/Footer';
 import { EmailAlertToast } from './components/EmailAlertToast';
 import { JobListing, Parish, JobSector, EmploymentType, WorkModel } from './types';
@@ -37,13 +38,14 @@ import {
   Filter,
   Layers,
   ArrowRight,
+  BellRing,
 } from 'lucide-react';
 
 function DominicaJobBoardContent() {
   const { jobs, savedJobIds, isAdminLoggedIn } = useJobContext();
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<'jobs' | 'remote' | 'applications' | 'recruiter' | 'analytics' | 'career'>('jobs');
+  const [activeTab, setActiveTab] = useState<'jobs' | 'remote' | 'applications' | 'resume_builder' | 'recruiter' | 'analytics' | 'career'>('jobs');
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -312,17 +314,29 @@ function DominicaJobBoardContent() {
                       )}
                     </div>
 
-                    <div className="flex items-center space-x-3 text-xs font-semibold">
-                      <span className="text-slate-600">Sort by:</span>
-                      <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as any)}
-                        className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                    <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setIsSubscribeAlertOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                        title="Register your email and criteria for automated alerts"
                       >
-                        <option value="recent">Most Recent & Featured</option>
-                        <option value="salaryHigh">Highest Salary (EC$)</option>
-                        <option value="views">Most Viewed</option>
-                      </select>
+                        <BellRing className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Get Job Alerts</span>
+                      </button>
+
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-slate-600">Sort:</span>
+                        <select
+                          value={sortBy}
+                          onChange={(e) => setSortBy(e.target.value as any)}
+                          className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                        >
+                          <option value="recent">Most Recent & Featured</option>
+                          <option value="salaryHigh">Highest Salary (EC$)</option>
+                          <option value="views">Most Viewed</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -449,7 +463,14 @@ function DominicaJobBoardContent() {
           />
         )}
 
-        {/* TAB 6: CAREER GUIDANCE ASSISTANT */}
+        {/* TAB 6: RESUME BUILDER & PDF STUDIO */}
+        {activeTab === 'resume_builder' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in">
+            <ResumeBuilder jobs={jobs} />
+          </div>
+        )}
+
+        {/* TAB 7: CAREER GUIDANCE ASSISTANT */}
         {activeTab === 'career' && <CareerGuidanceAssistant />}
       </main>
 
