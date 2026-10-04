@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import {
   Briefcase,
@@ -12,11 +12,31 @@ import {
   Building,
   Compass,
   FileText,
+  ChevronDown,
+  Bookmark,
 } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'jobs' | 'remote' | 'applications' | 'resume_builder' | 'recruiter' | 'analytics' | 'career';
-  setActiveTab: (tab: 'jobs' | 'remote' | 'applications' | 'resume_builder' | 'recruiter' | 'analytics' | 'career') => void;
+  activeTab:
+    | 'jobs'
+    | 'remote'
+    | 'profile'
+    | 'applications'
+    | 'resume_builder'
+    | 'recruiter'
+    | 'analytics'
+    | 'career';
+  setActiveTab: (
+    tab:
+      | 'jobs'
+      | 'remote'
+      | 'profile'
+      | 'applications'
+      | 'resume_builder'
+      | 'recruiter'
+      | 'analytics'
+      | 'career'
+  ) => void;
   onOpenPostJob: () => void;
   onOpenNotifications: () => void;
   onOpenAuth: () => void;
@@ -49,11 +69,28 @@ export const Header: React.FC<HeaderProps> = ({
     isAdminLoggedIn,
     unreadNotificationCount,
     applications,
+    savedJobIds,
     logoutUser,
     adminLogout,
   } = useJobContext();
 
   const userApplicationsCount = applications.length;
+
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-emerald-900/10 shadow-xs">
@@ -147,34 +184,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveTab('applications')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all relative cursor-pointer ${
-                activeTab === 'applications'
-                  ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200/60 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
-              }`}
-            >
-              <span>Candidate Hub & CV</span>
-              {userApplicationsCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.2 bg-emerald-600 text-white text-[11px] rounded-full font-bold">
-                  {userApplicationsCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('resume_builder')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'resume_builder'
-                  ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200/60 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
-              }`}
-            >
-              <FileText className="w-4 h-4 text-emerald-600" />
-              <span>Resume Builder & PDF</span>
-            </button>
-
-            <button
               onClick={() => setActiveTab('career')}
               className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'career'
@@ -225,22 +234,145 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="sm:hidden">Post</span>
             </button>
 
-            {/* User Account / Profile */}
+            {/* Singular 'Profile' Entry in Header */}
             {currentUser ? (
-              <div className="flex items-center space-x-2 bg-slate-100/80 px-2.5 py-1.5 rounded-lg border border-slate-200/60">
-                <div className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold text-xs flex items-center justify-center">
-                  {currentUser.name.charAt(0)}
-                </div>
-                <span className="text-xs font-semibold text-slate-700 hidden lg:inline truncate max-w-[100px]">
-                  {currentUser.name}
-                </span>
+              <div className="relative" ref={userMenuRef}>
                 <button
-                  onClick={logoutUser}
-                  title="Sign out"
-                  className="text-slate-600 hover:text-rose-600 p-0.5 rounded transition-colors cursor-pointer"
+                  type="button"
+                  onClick={() => setActiveTab('profile')}
+                  className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                    activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder'
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold shadow-xs'
+                      : 'bg-slate-100/90 hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 border-slate-200/80'
+                  }`}
+                  title="Candidate Profile Hub"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <div className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold text-xs flex items-center justify-center overflow-hidden shrink-0">
+                    {currentUser.avatarUrl ? (
+                      <img
+                        src={currentUser.avatarUrl}
+                        alt={currentUser.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      currentUser.name.charAt(0)
+                    )}
+                  </div>
+                  <div className="text-left hidden sm:block leading-tight">
+                    <span className="text-xs font-bold text-slate-800 block truncate max-w-[100px]">
+                      {currentUser.name}
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-black block uppercase tracking-wider">
+                      Profile
+                    </span>
+                  </div>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsUserMenuOpen((prev) => !prev);
+                    }}
+                    className="p-0.5 hover:bg-slate-200/60 rounded"
+                    title="Open Profile Options"
+                  >
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
+                        isUserMenuOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </span>
                 </button>
+
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+                    <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/70">
+                      <span className="text-xs font-bold text-slate-900 block truncate">
+                        {currentUser.name}
+                      </span>
+                      <span className="text-[11px] text-slate-500 block truncate">
+                        {currentUser.email}
+                      </span>
+                      <span className="inline-block mt-1 text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                        Dominica Candidate Profile
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('profile');
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                    >
+                      <User className="w-4 h-4 text-emerald-600" />
+                      <span>Personal Details & Photo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('applications');
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center justify-between hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Briefcase className="w-4 h-4 text-emerald-600" />
+                        <span>My Applications</span>
+                      </span>
+                      {userApplicationsCount > 0 && (
+                        <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full font-bold">
+                          {userApplicationsCount}
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('resume_builder');
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-600" />
+                      <span>Resume Builder & PDF</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('profile');
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center justify-between hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Bookmark className="w-4 h-4 text-amber-500" />
+                        <span>Saved Vacancies</span>
+                      </span>
+                      {savedJobIds.length > 0 && (
+                        <span className="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-bold">
+                          {savedJobIds.length}
+                        </span>
+                      )}
+                    </button>
+
+                    <div className="border-t border-slate-100 my-1" />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        logoutUser();
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : currentRecruiter ? (
               <div className="flex items-center space-x-2 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
@@ -251,11 +383,16 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             ) : (
               <button
-                onClick={onOpenAuth}
-                className="inline-flex items-center gap-1.5 border border-slate-300 hover:border-emerald-600 text-slate-700 hover:text-emerald-700 font-semibold text-xs sm:text-sm px-3 py-1.5 rounded-lg transition-colors cursor-pointer bg-white"
+                onClick={() => setActiveTab('profile')}
+                className={`inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                  activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
+                    : 'border-slate-300 hover:border-emerald-600 text-slate-700 hover:text-emerald-700 bg-white'
+                }`}
+                title="Candidate Profile"
               >
-                <User className="w-4 h-4" />
-                <span>Sign In</span>
+                <User className="w-4 h-4 text-emerald-600" />
+                <span>Profile</span>
               </button>
             )}
           </div>
@@ -280,20 +417,14 @@ export const Header: React.FC<HeaderProps> = ({
             Remote / WIN
           </button>
           <button
-            onClick={() => setActiveTab('applications')}
+            onClick={() => setActiveTab('profile')}
             className={`whitespace-nowrap px-2.5 py-1 rounded ${
-              activeTab === 'applications' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
+              activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder'
+                ? 'bg-emerald-100 text-emerald-800 font-bold'
+                : 'text-slate-600'
             }`}
           >
-            Candidate Hub ({userApplicationsCount})
-          </button>
-          <button
-            onClick={() => setActiveTab('resume_builder')}
-            className={`whitespace-nowrap px-2.5 py-1 rounded ${
-              activeTab === 'resume_builder' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
-            }`}
-          >
-            Resume Builder & PDF
+            Profile {userApplicationsCount > 0 ? `(${userApplicationsCount})` : ''}
           </button>
           <button
             onClick={() => setActiveTab('career')}

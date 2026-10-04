@@ -48,6 +48,7 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
   const [isFeatured, setIsFeatured] = useState(false);
   const [isNepApproved, setIsNepApproved] = useState(false);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   if (!isOpen) return null;
 
@@ -75,9 +76,10 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
     e.preventDefault();
 
     if (!title.trim() || !companyName.trim() || !description.trim()) {
-      alert('Please fill in the job title, company name, and job description.');
+      setErrorMessage('Please fill in the job title, company name, and job description.');
       return;
     }
+    setErrorMessage('');
 
     const requirements = requirementsText
       .split('\n')
@@ -176,6 +178,18 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl flex items-center justify-between">
+                <span>{errorMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage('')}
+                  className="text-rose-500 hover:text-rose-700 font-bold ml-2"
+                >
+                  ×
+                </button>
+              </div>
+            )}
             {/* Employer Type Toggle: Dominica Local vs Global Remote */}
             <div className="bg-slate-100 p-1.5 rounded-xl flex gap-1 text-xs font-bold border border-slate-200">
               <button

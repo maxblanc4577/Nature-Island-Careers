@@ -19,6 +19,7 @@ import { ExportPdfReportModal } from './components/ExportPdfReportModal';
 import { StripePaymentModal } from './components/StripePaymentModal';
 import { AdminMasterPortalModal } from './components/AdminMasterPortalModal';
 import { ShareJobModal } from './components/ShareJobModal';
+import { CandidateProfileHub } from './components/CandidateProfileHub';
 import { MyApplicationsDashboard } from './components/MyApplicationsDashboard';
 import { RecruiterPortal } from './components/RecruiterPortal';
 import { AdminAnalytics } from './components/AdminAnalytics';
@@ -45,7 +46,16 @@ function DominicaJobBoardContent() {
   const { jobs, savedJobIds, isAdminLoggedIn } = useJobContext();
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<'jobs' | 'remote' | 'applications' | 'resume_builder' | 'recruiter' | 'analytics' | 'career'>('jobs');
+  const [activeTab, setActiveTab] = useState<
+    | 'jobs'
+    | 'remote'
+    | 'profile'
+    | 'applications'
+    | 'resume_builder'
+    | 'recruiter'
+    | 'analytics'
+    | 'career'
+  >('jobs');
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,6 +99,18 @@ function DominicaJobBoardContent() {
       // ignore
     }
   }, [jobs]);
+
+  // Admin Portal keyboard shortcut: Alt + A or Ctrl + Shift + A
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.altKey && e.key.toLowerCase() === 'a') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a')) {
+        e.preventDefault();
+        handleOpenAdminMasterPortal();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAdminLoggedIn]);
 
   // Dynamic Site Settings state
   const [siteSettings, setSiteSettings] = useState(() => {
@@ -366,6 +388,7 @@ function DominicaJobBoardContent() {
                           onSelect={() => setSelectedJobForDetail(job)}
                           onApply={() => setJobToApply(job)}
                           onQuickApply={() => setJobToApply(job)}
+                          onPromptAuth={() => setIsAuthOpen(true)}
                           onShare={(job) => setJobToShare(job)}
                         />
                       ))}
@@ -416,6 +439,7 @@ function DominicaJobBoardContent() {
                       onSelect={() => setSelectedJobForDetail(job)}
                       onApply={() => setJobToApply(job)}
                       onQuickApply={() => setJobToApply(job)}
+                      onPromptAuth={() => setIsAuthOpen(true)}
                       onShare={(job) => setJobToShare(job)}
                     />
                   ))}
@@ -425,9 +449,16 @@ function DominicaJobBoardContent() {
           </div>
         )}
 
-        {/* TAB 3: MY APPLICATIONS */}
-        {activeTab === 'applications' && (
-          <MyApplicationsDashboard
+        {/* UNIFIED CANDIDATE PROFILE HUB (Personal Details, Photo, Applications, Resume Builder, Saved Jobs) */}
+        {(activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder') && (
+          <CandidateProfileHub
+            initialSubTab={
+              activeTab === 'applications'
+                ? 'applications'
+                : activeTab === 'resume_builder'
+                ? 'resume_builder'
+                : 'details'
+            }
             onBrowseJobs={() => setActiveTab('jobs')}
             onSelectJob={(jobId) => {
               const j = jobs.find((item) => item.id === jobId);
@@ -463,13 +494,6 @@ function DominicaJobBoardContent() {
           />
         )}
 
-        {/* TAB 6: RESUME BUILDER & PDF STUDIO */}
-        {activeTab === 'resume_builder' && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in">
-            <ResumeBuilder jobs={jobs} />
-          </div>
-        )}
-
         {/* TAB 7: CAREER GUIDANCE ASSISTANT */}
         {activeTab === 'career' && <CareerGuidanceAssistant />}
       </main>
@@ -490,6 +514,10 @@ function DominicaJobBoardContent() {
         }}
         onOpenSalaryTrends={() => {
           setActiveTab('analytics');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onOpenEmployerPortal={() => {
+          setActiveTab('recruiter');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
       />

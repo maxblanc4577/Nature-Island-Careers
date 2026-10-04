@@ -7,6 +7,8 @@ import { InterviewPrepSimulation } from './InterviewPrepSimulation';
 import { VisualCareerPathing } from './VisualCareerPathing';
 import { ResumeParserTool } from './ResumeParserTool';
 import { DominicaIndustryNews } from './DominicaIndustryNews';
+import { CareerInterviewFlashcards } from './CareerInterviewFlashcards';
+import { DominicaEmploymentLawChatModal } from './DominicaEmploymentLawChatModal';
 import { NetworkingEvent, JobSector, JobListing } from '../types';
 import {
   Compass,
@@ -33,6 +35,12 @@ import {
   TrendingUp,
   FileText,
   Globe,
+  Scale,
+  Lightbulb,
+  Layers,
+  DollarSign,
+  HelpCircle,
+  MessageSquare,
 } from 'lucide-react';
 
 interface Message {
@@ -116,12 +124,58 @@ export const CareerGuidanceAssistant: React.FC = () => {
     | 'chat'
     | 'career_pathing'
     | 'interview_prep'
+    | 'flashcards'
     | 'skills_gap'
     | 'resume_parser'
     | 'industry_news'
     | 'networking_events'
     | 'resume_library'
   >('chat');
+
+  // Floating Law & Culture Chat Modal State
+  const [isLawChatOpen, setIsLawChatOpen] = useState(false);
+
+  // Career Tips Sidebar State
+  const [tipCategory, setTipCategory] = useState<'interview' | 'salary'>('interview');
+  const [dynamicTipText, setDynamicTipText] = useState<string>('');
+  const [isLoadingTip, setIsLoadingTip] = useState(false);
+
+  const fetchDynamicTip = async (category: 'interview' | 'salary') => {
+    setIsLoadingTip(true);
+    try {
+      const res = await fetch('/api/career/advice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query:
+            category === 'interview'
+              ? 'Provide a concise, practical, highly specific tip for acing a job interview with a top employer in the Commonwealth of Dominica (e.g. cultural rapport, local references, handling tropical weather/transport).'
+              : 'Provide a concise, practical tip for negotiating salary in Eastern Caribbean Dollars (XCD / EC$) with a Dominica employer, including allowances, statutory DSS, and gratuity.',
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.advice) {
+          setDynamicTipText(json.advice);
+          setIsLoadingTip(false);
+          return;
+        }
+      }
+    } catch {
+      // fallback
+    }
+
+    if (category === 'interview') {
+      setDynamicTipText(
+        '🇩🇲 Dominica Interview Tip: Emphasize both your technical credentials and your local community grounding. Dominican interview panels appreciate candidates who highlight cross-parish adaptability and reference respected local community or educational institutions like Dominica State College.'
+      );
+    } else {
+      setDynamicTipText(
+        '💰 Dominica Salary Tip: Always frame compensation in Eastern Caribbean Dollars (EC$ / XCD) and inquire about benefits such as fuel/vehicle allowance for cross-parish commutes (e.g. Roseau to Portsmouth/Laudat) and statutory Dominica Social Security (DSS) contributions.'
+      );
+    }
+    setIsLoadingTip(false);
+  };
 
   // Chat State
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
@@ -366,6 +420,22 @@ export const CareerGuidanceAssistant: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveTab('flashcards')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'flashcards'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <BookOpen className="w-4 h-4 text-amber-500" />
+          <span>Interview Flashcards</span>
+          <span className="bg-amber-400/20 text-amber-700 text-[10px] px-1.5 py-0.5 rounded font-black">
+            3D Flip
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('skills_gap')}
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'skills_gap'
@@ -524,20 +594,105 @@ export const CareerGuidanceAssistant: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Prompts & Parish Guides (4 cols) */}
+          {/* Career Tips & Dominica Market Insights Sidebar (4 cols) */}
           <div className="lg:col-span-4 space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Suggested Dominica Inquiries</span>
-              </h3>
-              <div className="space-y-2">
-                {SUGGESTED_PROMPTS.map((prompt, idx) => (
+            {/* Dynamic Career Tips Sidebar */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Lightbulb className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    Dominica Career Tips
+                  </h3>
+                </div>
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
+                  Market Tailored
+                </span>
+              </div>
+
+              {/* Tips Category Selector */}
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setTipCategory('interview')}
+                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                    tipCategory === 'interview'
+                      ? 'bg-white text-emerald-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Interview Prep
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipCategory('salary')}
+                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                    tipCategory === 'salary'
+                      ? 'bg-white text-emerald-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Salary Negotiation
+                </button>
+              </div>
+
+              {/* Dynamic Tip Content Card */}
+              <div className="p-3.5 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-2 text-xs leading-relaxed">
+                {dynamicTipText ? (
+                  <p className="text-emerald-950 font-medium whitespace-pre-line animate-in fade-in">
+                    {dynamicTipText}
+                  </p>
+                ) : tipCategory === 'interview' ? (
+                  <div className="space-y-1.5 text-emerald-950">
+                    <p className="font-bold text-emerald-900">🇩🇲 Dominica Interview Strategy:</p>
+                    <ul className="space-y-1 text-[11px] list-disc list-inside text-emerald-900/90">
+                      <li>Address interview panels with cordial Caribbean greetings ("Good morning / afternoon").</li>
+                      <li>Prepare examples showing weather & transport resilience (handling tropical rains or cross-parish logistics).</li>
+                      <li>Highlight recognized local institutions (e.g. Dominica State College, UWI Open Campus).</li>
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 text-emerald-950">
+                    <p className="font-bold text-emerald-900">💰 Salary Negotiation in Dominica:</p>
+                    <ul className="space-y-1 text-[11px] list-disc list-inside text-emerald-900/90">
+                      <li>Always quote target ranges in <strong>Eastern Caribbean Dollars (EC$ / XCD)</strong>.</li>
+                      <li>Factor in <strong>Dominica Social Security (DSS)</strong>: 6.00% employee / 6.75% employer.</li>
+                      <li>Inquire about vehicle/fuel allowances for positions requiring cross-parish travel (Roseau to Portsmouth/Laudat).</li>
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => fetchDynamicTip(tipCategory)}
+                  disabled={isLoadingTip}
+                  className="w-full py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs mt-1"
+                >
+                  {isLoadingTip ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Generating AI Tip...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3 h-3 text-amber-300" />
+                      <span>Get Dynamic AI {tipCategory === 'interview' ? 'Interview' : 'Salary'} Tip</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Quick Prompts */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Quick Prompt Questions:
+                </span>
+                {SUGGESTED_PROMPTS.slice(0, 3).map((prompt, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => handleSendMessage(prompt)}
-                    className="w-full p-2.5 text-left text-xs bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 border border-slate-200 rounded-xl transition-all cursor-pointer text-slate-700 leading-snug"
+                    className="w-full p-2 text-left text-[11px] bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 border border-slate-200 rounded-lg transition-all cursor-pointer text-slate-700 leading-snug truncate block"
                   >
                     "{prompt}"
                   </button>
@@ -545,7 +700,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
               </div>
             </div>
 
-            {/* Dominica Key Sector Snapshot */}
+            {/* Dominica Employment Facts Snapshot */}
             <div className="bg-emerald-950 text-white rounded-2xl p-5 shadow-xs space-y-3">
               <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-300">
                 Waitukubuli Employment Hub
@@ -572,6 +727,13 @@ export const CareerGuidanceAssistant: React.FC = () => {
       {activeTab === 'interview_prep' && (
         <div className="animate-in fade-in">
           <InterviewPrepSimulation jobs={jobs} />
+        </div>
+      )}
+
+      {/* TAB 4: INTERVIEW FLASHCARDS */}
+      {activeTab === 'flashcards' && (
+        <div className="animate-in fade-in">
+          <CareerInterviewFlashcards />
         </div>
       )}
 
@@ -713,6 +875,38 @@ export const CareerGuidanceAssistant: React.FC = () => {
         <div className="animate-in fade-in">
           <ResumeLibrary />
         </div>
+      )}
+
+      {/* PERSISTENT FLOATING CHAT BUTTON FOR DOMINICA EMPLOYMENT LAW & WORKPLACE CULTURE */}
+      <div className="fixed bottom-6 right-6 z-40">
+        <button
+          type="button"
+          onClick={() => setIsLawChatOpen(true)}
+          className="group flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all duration-200 cursor-pointer border border-emerald-500/40 hover:scale-105 active:scale-95"
+          title="Ask Gemini about Dominica employment laws and workplace cultural nuances"
+          aria-label="Ask about Dominica employment laws and workplace cultural nuances"
+        >
+          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-amber-300">
+            <Scale className="w-4 h-4" />
+          </div>
+          <div className="text-left hidden sm:block pr-1">
+            <div className="text-xs font-black tracking-tight leading-tight flex items-center gap-1.5">
+              <span>Dominica Law & Culture</span>
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            </div>
+            <div className="text-[10px] text-emerald-200 font-medium">
+              Ask Gemini AI Advisor
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {/* Floating Chat Modal */}
+      {isLawChatOpen && (
+        <DominicaEmploymentLawChatModal
+          isOpen={isLawChatOpen}
+          onClose={() => setIsLawChatOpen(false)}
+        />
       )}
     </div>
   );

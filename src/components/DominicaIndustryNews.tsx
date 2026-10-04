@@ -34,17 +34,19 @@ interface DominicaIndustryNewsProps {
 
 export const DominicaIndustryNews: React.FC<DominicaIndustryNewsProps> = ({ onSelectSector }) => {
   const [selectedFilter, setSelectedFilter] = useState<string>('All');
+  const [selectedCategory, setSelectedCategory] = useState<'All' | 'events' | 'workshops' | 'living'>('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>('Just now');
 
-  const fetchNews = async (sectorName: string = 'All') => {
+  const fetchNews = async (sectorName: string = 'All', category: string = 'All', customQuery: string = '') => {
     setIsLoading(true);
     try {
       const res = await fetch('/api/career/dominica-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sector: sectorName }),
+        body: JSON.stringify({ sector: sectorName, category, query: customQuery }),
       });
 
       if (res.ok) {
@@ -130,8 +132,13 @@ export const DominicaIndustryNews: React.FC<DominicaIndustryNewsProps> = ({ onSe
   };
 
   useEffect(() => {
-    fetchNews(selectedFilter);
-  }, [selectedFilter]);
+    fetchNews(selectedFilter, selectedCategory, searchQuery);
+  }, [selectedFilter, selectedCategory]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchNews(selectedFilter, selectedCategory, searchQuery);
+  };
 
   const filteredArticles =
     selectedFilter === 'All'
@@ -155,14 +162,14 @@ export const DominicaIndustryNews: React.FC<DominicaIndustryNewsProps> = ({ onSe
             Dominica Industry & Labor Market News
           </h2>
           <p className="text-xs sm:text-sm text-emerald-100/90 mt-1 max-w-2xl leading-relaxed">
-            Real-time professional headlines, economic initiatives, and sector developments across the Commonwealth of Dominica (Waitukubuli). Grounded with Google Search to identify emerging employment surges, geothermal progress, and trade opportunities.
+            Real-time news about living and working in Dominica, community cultural events, and professional development workshops. Grounded with Google Search to identify emerging employment surges, geothermal progress, and trade opportunities.
           </p>
         </div>
 
         <div className="flex flex-col items-start sm:items-end gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => fetchNews(selectedFilter)}
+            onClick={() => fetchNews(selectedFilter, selectedCategory, searchQuery)}
             disabled={isLoading}
             className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-xs"
           >
@@ -175,29 +182,78 @@ export const DominicaIndustryNews: React.FC<DominicaIndustryNewsProps> = ({ onSe
         </div>
       </div>
 
-      {/* FILTER BAR */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {[
-          'All',
-          'Renewable Energy & Geothermal',
-          'Eco-Tourism & Hospitality',
-          'Information Technology & Digital',
-          'Agriculture & Agro-Processing',
-          'Public Sector & Cooperatives',
-        ].map((sec) => (
+      {/* SEARCH AND CATEGORY CONTROLS */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        {/* Real-time Google Search Query Input */}
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search living in Dominica, upcoming community events, DSC workshops, Roseau meetups..."
+              className="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-700"
+            />
+          </div>
           <button
-            key={sec}
-            type="button"
-            onClick={() => setSelectedFilter(sec)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              selectedFilter === sec
-                ? 'bg-emerald-800 text-white shadow-xs'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-            }`}
+            type="submit"
+            disabled={isLoading}
+            className="px-4 py-2.5 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
           >
-            {sec === 'All' ? 'All Island Sectors' : sec}
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Search via Google</span>
           </button>
-        ))}
+        </form>
+
+        {/* Categories: Community Events, Workshops, Living in Dominica */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">Focus:</span>
+          {[
+            { id: 'All', label: 'All News & Updates' },
+            { id: 'events', label: '🎉 Community Events & Gatherings' },
+            { id: 'workshops', label: '🎓 Professional Development & Workshops' },
+            { id: 'living', label: '🌴 Living & Working in Dominica' },
+          ].map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setSelectedCategory(cat.id as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                selectedCategory === cat.id
+                  ? 'bg-emerald-800 text-white shadow-xs font-bold'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {/* SECTORS BAR */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {[
+            'All',
+            'Renewable Energy & Geothermal',
+            'Eco-Tourism & Hospitality',
+            'Information Technology & Digital',
+            'Agriculture & Agro-Processing',
+            'Public Sector & Cooperatives',
+          ].map((sec) => (
+            <button
+              key={sec}
+              type="button"
+              onClick={() => setSelectedFilter(sec)}
+              className={`px-3 py-1 rounded-md text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedFilter === sec
+                  ? 'bg-teal-700 text-white'
+                  : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-100'
+              }`}
+            >
+              {sec === 'All' ? 'All Island Sectors' : sec}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ARTICLES FEED */}

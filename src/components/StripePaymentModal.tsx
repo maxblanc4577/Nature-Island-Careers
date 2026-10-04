@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { SubscriptionPlan, Parish } from '../types';
@@ -135,10 +135,42 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
     billingInterval: 'monthly' | 'one_time';
   } | null>(null);
 
-  if (!isOpen) return null;
+  // Embedded Checkout Form State (Stripe Custom Checkout Form SDK)
+  const [checkoutMode, setCheckoutMode] = useState<'embedded_form' | 'custom_card'>('embedded_form');
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [embeddedLoading, setEmbeddedLoading] = useState(false);
+  const [savePaymentMethod, setSavePaymentMethod] = useState(true);
 
   const currentPkg = PACKAGES.find((p) => p.id === selectedPkgId) || PACKAGES[1];
   const priceUSD = (currentPkg.priceXCD / 2.7).toFixed(2);
+
+  // Fetch client_secret from /create-checkout-session
+  useEffect(() => {
+    if (!isOpen) return;
+    setEmbeddedLoading(true);
+
+    fetch('/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planName: currentPkg.name,
+        priceXCD: currentPkg.priceXCD,
+        ui_mode: 'form',
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.client_secret || data.clientSecret) {
+          setClientSecret(data.client_secret || data.clientSecret);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to create checkout session:', err);
+      })
+      .finally(() => {
+        setEmbeddedLoading(false);
+      });
+  }, [isOpen, selectedPkgId, billingCadence, currentPkg.name, currentPkg.priceXCD]);
 
   const fillTestCard = () => {
     setCardNumber('4242 4242 4242 4242');
@@ -146,8 +178,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
     setCardCvc('892');
   };
 
-  const handleStripeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleProcessConfirmation = (cardInfo?: { last4: string; brand: string }) => {
     setIsProcessing(true);
 
     // Simulate real Stripe PaymentIntent & 3D Secure confirmation
@@ -161,7 +192,8 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
 
       // Record official Employer Invoice in JobContext
       const cleanDigits = cardNumber.replace(/\D/g, '');
-      const last4 = cleanDigits.slice(-4) || '4242';
+      const last4 = cardInfo?.last4 || cleanDigits.slice(-4) || '4242';
+      const brand = cardInfo?.brand || (cleanDigits.startsWith('4') ? 'Visa' : 'Mastercard');
       addInvoice({
         recruiterId: currentRecruiter?.id || 'rec_fort_young',
         companyName: cardholderName,
@@ -172,7 +204,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
         amountUSD: Math.round(Number(priceUSD)),
         billingInterval: billingCadence,
         status: 'Paid',
-        paymentMethod: `Stripe •••• ${last4} (${cleanDigits.startsWith('4') ? 'Visa' : 'Mastercard'})`,
+        paymentMethod: `Stripe •••• ${last4} (${brand})`,
         receiptUrl: `https://pay.stripe.com/receipts/invoices/${chargeId}`,
         stripeSubscriptionId: billingCadence === 'monthly' ? `sub_stripe_${Math.random().toString(36).substring(2, 9)}` : undefined,
       });
@@ -194,8 +226,15 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
       setIsProcessing(false);
       setPaymentSuccess(true);
       if (onSuccess) onSuccess();
-    }, 1500);
+    }, 1200);
   };
+
+  const handleStripeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleProcessConfirmation();
+  };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
@@ -378,143 +417,315 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
 
             {/* Step 2: Stripe Payment Details */}
             <div className="space-y-4 pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
                   <CreditCard className="w-3.5 h-3.5 text-[#635BFF]" />
                   <span>2. Payment Details (Stripe Protected)</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={fillTestCard}
-                  className="text-[11px] font-bold text-[#635BFF] hover:underline cursor-pointer"
-                >
-                  ⚡ Auto-fill Test Card
-                </button>
+
+                {/* Checkout Mode Toggle */}
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutMode('embedded_form')}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      checkoutMode === 'embedded_form'
+                        ? 'bg-white text-[#635BFF] shadow-xs font-black'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Embedded Form SDK
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutMode('custom_card')}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      checkoutMode === 'custom_card'
+                        ? 'bg-white text-slate-900 shadow-xs font-black'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Direct Card
+                  </button>
+                </div>
               </div>
 
-              {/* Card Number Input (Stripe Style) */}
-              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Card Number
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value)}
-                      placeholder="4242 4242 4242 4242"
-                      className="w-full pl-3 pr-20 py-2.5 rounded-lg border border-slate-300 text-sm font-mono font-medium focus:ring-2 focus:ring-[#635BFF] focus:outline-none bg-white"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-1">
-                      <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
-                        VISA
+              {/* Embedded Form SDK Mode (<div id="checkout-form">) */}
+              {checkoutMode === 'embedded_form' ? (
+                <div className="space-y-4">
+                  {/* Status header with Client Secret */}
+                  <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="font-bold text-slate-800">Stripe Embedded Checkout Form</span>
+                      <span className="text-[10px] bg-indigo-100 text-indigo-800 font-mono px-1.5 py-0.5 rounded">
+                        layout: 'expanded'
                       </span>
-                      <span className="text-[10px] font-extrabold text-rose-700 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">
-                        MC
-                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {clientSecret && (
+                        <span className="text-[10px] text-slate-500 font-mono bg-white border border-slate-200 px-2 py-0.5 rounded truncate max-w-[200px]" title={clientSecret}>
+                          sec: {clientSecret.slice(0, 18)}...
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={fillTestCard}
+                        className="text-[11px] font-bold text-[#635BFF] hover:underline cursor-pointer shrink-0"
+                      >
+                        ⚡ Fill Test Data
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Targeted Embedded Checkout Form container as per Stripe spec */}
+                  <div
+                    id="checkout-form"
+                    className="p-5 bg-white border-2 border-indigo-100 rounded-xl shadow-xs space-y-4 transition-all"
+                    style={{
+                      borderRadius: '4px',
+                      color: '#30313d',
+                      fontSize: '14px',
+                    }}
+                  >
+                    {/* Card Element Inputs */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                          Card Information
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            required
+                            value={cardNumber}
+                            onChange={(e) => setCardNumber(e.target.value)}
+                            placeholder="1234 1234 1234 1234"
+                            className="w-full pl-3 pr-20 py-2.5 rounded border border-slate-300 text-sm font-mono focus:border-[#0570de] focus:ring-1 focus:ring-[#0570de] focus:outline-none bg-white"
+                            style={{ borderRadius: '4px' }}
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-1">
+                            <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
+                              VISA
+                            </span>
+                            <span className="text-[10px] font-extrabold text-rose-700 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">
+                              MC
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                            MM / YY
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={cardExpiry}
+                            onChange={(e) => setCardExpiry(e.target.value)}
+                            placeholder="MM / YY"
+                            className="w-full px-3 py-2 rounded border border-slate-300 text-sm font-mono focus:border-[#0570de] focus:ring-1 focus:ring-[#0570de] focus:outline-none bg-white"
+                            style={{ borderRadius: '4px' }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                            CVC
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={cardCvc}
+                            onChange={(e) => setCardCvc(e.target.value)}
+                            placeholder="CVC"
+                            className="w-full px-3 py-2 rounded border border-slate-300 text-sm font-mono focus:border-[#0570de] focus:ring-1 focus:ring-[#0570de] focus:outline-none bg-white"
+                            style={{ borderRadius: '4px' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Name & Country / Parish */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                          Name on Card *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cardholderName}
+                          onChange={(e) => setCardholderName(e.target.value)}
+                          placeholder="Full Name / Employer Entity"
+                          className="w-full px-3 py-2 rounded border border-slate-300 text-xs font-medium focus:border-[#0570de] focus:ring-1 focus:ring-[#0570de] focus:outline-none"
+                          style={{ borderRadius: '4px' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                          Country or Region
+                        </label>
+                        <select
+                          value={billingParish}
+                          onChange={(e) => setBillingParish(e.target.value as Parish)}
+                          className="w-full px-3 py-2 rounded border border-slate-300 text-xs font-medium bg-white"
+                          style={{ borderRadius: '4px' }}
+                        >
+                          <option value="St. George">Dominica (St. George - Roseau)</option>
+                          <option value="St. John">Dominica (St. John - Portsmouth)</option>
+                          <option value="St. Paul">Dominica (St. Paul)</option>
+                          <option value="St. Andrew">Dominica (St. Andrew)</option>
+                          <option value="St. Patrick">Dominica (St. Patrick)</option>
+                          <option value="St. Joseph">Dominica (St. Joseph)</option>
+                          <option value="St. David">Dominica (St. David)</option>
+                          <option value="Island-wide / Remote">Dominica (Remote / WIN Visa)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Saved payment method option */}
+                    <label className="flex items-center gap-2 pt-1 text-xs text-slate-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={savePaymentMethod}
+                        onChange={(e) => setSavePaymentMethod(e.target.checked)}
+                        className="rounded text-[#0570de] focus:ring-[#0570de] w-4 h-4 cursor-pointer"
+                      />
+                      <span>Save payment method for automated monthly renewal (Stripe Vault)</span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                /* Custom Card Mode */
+                <div className="space-y-4">
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Card Number
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          required
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value)}
+                          placeholder="4242 4242 4242 4242"
+                          className="w-full pl-3 pr-20 py-2.5 rounded-lg border border-slate-300 text-sm font-mono font-medium focus:ring-2 focus:ring-[#635BFF] focus:outline-none bg-white"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-1">
+                          <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
+                            VISA
+                          </span>
+                          <span className="text-[10px] font-extrabold text-rose-700 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">
+                            MC
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Expiration (MM/YY)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(e.target.value)}
+                          placeholder="MM/YY"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:ring-2 focus:ring-[#635BFF] focus:outline-none bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          CVC / CVV
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cardCvc}
+                          onChange={(e) => setCardCvc(e.target.value)}
+                          placeholder="CVC"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:ring-2 focus:ring-[#635BFF] focus:outline-none bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Billing Info */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Cardholder / Company Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={cardholderName}
+                        onChange={(e) => setCardholderName(e.target.value)}
+                        placeholder="e.g. Fort Young Hotel Ltd"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold focus:ring-2 focus:ring-[#635BFF] focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Receipt Email Address *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={billingEmail}
+                        onChange={(e) => setBillingEmail(e.target.value)}
+                        placeholder="billing@company.dm"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-[#635BFF] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Billing Parish (Dominica)
+                      </label>
+                      <select
+                        value={billingParish}
+                        onChange={(e) => setBillingParish(e.target.value as Parish)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium bg-white"
+                      >
+                        <option value="St. George">St. George (Roseau)</option>
+                        <option value="St. John">St. John (Portsmouth)</option>
+                        <option value="St. Paul">St. Paul (Canefield)</option>
+                        <option value="St. Andrew">St. Andrew (Marigot)</option>
+                        <option value="St. Patrick">St. Patrick (Grand Bay)</option>
+                        <option value="St. Joseph">St. Joseph (Salisbury)</option>
+                        <option value="St. David">St. David (Kalinago)</option>
+                        <option value="St. Luke">St. Luke (Pointe Michel)</option>
+                        <option value="St. Mark">St. Mark (Soufrière)</option>
+                        <option value="St. Peter">St. Peter (Colihaut)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Postal Code
+                      </label>
+                      <input
+                        type="text"
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        placeholder="00109"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium"
+                      />
                     </div>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Expiration (MM/YY)
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      placeholder="MM/YY"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:ring-2 focus:ring-[#635BFF] focus:outline-none bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      CVC / CVV
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={cardCvc}
-                      onChange={(e) => setCardCvc(e.target.value)}
-                      placeholder="CVC"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:ring-2 focus:ring-[#635BFF] focus:outline-none bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Billing Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                    Cardholder / Company Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cardholderName}
-                    onChange={(e) => setCardholderName(e.target.value)}
-                    placeholder="e.g. Fort Young Hotel Ltd"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold focus:ring-2 focus:ring-[#635BFF] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                    Receipt Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={billingEmail}
-                    onChange={(e) => setBillingEmail(e.target.value)}
-                    placeholder="billing@company.dm"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-[#635BFF] focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                    Billing Parish (Dominica)
-                  </label>
-                  <select
-                    value={billingParish}
-                    onChange={(e) => setBillingParish(e.target.value as Parish)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium bg-white"
-                  >
-                    <option value="St. George">St. George (Roseau)</option>
-                    <option value="St. John">St. John (Portsmouth)</option>
-                    <option value="St. Paul">St. Paul (Canefield)</option>
-                    <option value="St. Andrew">St. Andrew (Marigot)</option>
-                    <option value="St. Patrick">St. Patrick (Grand Bay)</option>
-                    <option value="St. Joseph">St. Joseph (Salisbury)</option>
-                    <option value="St. David">St. David (Kalinago)</option>
-                    <option value="St. Luke">St. Luke (Pointe Michel)</option>
-                    <option value="St. Mark">St. Mark (Soufrière)</option>
-                    <option value="St. Peter">St. Peter (Colihaut)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                    Postal Code
-                  </label>
-                  <input
-                    type="text"
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder="00109"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium"
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Total and Submit */}

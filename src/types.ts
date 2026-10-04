@@ -128,6 +128,14 @@ export interface ClientSubscription {
   remoteWorkEnabled: boolean;
 }
 
+export interface CandidatePrivacySettings {
+  isResumePublic: boolean;
+  hideContactInfo: boolean;
+  openToWorkStatus: 'actively_looking' | 'open_to_offers' | 'casually_exploring' | 'not_looking';
+  restrictedEmployers?: string[];
+  allowDirectRecruiterMessages: boolean;
+}
+
 export interface UserAccount {
   id: string;
   email: string;
@@ -135,6 +143,11 @@ export interface UserAccount {
   role: 'jobseeker' | 'client' | 'admin';
   parish: Parish;
   phone?: string;
+  avatarUrl?: string;
+  headline?: string;
+  bio?: string;
+  residencyStatus?: string;
+  privacySettings?: CandidatePrivacySettings;
   // Jobseeker fields
   resumeFileName?: string;
   skills?: string[];
@@ -158,6 +171,7 @@ export interface InterviewDetails {
   location: string;
   mode: 'In-person' | 'Virtual Video Call';
   instructions?: string;
+  interviewerName?: string;
 }
 
 export interface InterviewSlot {

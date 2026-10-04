@@ -46,7 +46,6 @@ export const ExportPdfReportModal: React.FC<ExportPdfReportModalProps> = ({ isOp
       }, 1600);
     } catch (err) {
       console.error(err);
-      alert('Report generated successfully.');
       setIsGenerating(false);
       onClose();
     }

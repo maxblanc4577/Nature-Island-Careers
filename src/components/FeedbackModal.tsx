@@ -18,6 +18,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
   if (!isOpen) return null;
@@ -25,9 +26,10 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) {
-      alert('Please enter your feedback message.');
+      setErrorMessage('Please enter your feedback message.');
       return;
     }
+    setErrorMessage('');
 
     submitFeedback({
       role,
@@ -81,6 +83,11 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            {errorMessage && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium rounded-lg">
+                {errorMessage}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Your Role</label>

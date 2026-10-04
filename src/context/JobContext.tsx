@@ -81,6 +81,7 @@ interface JobContextType {
   ) => void;
   loginUser: (email: string) => boolean;
   logoutUser: () => void;
+  updateCurrentUser: (updatedFields: Partial<UserAccount>) => void;
 
   // Admin Portal Login & Security
   isAdminLoggedIn: boolean;
@@ -143,6 +144,7 @@ interface JobContextType {
   markAllNotificationsAsRead: () => void;
   latestDispatchedEmail: EmailNotification | null;
   dismissLatestEmail: () => void;
+  dispatchEmail: (notification: EmailNotification) => void;
   sendManualTestAlert: (targetEmail: string) => void;
   requestBrowserNotificationPermission: () => Promise<NotificationPermission>;
 
@@ -466,6 +468,30 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(null);
     setIsAdminLoggedIn(false);
     setActiveRole('jobseeker');
+  };
+
+  const updateCurrentUser = (updatedFields: Partial<UserAccount>) => {
+    setCurrentUser((prev) => {
+      const base = prev || {
+        id: `user-${Date.now()}`,
+        name: 'Dominica Job Seeker',
+        email: 'jobseeker@waitukubuli.dm',
+        role: 'jobseeker' as const,
+        parish: 'St. George' as Parish,
+        createdAt: new Date().toISOString().split('T')[0],
+      };
+      const updated: UserAccount = { ...base, ...updatedFields };
+      localStorage.setItem('dominica_current_user', JSON.stringify(updated));
+      setUsers((prevUsers) => {
+        const exists = prevUsers.some((u) => u.id === updated.id);
+        const nextUsers = exists
+          ? prevUsers.map((u) => (u.id === updated.id ? updated : u))
+          : [updated, ...prevUsers];
+        localStorage.setItem('dominica_users', JSON.stringify(nextUsers));
+        return nextUsers;
+      });
+      return updated;
+    });
   };
 
   const adminLogin = (email: string, pass: string) => {
@@ -1472,6 +1498,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         subscribeClientPlan,
         loginUser,
         logoutUser,
+        updateCurrentUser,
         isAdminLoggedIn,
         adminLogin,
         adminLogout,
@@ -1501,6 +1528,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markAllNotificationsAsRead,
         latestDispatchedEmail,
         dismissLatestEmail,
+        dispatchEmail,
         sendManualTestAlert,
         requestBrowserNotificationPermission,
         alerts,

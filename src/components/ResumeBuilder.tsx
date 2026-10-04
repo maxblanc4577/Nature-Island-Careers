@@ -13,6 +13,8 @@ import {
 import { INITIAL_RESUME_VERSIONS } from '../data/resumeDefaults';
 import { ResumeTemplateView } from './ResumeTemplates';
 import { LinkedInImportModal } from './LinkedInImportModal';
+import { LinkedInQuickApplyExportModal } from './LinkedInQuickApplyExportModal';
+import { CertificateScannerModal } from './CertificateScannerModal';
 import { CoverLetterGenerator } from './CoverLetterGenerator';
 import { SkillGapAnalysis } from './SkillGapAnalysis';
 import { AtsChecker } from './AtsChecker';
@@ -39,6 +41,8 @@ import {
   FileCheck,
   Send,
   Eye,
+  Camera,
+  Code2,
 } from 'lucide-react';
 
 interface ResumeBuilderProps {
@@ -88,6 +92,8 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
 
   // Modals & States
   const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
+  const [isLinkedInExportOpen, setIsLinkedInExportOpen] = useState(false);
+  const [isCertScannerOpen, setIsCertScannerOpen] = useState(false);
   const [isNewVersionDialogOpen, setIsNewVersionDialogOpen] = useState(false);
   const [newVersionTitle, setNewVersionTitle] = useState('');
   const [newVersionSector, setNewVersionSector] =
@@ -161,12 +167,11 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
   // Delete version
   const handleDeleteVersion = (id: string) => {
     if (versions.length <= 1) {
-      alert('You must keep at least one active resume version.');
       return;
     }
-    if (confirm(`Delete version "${activeVersion.title}"?`)) {
-      const remaining = versions.filter((v) => v.id !== id);
-      setVersions(remaining);
+    const remaining = versions.filter((v) => v.id !== id);
+    setVersions(remaining);
+    if (remaining.length > 0) {
       setActiveVersionId(remaining[0].id);
     }
   };
@@ -304,8 +309,28 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
           <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
             <button
               type="button"
+              onClick={() => setIsCertScannerOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-800 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer border border-emerald-600/40"
+              title="Upload photo of paper certificate with camera OCR"
+            >
+              <Camera className="w-3.5 h-3.5 text-amber-300" />
+              <span>Scan Certificate</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsLinkedInExportOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer border border-blue-500/40"
+              title="Generate LinkedIn Quick-Apply formatted JSON payload"
+            >
+              <Code2 className="w-3.5 h-3.5 text-blue-300" />
+              <span>LinkedIn Quick-Apply JSON</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setIsLinkedInModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#0A66C2] hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#0A66C2] hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
             >
               <Linkedin className="w-3.5 h-3.5" />
               <span>LinkedIn Import</span>
@@ -1057,6 +1082,34 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
           isOpen={isLinkedInModalOpen}
           onClose={() => setIsLinkedInModalOpen(false)}
           onApplyParsedData={handleApplyLinkedInData}
+        />
+      )}
+
+      {/* LinkedIn Quick-Apply JSON Export Modal */}
+      {isLinkedInExportOpen && (
+        <LinkedInQuickApplyExportModal
+          isOpen={isLinkedInExportOpen}
+          onClose={() => setIsLinkedInExportOpen(false)}
+          resumeData={activeVersion.data}
+          versionTitle={activeVersion.title}
+        />
+      )}
+
+      {/* Certificate Scanner & Camera Upload Modal */}
+      {isCertScannerOpen && (
+        <CertificateScannerModal
+          isOpen={isCertScannerOpen}
+          onClose={() => setIsCertScannerOpen(false)}
+          onAddCertification={(newCert, relatedSkills) => {
+            updateActiveData((prev) => ({
+              ...prev,
+              certifications: [...(prev.certifications || []), newCert],
+              skills:
+                relatedSkills && relatedSkills.length > 0
+                  ? Array.from(new Set([...prev.skills, ...relatedSkills]))
+                  : prev.skills,
+            }));
+          }}
         />
       )}
 

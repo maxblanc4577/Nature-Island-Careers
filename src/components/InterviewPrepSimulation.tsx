@@ -85,6 +85,7 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
 
   // Voice Speech Recognition state
   const [isListening, setIsListening] = useState(false);
+  const [speechNotice, setSpeechNotice] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
   // Sector pre-filled role suggestions
@@ -202,8 +203,9 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
   }, [currentIndex]);
 
   const toggleSpeechRecognition = async () => {
+    setSpeechNotice(null);
     if (!recognitionRef.current) {
-      alert('Speech Recognition is not natively supported in this browser. You can type your response directly into the answer box.');
+      setSpeechNotice('Speech Recognition is not natively supported in this browser. You can type your response directly into the answer box.');
       return;
     }
 
@@ -225,7 +227,7 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
           recognitionRef.current.start();
           setIsListening(true);
         } catch {
-          alert('Could not access microphone. Please ensure microphone permissions are granted in your browser settings.');
+          setSpeechNotice('Could not access microphone. Please ensure microphone permissions are granted in your browser settings or type your answer.');
         }
       }
     }
@@ -764,6 +766,19 @@ End of Report. Dominica National Labour Exchange.`;
                 </button>
               </div>
             </div>
+
+            {speechNotice && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium rounded-lg flex items-center justify-between">
+                <span>{speechNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setSpeechNotice(null)}
+                  className="text-amber-700 hover:text-amber-900 font-bold ml-2"
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
             <textarea
               rows={6}

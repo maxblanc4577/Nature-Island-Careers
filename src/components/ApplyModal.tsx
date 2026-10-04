@@ -1,8 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import confetti from 'canvas-confetti';
 import { JobListing, Parish } from '../types';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
-import { X, UploadCloud, FileText, CheckCircle2, Shield, ArrowRight, ArrowLeft } from 'lucide-react';
+import {
+  X,
+  UploadCloud,
+  FileText,
+  CheckCircle2,
+  Shield,
+  ArrowRight,
+  ArrowLeft,
+  Bookmark,
+  Check,
+  Sparkles,
+  Save,
+} from 'lucide-react';
 
 interface ApplyModalProps {
   job: JobListing | null;
@@ -35,7 +48,9 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitSuccess, setIsSubmitSuccess] = useState(false);
   const [completedAppId, setCompletedAppId] = useState<string | null>(null);
+  const [draftNotice, setDraftNotice] = useState(false);
 
   // Form State
   const [applicantName, setApplicantName] = useState('Max Blanc');
@@ -59,6 +74,54 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
   });
 
   const [consentChecked, setConsentChecked] = useState(true);
+
+  // Restore draft from localStorage when opening modal
+  useEffect(() => {
+    if (!job || !isOpen) return;
+    try {
+      const draftKey = `natureisland_apply_draft_${job.id}`;
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.applicantName) setApplicantName(parsed.applicantName);
+        if (parsed.applicantEmail) setApplicantEmail(parsed.applicantEmail);
+        if (parsed.applicantPhone) setApplicantPhone(parsed.applicantPhone);
+        if (parsed.parish) setParish(parsed.parish);
+        if (parsed.citizenStatus) setCitizenStatus(parsed.citizenStatus);
+        if (parsed.portfolioUrl) setPortfolioUrl(parsed.portfolioUrl);
+        if (parsed.coverNote) setCoverNote(parsed.coverNote);
+        if (parsed.screeningAnswers) setScreeningAnswers(parsed.screeningAnswers);
+        if (parsed.step) setStep(parsed.step);
+      }
+    } catch {
+      // ignore
+    }
+  }, [job?.id, isOpen]);
+
+  // Save Draft to localStorage
+  const handleSaveDraft = () => {
+    if (!job) return;
+    try {
+      const draftKey = `natureisland_apply_draft_${job.id}`;
+      const draftData = {
+        applicantName,
+        applicantEmail,
+        applicantPhone,
+        parish,
+        citizenStatus,
+        portfolioUrl,
+        coverNote,
+        screeningAnswers,
+        step,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(draftKey, JSON.stringify(draftData));
+      setDraftNotice(true);
+      setTimeout(() => setDraftNotice(false), 2400);
+    } catch (e) {
+      console.warn('Could not save draft', e);
+    }
+  };
 
   if (!isOpen || !job) return null;
 
@@ -90,10 +153,35 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
         screeningAnswers,
       });
 
+      // Show checkmark animation then celebratory confetti shower!
       setIsSubmitting(false);
-      setCompletedAppId(newId);
-      onSuccess(newId);
-    }, 600);
+      setIsSubmitSuccess(true);
+
+      // Trigger celebratory shower
+      try {
+        confetti({
+          particleCount: 90,
+          spread: 80,
+          origin: { y: 0.6 },
+          colors: ['#047857', '#0d9488', '#fbbf24', '#10b981', '#34d399'],
+        });
+      } catch (err) {
+        console.warn('Confetti notice:', err);
+      }
+
+      // Clear draft
+      try {
+        localStorage.removeItem(`natureisland_apply_draft_${job.id}`);
+      } catch {
+        // ignore
+      }
+
+      setTimeout(() => {
+        setIsSubmitSuccess(false);
+        setCompletedAppId(newId);
+        onSuccess(newId);
+      }, 750);
+    }, 700);
   };
 
   const resetAndClose = () => {
@@ -515,7 +603,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
                     </span>
                   </label>
 
-                  <div className="flex justify-between pt-3">
+                  <div className="flex items-center justify-between pt-3">
                     <button
                       type="button"
                       onClick={() => setStep(3)}
@@ -524,20 +612,44 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
                       <ArrowLeft className="w-3.5 h-3.5" />
                       <span>Back</span>
                     </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || !consentChecked}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-semibold shadow-xs cursor-pointer disabled:opacity-50 transition-colors"
-                    >
-                      {isSubmitting ? (
-                        <span>Processing Transmission...</span>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Submit Application</span>
-                        </>
-                      )}
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveDraft}
+                        className="flex items-center gap-1.5 px-3.5 py-2 border border-stone-300 text-stone-700 hover:bg-stone-50 rounded-lg text-xs font-semibold cursor-pointer transition-all active:scale-95"
+                        title="Save application draft to resume later"
+                      >
+                        <Save className="w-3.5 h-3.5 text-stone-500" />
+                        <span>{draftNotice ? 'Draft Saved!' : 'Save Draft'}</span>
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting || !consentChecked}
+                        className={`relative overflow-hidden flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold shadow-xs cursor-pointer disabled:opacity-50 transition-all duration-300 active:scale-95 ${
+                          isSubmitSuccess
+                            ? 'bg-emerald-600 text-white scale-105 ring-2 ring-emerald-400'
+                            : 'bg-emerald-800 hover:bg-emerald-900 text-white'
+                        }`}
+                      >
+                        {isSubmitting ? (
+                          <span>Processing Transmission...</span>
+                        ) : isSubmitSuccess ? (
+                          <span className="flex items-center gap-1.5 animate-in zoom-in-75 duration-200">
+                            <span className="w-4 h-4 bg-white text-emerald-800 rounded-full flex items-center justify-center">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </span>
+                            <span>Submitted Successfully!</span>
+                          </span>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Submit Application</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

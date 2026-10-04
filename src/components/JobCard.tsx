@@ -9,6 +9,7 @@ interface JobCardProps {
   onSelect: (job: JobListing) => void;
   onApply: (job: JobListing) => void;
   onQuickApply?: (job: JobListing) => void;
+  onPromptAuth?: () => void;
   onOpenAiGuidance?: (sector: JobSector) => void;
   onShare?: (job: JobListing) => void;
 }
@@ -18,10 +19,11 @@ export const JobCard: React.FC<JobCardProps> = ({
   onSelect,
   onApply,
   onQuickApply,
+  onPromptAuth,
   onOpenAiGuidance,
   onShare,
 }) => {
-  const { toggleSaveJob, isJobSaved } = useJobContext();
+  const { toggleSaveJob, isJobSaved, currentUser } = useJobContext();
   const saved = isJobSaved(job.id);
   const [isPulsing, setIsPulsing] = React.useState(false);
   const [showShareModal, setShowShareModal] = React.useState(false);
@@ -204,14 +206,24 @@ export const JobCard: React.FC<JobCardProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              if (onQuickApply) {
-                onQuickApply(job);
+              if (currentUser) {
+                if (onQuickApply) {
+                  onQuickApply(job);
+                } else {
+                  onApply(job);
+                }
               } else {
-                onApply(job);
+                if (onPromptAuth) {
+                  onPromptAuth();
+                } else if (onQuickApply) {
+                  onQuickApply(job);
+                } else {
+                  onApply(job);
+                }
               }
             }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-bold transition-all shadow-xs cursor-pointer hover:shadow-sm text-xs"
-            title="Quick Apply without opening full details"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-bold transition-all shadow-xs cursor-pointer hover:shadow-sm text-xs active:scale-95"
+            title={currentUser ? "Quick Apply with your saved candidate profile" : "Sign in to Quick Apply"}
           >
             <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
             <span>Quick Apply</span>

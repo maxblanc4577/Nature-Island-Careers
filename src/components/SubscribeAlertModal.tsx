@@ -21,6 +21,7 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
   const [frequency, setFrequency] = useState<'instant' | 'daily' | 'weekly'>('instant');
   const [isSuccess, setIsSuccess] = useState(false);
   const [matchingCount, setMatchingCount] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Compute live matching jobs count
   const liveMatches = jobs.filter((j) => {
@@ -37,9 +38,10 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes('@')) {
-      alert('Please provide a valid email address.');
+      setErrorMessage('Please provide a valid email address.');
       return;
     }
+    setErrorMessage('');
 
     const parishes: Parish[] =
       selectedParish === 'All'
@@ -128,6 +130,18 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl flex items-center justify-between">
+                <span>{errorMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage('')}
+                  className="text-rose-500 hover:text-rose-700 font-bold ml-2"
+                >
+                  ×
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">

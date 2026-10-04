@@ -228,13 +228,6 @@ export const ResumeLibrary: React.FC = () => {
   // Roll back / restore a historical snapshot
   const handleRestoreVersion = (snapshot: ResumeVersionHistoryEntry) => {
     if (!activeDocForHistory) return;
-    if (
-      !confirm(
-        `Roll back to version "${snapshot.version}" from ${snapshot.timestamp}? This will update the active document content.`
-      )
-    ) {
-      return;
-    }
 
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16) + ' AST';
     const rollbackEntry: ResumeVersionHistoryEntry = {
@@ -278,10 +271,8 @@ export const ResumeLibrary: React.FC = () => {
 
   // Delete document
   const handleDeleteDoc = (id: string, title: string) => {
-    if (confirm(`Are you sure you want to permanently remove "${title}" from your library?`)) {
-      setDocuments((prev) => prev.filter((d) => d.id !== id));
-      triggerToast(`Removed "${title}" from library.`);
-    }
+    setDocuments((prev) => prev.filter((d) => d.id !== id));
+    triggerToast(`Removed "${title}" from library.`);
   };
 
   return (

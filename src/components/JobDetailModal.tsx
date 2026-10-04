@@ -3,6 +3,7 @@ import { JobListing } from '../types';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { ShareJobModal } from './ShareJobModal';
+import { CompanyReviewModule } from './CompanyReviewModule';
 import { X, MapPin, Building, Calendar, DollarSign, ShieldCheck, CheckCircle2, Bookmark, BookmarkCheck, Globe, Share2 } from 'lucide-react';
 
 interface JobDetailModalProps {
@@ -224,6 +225,9 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               </span>
             </div>
           )}
+
+          {/* Standardized Candidate Experience & Company Reviews */}
+          <CompanyReviewModule companyName={job.company} parish={job.parish} />
 
           {/* Parish context note */}
           <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100 text-xs text-emerald-950 flex items-start gap-2">

@@ -9,6 +9,7 @@ interface FooterProps {
   onOpenAdminPortal?: () => void;
   onOpenCareerGuide?: () => void;
   onOpenSalaryTrends?: () => void;
+  onOpenEmployerPortal?: () => void;
 }
 
 const PARISHES: Parish[] = [
@@ -31,6 +32,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenAdminPortal,
   onOpenCareerGuide,
   onOpenSalaryTrends,
+  onOpenEmployerPortal,
 }) => {
   return (
     <footer className="bg-stone-900 text-stone-300 border-t border-stone-800 text-xs">
@@ -203,51 +205,29 @@ export const Footer: React.FC<FooterProps> = ({
 
         </div>
 
-        {/* Unified Administrator Master Control & Console in Footer */}
-        {onOpenAdminPortal && (
-          <div className="mt-10 pt-6 border-t border-stone-800/80">
-            <div className="bg-gradient-to-r from-stone-950 via-stone-900 to-emerald-950/40 p-4 sm:p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-inner">
-              <div className="flex items-center gap-3.5">
-                <div className="p-2.5 bg-emerald-950 text-emerald-400 border border-emerald-800/50 rounded-xl shadow-xs shrink-0">
-                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-white tracking-tight">
-                      Administrator Master Control & Console
-                    </span>
-                    <span className="bg-emerald-900/60 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-700/40">
-                      Authorised Personnel Only
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-stone-400 mt-0.5 leading-relaxed max-w-xl">
-                    Unified Dominican Labour Division & Nature Island Careers master portal: live site configuration, Stripe payment portal & employer recurring billing, database synchronisation, and system audits.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={onOpenAdminPortal}
-                className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer border border-emerald-600/30 hover:scale-[1.01]"
-              >
-                <ShieldCheck className="w-4 h-4 text-emerald-300" />
-                <span>Launch Admin Master Control & Console</span>
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Bottom copyright & regional notice */}
         <div className="mt-8 pt-6 border-t border-stone-800/80 flex flex-col sm:flex-row items-center justify-between text-stone-500 text-[11px] gap-3">
           <div>
             © {new Date().getFullYear()} Nature Island Careers · Commonwealth of Dominica. All rights reserved.
           </div>
-          <div className="flex items-center gap-4 text-stone-400">
-            <span>Currency: Eastern Caribbean Dollar (XCD)</span>
-            <span>·</span>
-            <span>Roseau & Portsmouth Labour Exchanges</span>
+          <div className="flex items-center gap-3 text-stone-400">
+            <span>Commonwealth of Dominica (Waitukubuli)</span>
             <span>·</span>
             <span>DSS & NEP Accredited</span>
+            {onOpenAdminPortal && (
+              <>
+                <span>·</span>
+                <button
+                  type="button"
+                  onClick={onOpenAdminPortal}
+                  className="text-stone-400 hover:text-emerald-400 transition-colors cursor-pointer flex items-center gap-1 font-medium"
+                  title="Admin Master Console & Site Settings"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Admin Console</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
