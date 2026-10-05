@@ -1,4 +1,8 @@
 import React, { useState, useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { useDebounce } from './hooks/useDebounce';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { filterAndSortJobs } from './utils/filterJobs';
 import { JobProvider, useJobContext } from './context/JobContext';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
@@ -59,6 +63,9 @@ function DominicaJobBoardContent() {
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
+  // Debounced search query to prevent excessive filtering re-renders while typing
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   const [selectedParish, setSelectedParish] = useState<Parish | 'All'>('All');
   const [selectedSector, setSelectedSector] = useState<JobSector | 'All'>('All');
   const [selectedType, setSelectedType] = useState<EmploymentType | 'All'>('All');
@@ -146,80 +153,27 @@ function DominicaJobBoardContent() {
     jobTitle: '',
   });
 
-  // Filtered jobs calculation
+  // Filtered jobs calculation using pure helper function
   const filteredJobs = useMemo(() => {
-    return jobs.filter((job) => {
-      // If on remote tab, filter only remote roles
-      if (activeTab === 'remote' && job.workModel !== 'Remote') {
-        return false;
-      }
-
-      // Saved only filter
-      if (showSavedOnly && !savedJobIds.includes(job.id)) {
-        return false;
-      }
-
-      // Keyword search
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesTitle = job.title.toLowerCase().includes(q);
-        const matchesCompany = job.company.toLowerCase().includes(q);
-        const matchesDesc = job.description.toLowerCase().includes(q);
-        const matchesLocation = job.locality.toLowerCase().includes(q);
-        if (!matchesTitle && !matchesCompany && !matchesDesc && !matchesLocation) {
-          return false;
-        }
-      }
-
-      // Parish filter
-      if (selectedParish !== 'All' && job.parish !== selectedParish) {
-        return false;
-      }
-
-      // Sector filter
-      if (selectedSector !== 'All' && job.sector !== selectedSector) {
-        return false;
-      }
-
-      // Employment Type filter
-      if (selectedType !== 'All' && job.employmentType !== selectedType) {
-        return false;
-      }
-
-      // Work Model filter
-      if (selectedWorkModel !== 'All' && job.workModel !== selectedWorkModel) {
-        return false;
-      }
-
-      // NEP Approved only
-      if (nepOnly && !job.isNepApproved) {
-        return false;
-      }
-
-      // Salary filter
-      if (job.maxSalary < minSalary) {
-        return false;
-      }
-
-      return true;
-    }).sort((a, b) => {
-      if (sortBy === 'salaryHigh') {
-        return b.maxSalary - a.maxSalary;
-      }
-      if (sortBy === 'views') {
-        return b.viewsCount - a.viewsCount;
-      }
-      // 'recent' by default (featured first, then date)
-      if (a.featured && !b.featured) return -1;
-      if (!a.featured && b.featured) return 1;
-      return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+    return filterAndSortJobs(jobs, {
+      activeTab,
+      showSavedOnly,
+      savedJobIds,
+      searchQuery: debouncedSearchQuery,
+      selectedParish,
+      selectedSector,
+      selectedType,
+      selectedWorkModel,
+      nepOnly,
+      minSalary,
+      sortBy,
     });
   }, [
     jobs,
     activeTab,
     showSavedOnly,
     savedJobIds,
-    searchQuery,
+    debouncedSearchQuery,
     selectedParish,
     selectedSector,
     selectedType,
@@ -262,6 +216,46 @@ function DominicaJobBoardContent() {
           : undefined
       }
     >
+      {/* Dynamic SEO Meta Tags via React Helmet */}
+      <Helmet>
+        <title>
+          {selectedJobForDetail
+            ? `${selectedJobForDetail.title} at ${selectedJobForDetail.company} (${selectedJobForDetail.parish}) | Nature Island Careers`
+            : activeTab === 'remote'
+            ? 'Dominica Remote Work & WIN Extended Visa Jobs | Nature Island Careers'
+            : activeTab === 'career'
+            ? 'Dominica Career Guide & DSS Accreditation | Nature Island Careers'
+            : activeTab === 'analytics'
+            ? 'Dominica Labour Market Trends & Salary Index | Nature Island Careers'
+            : `${siteSettings.siteName || 'Nature Island Careers'} - Dominica Premier Classified Board & Career Hub`}
+        </title>
+        <meta
+          name="description"
+          content={
+            selectedJobForDetail
+              ? `Apply for ${selectedJobForDetail.title} at ${selectedJobForDetail.company} in ${selectedJobForDetail.parish}, Dominica. Salary: EC$ ${selectedJobForDetail.minSalary} - ${selectedJobForDetail.maxSalary} / month. DSS accredited.`
+              : siteSettings.announcement ||
+                'Dominica premier job classified board and career portal. Verified vacancies across all 10 parishes in the Commonwealth of Dominica (Waitukubuli). NEP accredited.'
+          }
+        />
+        <meta
+          property="og:title"
+          content={
+            selectedJobForDetail
+              ? `${selectedJobForDetail.title} - ${selectedJobForDetail.company} (${selectedJobForDetail.parish})`
+              : `${siteSettings.siteName || 'Nature Island Careers'} - Dominica`
+          }
+        />
+        <meta
+          property="og:description"
+          content={
+            selectedJobForDetail
+              ? `Apply for ${selectedJobForDetail.title} at ${selectedJobForDetail.company} in Dominica.`
+              : 'Dominica premier digital job classifieds and talent ecosystem.'
+          }
+        />
+      </Helmet>
+
       {/* Top Header */}
       <Header
         activeTab={activeTab}
@@ -657,8 +651,10 @@ function DominicaJobBoardContent() {
 
 export default function App() {
   return (
-    <JobProvider>
-      <DominicaJobBoardContent />
-    </JobProvider>
+    <ErrorBoundary>
+      <JobProvider>
+        <DominicaJobBoardContent />
+      </JobProvider>
+    </ErrorBoundary>
   );
 }

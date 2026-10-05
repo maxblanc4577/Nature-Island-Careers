@@ -3,7 +3,7 @@ import { Parish } from '../types';
 import { ShieldCheck, Mail, MapPin, Compass, BookOpen, BarChart3 } from 'lucide-react';
 
 interface FooterProps {
-  onSelectParish: (p: Parish) => void;
+  onSelectParish?: (p: Parish) => void;
   onOpenAlert: () => void;
   onOpenFeedback: () => void;
   onOpenAdminPortal?: () => void;
@@ -12,21 +12,8 @@ interface FooterProps {
   onOpenEmployerPortal?: () => void;
 }
 
-const PARISHES: Parish[] = [
-  'St. George',
-  'St. John',
-  'St. Paul',
-  'St. Andrew',
-  'St. Patrick',
-  'St. Joseph',
-  'St. David',
-  'St. Luke',
-  'St. Mark',
-  'St. Peter',
-];
-
 export const Footer: React.FC<FooterProps> = ({
-  onSelectParish,
+  onSelectParish: _onSelectParish,
   onOpenAlert,
   onOpenFeedback,
   onOpenAdminPortal,
@@ -63,28 +50,14 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
           </div>
 
-          {/* Col 2: Parishes & Programmes */}
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-2">
-                Vacancies by Parish
-              </h3>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-stone-400">
-                {PARISHES.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => onSelectParish(p)}
-                    className="text-left hover:text-white transition-colors cursor-pointer truncate"
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="pt-2 border-t border-stone-800/80">
-              <span className="text-[11px] font-semibold text-stone-300 block mb-1">Dominican Programmes</span>
-              <p className="text-[11px] text-stone-500 leading-tight">NEP Apprenticeships · DSS Registration · CARICOM CSME</p>
-            </div>
+          {/* Col 2: Dominican Programmes */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+              Dominican Programmes
+            </h3>
+            <p className="text-stone-400 text-xs leading-relaxed">
+              NEP Apprenticeships, DSS Social Security Registration, and CARICOM CSME Free Movement accreditation across Waitukubuli.
+            </p>
           </div>
 
           {/* Col 3: Alerts & Notifications */}

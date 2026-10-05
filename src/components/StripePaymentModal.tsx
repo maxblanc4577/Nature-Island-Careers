@@ -16,7 +16,12 @@ import {
   Loader2,
   AlertCircle,
   HelpCircle,
+  RefreshCw,
 } from 'lucide-react';
+
+const STRIPE_PUBLISHABLE_KEY =
+  (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string) ||
+  'pk_test_51MockDominicaNatureIslandCareersKey2026';
 
 interface StripePaymentModalProps {
   isOpen: boolean;
@@ -139,15 +144,19 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
   const [checkoutMode, setCheckoutMode] = useState<'embedded_form' | 'custom_card'>('embedded_form');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [embeddedLoading, setEmbeddedLoading] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [retryTrigger, setRetryTrigger] = useState(0);
   const [savePaymentMethod, setSavePaymentMethod] = useState(true);
 
   const currentPkg = PACKAGES.find((p) => p.id === selectedPkgId) || PACKAGES[1];
   const priceUSD = (currentPkg.priceXCD / 2.7).toFixed(2);
 
-  // Fetch client_secret from /create-checkout-session
+  // Fetch client_secret from server-side /create-checkout-session
   useEffect(() => {
     if (!isOpen) return;
+    let isCancelled = false;
     setEmbeddedLoading(true);
+    setSessionError(null);
 
     fetch('/create-checkout-session', {
       method: 'POST',
@@ -158,19 +167,40 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
         ui_mode: 'form',
       }),
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Payment gateway responded with status ${res.status}`);
+        }
+        return res.json();
+      })
       .then((data) => {
-        if (data.client_secret || data.clientSecret) {
-          setClientSecret(data.client_secret || data.clientSecret);
+        if (isCancelled) return;
+        const secret = data.client_secret || data.clientSecret;
+        if (secret) {
+          setClientSecret(secret);
+          setSessionError(null);
+        } else {
+          throw new Error('Server did not return a valid client secret for this checkout session.');
         }
       })
       .catch((err) => {
+        if (isCancelled) return;
         console.error('Failed to create checkout session:', err);
+        setSessionError(
+          err.message || 'Unable to initialize Stripe payment session. Please check connection and retry.'
+        );
       })
       .finally(() => {
-        setEmbeddedLoading(false);
+        if (!isCancelled) {
+          setEmbeddedLoading(false);
+        }
       });
-  }, [isOpen, selectedPkgId, billingCadence, currentPkg.name, currentPkg.priceXCD]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, selectedPkgId, billingCadence, currentPkg.name, currentPkg.priceXCD, retryTrigger]);
 
   const fillTestCard = () => {
     setCardNumber('4242 4242 4242 4242');
@@ -453,10 +483,10 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
               {/* Embedded Form SDK Mode (<div id="checkout-form">) */}
               {checkoutMode === 'embedded_form' ? (
                 <div className="space-y-4">
-                  {/* Status header with Client Secret */}
+                  {/* Status header with Client Secret & Public Key */}
                   <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <div className={`w-2.5 h-2.5 rounded-full ${sessionError ? 'bg-rose-500' : embeddedLoading ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
                       <span className="font-bold text-slate-800">Stripe Embedded Checkout Form</span>
                       <span className="text-[10px] bg-indigo-100 text-indigo-800 font-mono px-1.5 py-0.5 rounded">
                         layout: 'expanded'
@@ -464,11 +494,14 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {clientSecret && (
+                      {clientSecret && !embeddedLoading && (
                         <span className="text-[10px] text-slate-500 font-mono bg-white border border-slate-200 px-2 py-0.5 rounded truncate max-w-[200px]" title={clientSecret}>
                           sec: {clientSecret.slice(0, 18)}...
                         </span>
                       )}
+                      <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 font-mono px-2 py-0.5 rounded" title="Environment-provided non-sensitive publishable key">
+                        pk: {STRIPE_PUBLISHABLE_KEY.slice(0, 12)}...
+                      </span>
                       <button
                         type="button"
                         onClick={fillTestCard}
@@ -479,10 +512,51 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Loading State Spinner */}
+                  {embeddedLoading && (
+                    <div className="p-8 bg-slate-50/80 border border-slate-200 rounded-xl text-center space-y-3 animate-in fade-in">
+                      <div className="w-9 h-9 border-3 border-indigo-200 border-t-[#635BFF] rounded-full animate-spin mx-auto" />
+                      <div className="space-y-1">
+                        <h5 className="font-bold text-sm text-slate-800">Initializing payment...</h5>
+                        <p className="text-xs text-slate-500">
+                          Preparing secure session with Stripe for EC$ {currentPkg.priceXCD} (US$ {priceUSD})
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Prominent Error Message Area */}
+                  {sessionError && (
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-xs animate-in fade-in">
+                      <div className="flex items-center gap-2 text-rose-700 font-bold">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>Checkout Session Initialization Error</span>
+                      </div>
+                      <p className="text-rose-600 leading-relaxed">
+                        {sessionError}
+                      </p>
+                      <div className="pt-1 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRetryTrigger((r) => r + 1)}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Retry Session Initialization</span>
+                        </button>
+                        <span className="text-[11px] text-slate-500">
+                          Or switch to 'Direct Card' mode above.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Targeted Embedded Checkout Form container as per Stripe spec */}
                   <div
                     id="checkout-form"
-                    className="p-5 bg-white border-2 border-indigo-100 rounded-xl shadow-xs space-y-4 transition-all"
+                    className={`p-5 bg-white border-2 border-indigo-100 rounded-xl shadow-xs space-y-4 transition-all ${
+                      embeddedLoading ? 'opacity-40 pointer-events-none' : ''
+                    }`}
                     style={{
                       borderRadius: '4px',
                       color: '#30313d',
