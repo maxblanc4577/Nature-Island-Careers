@@ -18,6 +18,12 @@ import {
   Briefcase,
   Award,
   CheckCircle2,
+  Heart,
+  Clock,
+  Flame,
+  BarChart3,
+  Scale,
+  TrendingUp,
 } from 'lucide-react';
 
 interface JobCardProps {
@@ -28,6 +34,8 @@ interface JobCardProps {
   onPromptAuth?: () => void;
   onOpenAiGuidance?: (sector: JobSector) => void;
   onShare?: (job: JobListing) => void;
+  isCompared?: boolean;
+  onToggleCompare?: (job: JobListing) => void;
 }
 
 export const JobCard: React.FC<JobCardProps> = ({
@@ -38,6 +46,8 @@ export const JobCard: React.FC<JobCardProps> = ({
   onPromptAuth,
   onOpenAiGuidance,
   onShare,
+  isCompared = false,
+  onToggleCompare,
 }) => {
   const { toggleSaveJob, isJobSaved, currentUser } = useJobContext();
   const saved = isJobSaved(job.id);
@@ -45,6 +55,7 @@ export const JobCard: React.FC<JobCardProps> = ({
   const [showShareModal, setShowShareModal] = React.useState(false);
   const [isQuickViewOpen, setIsQuickViewOpen] = React.useState(false);
 
+  // Feature: Save Toggle with Heart Icon (persisted to localStorage via JobContext)
   const handleToggleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsPulsing(true);
@@ -61,46 +72,182 @@ export const JobCard: React.FC<JobCardProps> = ({
     }
   };
 
+  // Feature: 'New' badge or subtle pulse animation for jobs posted within the last 24 hours
+  const isNewJob = React.useMemo(() => {
+    if (!job.postedAt) return false;
+    const postTime = new Date(job.postedAt).getTime();
+    if (isNaN(postTime)) return false;
+    const diffHours = (Date.now() - postTime) / (1000 * 60 * 60);
+    return diffHours >= 0 && diffHours <= 24;
+  }, [job.postedAt]);
+
+  // Feature: Status badge ('Active', 'Urgent', or 'Remote-Friendly')
+  const statusBadge = React.useMemo<{
+    label: 'Urgent' | 'Remote-Friendly' | 'Active';
+    badgeClass: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }>(() => {
+    if (job.workModel === 'Remote' || job.isGlobalRemote || job.isRemoteAssignment) {
+      return {
+        label: 'Remote-Friendly',
+        badgeClass: 'bg-teal-50 text-teal-800 border-teal-200/90',
+        icon: Laptop,
+      };
+    }
+    if (job.applicationDeadline) {
+      const deadlineTime = new Date(job.applicationDeadline).getTime();
+      const daysLeft = (deadlineTime - Date.now()) / (1000 * 60 * 60 * 24);
+      if (!isNaN(daysLeft) && daysLeft >= 0 && daysLeft <= 7) {
+        return {
+          label: 'Urgent',
+          badgeClass: 'bg-rose-50 text-rose-800 border-rose-200/90',
+          icon: Clock,
+        };
+      }
+    }
+    return {
+      label: 'Active',
+      badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200/90',
+      icon: CheckCircle2,
+    };
+  }, [job.workModel, job.isGlobalRemote, job.isRemoteAssignment, job.applicationDeadline]);
+
+  // Feature: 'Recommended' badge for roles that align with user's saved experience tags
+  const isRecommended = React.useMemo(() => {
+    if (!currentUser) return false;
+    const userSkills = currentUser.skills || [];
+    const userSector = currentUser.careerSector;
+
+    if (userSector && job.sector === userSector) return true;
+
+    if (userSkills.length > 0) {
+      const searchSpace = [
+        job.title,
+        job.sector,
+        ...(job.requirements || []),
+        ...(job.requiredSkills || []),
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      return userSkills.some((skill) => skill.trim().length > 2 && searchSpace.includes(skill.toLowerCase().trim()));
+    }
+    return false;
+  }, [currentUser, job]);
+
+  // Feature: Competitive Intensity Chart calculation
+  const competitiveIntensity = React.useMemo(() => {
+    const applicants = job.applicantsCount || 0;
+    const benchmarkDemand = 25; // Sector benchmark application count
+    const percentage = Math.min(100, Math.round((applicants / benchmarkDemand) * 100));
+
+    if (applicants < 10) {
+      return {
+        level: 'Low Competition',
+        callout: 'High shortlist chance',
+        barColor: 'bg-emerald-500',
+        containerClass: 'bg-emerald-50/70 border-emerald-200/80',
+        textColor: 'text-emerald-800',
+        applicants,
+        percentage,
+      };
+    } else if (applicants < 25) {
+      return {
+        level: 'Moderate Pace',
+        callout: 'Normal review rate',
+        barColor: 'bg-amber-500',
+        containerClass: 'bg-amber-50/70 border-amber-200/80',
+        textColor: 'text-amber-800',
+        applicants,
+        percentage,
+      };
+    } else {
+      return {
+        level: 'High Demand',
+        callout: 'Competitive selection pool',
+        barColor: 'bg-rose-500',
+        containerClass: 'bg-rose-50/70 border-rose-200/80',
+        textColor: 'text-rose-800',
+        applicants,
+        percentage,
+      };
+    }
+  }, [job.applicantsCount]);
+
+  const StatusIcon = statusBadge.icon;
+
   return (
     <article className="job-card-container group relative bg-white rounded-2xl border border-stone-200/90 p-5 sm:p-6 shadow-xs hover:border-emerald-600/70 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out flex flex-col justify-between before:absolute before:left-0 before:top-4 before:bottom-4 before:w-1.5 before:rounded-r-full before:bg-transparent hover:before:bg-emerald-600 before:transition-all before:duration-300">
       
       <div>
-        {/* Top Kicker: Company and Save button */}
+        {/* Top Kicker: Badges, Status, Compare, and Heart Save Button */}
         <div className="flex items-start justify-between gap-3 mb-2.5">
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500 font-medium">
             <span className="text-stone-900 font-bold">{job.company}</span>
             <span aria-hidden="true" className="text-stone-300">·</span>
             <span className="text-stone-600">{job.parish}</span>
-            {job.isGlobalRemote && (
-              <>
-                <span aria-hidden="true" className="text-stone-300">·</span>
-                <span className="text-teal-900 bg-teal-50 border border-teal-200/90 px-2 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 shadow-2xs">
-                  <Globe className="w-3 h-3 text-teal-600" />
-                  {job.employerCountry ? `${job.employerCountry} Remote` : 'Global Remote'}
-                </span>
-              </>
+
+            {/* Dynamic Status Badge ('Active', 'Urgent', or 'Remote-Friendly') */}
+            <span
+              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-2xs ${statusBadge.badgeClass}`}
+            >
+              <StatusIcon className="w-3 h-3" />
+              <span>{statusBadge.label}</span>
+            </span>
+
+            {/* 'New' badge with subtle pulse animation for listings posted within last 24h */}
+            {isNewJob && (
+              <span className="relative inline-flex items-center gap-1 bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                <span>New</span>
+              </span>
             )}
-            {job.isRemoteAssignment && !job.isGlobalRemote && (
-              <>
-                <span aria-hidden="true" className="text-stone-300">·</span>
-                <span className="text-emerald-800 font-semibold flex items-center gap-1">
-                  <Laptop className="w-3.5 h-3.5 text-emerald-700" />
-                  Remote Work Assignment
-                </span>
-              </>
+
+            {/* 'Recommended' badge for roles aligning with user profile experience tags */}
+            {isRecommended && (
+              <span
+                className="inline-flex items-center gap-1 bg-violet-100 text-violet-900 border border-violet-300 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-2xs"
+                title="Recommended: Matches your profile skills and experience"
+              >
+                <Sparkles className="w-2.5 h-2.5 text-violet-700 fill-violet-600" />
+                <span>Recommended</span>
+              </span>
             )}
+
             {job.isNepApproved && (
               <>
                 <span aria-hidden="true" className="text-stone-300">·</span>
-                <span className="text-amber-800 font-medium flex items-center gap-0.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                <span className="text-amber-800 font-medium flex items-center gap-0.5 text-[11px]">
+                  <ShieldCheck className="w-3 h-3 text-amber-700" />
                   NEP Verified
                 </span>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Feature: Compare Checkbox */}
+            {onToggleCompare && (
+              <label
+                onClick={(e) => e.stopPropagation()}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-colors border select-none ${
+                  isCompared
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300 shadow-2xs'
+                    : 'bg-stone-50 hover:bg-stone-100 text-stone-600 border-stone-200/90'
+                }`}
+                title="Select to compare side-by-side"
+              >
+                <input
+                  type="checkbox"
+                  checked={isCompared}
+                  onChange={() => onToggleCompare(job)}
+                  className="w-3.5 h-3.5 rounded text-emerald-700 focus:ring-emerald-500 cursor-pointer accent-emerald-700"
+                />
+                <span className="text-[11px]">Compare</span>
+              </label>
+            )}
+
             <button
               type="button"
               onClick={handleShareClick}
@@ -111,29 +258,23 @@ export const JobCard: React.FC<JobCardProps> = ({
               <Share2 className="w-4 h-4" />
             </button>
 
+            {/* Feature: 'Save' toggle icon button (Heart icon) persisted to localStorage */}
             <button
+              type="button"
               onClick={handleToggleSave}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                isPulsing
-                  ? 'animate-heartbeat text-emerald-600 bg-emerald-50'
-                  : 'text-stone-400 hover:text-emerald-800 hover:bg-stone-50'
-              }`}
-              title={saved ? 'Remove saved vacancy' : 'Save vacancy'}
-              aria-label="Bookmark job"
+              className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center border ${
+                saved
+                  ? 'text-rose-600 bg-rose-50 border-rose-200 shadow-2xs hover:bg-rose-100'
+                  : 'text-stone-400 hover:text-rose-500 hover:bg-rose-50/60 border-stone-200/60'
+              } ${isPulsing ? 'scale-125 transition-transform duration-200' : ''}`}
+              title={saved ? 'Remove from saved vacancies' : 'Save vacancy (Heart)'}
+              aria-label={saved ? 'Unsave vacancy' : 'Save vacancy'}
             >
-              {saved ? (
-                <BookmarkCheck
-                  className={`w-4 h-4 text-emerald-700 fill-emerald-100 ${
-                    isPulsing ? 'text-emerald-600 fill-emerald-300' : ''
-                  }`}
-                />
-              ) : (
-                <Bookmark
-                  className={`w-4 h-4 ${
-                    isPulsing ? 'text-emerald-600 fill-emerald-200' : ''
-                  }`}
-                />
-              )}
+              <Heart
+                className={`w-4 h-4 transition-colors ${
+                  saved ? 'fill-rose-500 text-rose-500 stroke-rose-600' : 'text-stone-400 hover:text-rose-500'
+                }`}
+              />
             </button>
           </div>
         </div>
@@ -153,7 +294,7 @@ export const JobCard: React.FC<JobCardProps> = ({
         </h3>
 
         {/* Elevated Salary Range & Work Attributes with Distinct Styling */}
-        <div className="flex flex-wrap items-center gap-2.5 mb-4">
+        <div className="flex flex-wrap items-center gap-2.5 mb-3.5">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50/95 border border-emerald-300/80 shadow-xs">
             <span className="text-emerald-700 font-black font-mono text-base sm:text-lg tabular-nums tracking-tight">
               <span className="text-xs uppercase font-sans font-extrabold mr-1 text-emerald-800">EC$</span>
@@ -191,6 +332,37 @@ export const JobCard: React.FC<JobCardProps> = ({
         <p className="text-xs text-stone-600 line-clamp-2 leading-relaxed">
           {job.description}
         </p>
+
+        {/* Feature: Competitive Intensity Chart */}
+        <div className={`mt-3 p-2.5 rounded-xl border ${competitiveIntensity.containerClass} flex flex-col gap-1.5 transition-all`}>
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <BarChart3 className="w-3.5 h-3.5 text-stone-600" />
+              <span className="text-[11px] font-bold text-stone-800">
+                Application Intensity:
+              </span>
+              <span className={`text-[11px] font-extrabold ${competitiveIntensity.textColor}`}>
+                {competitiveIntensity.level}
+              </span>
+            </div>
+            <span className="text-[10px] text-stone-500 font-medium font-mono">
+              {competitiveIntensity.applicants} applicants · ~25 avg
+            </span>
+          </div>
+
+          {/* Visual Bar Indicator */}
+          <div className="w-full bg-stone-200/90 rounded-full h-1.5 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${competitiveIntensity.barColor}`}
+              style={{ width: `${Math.max(8, competitiveIntensity.percentage)}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] text-stone-500">
+            <span>{competitiveIntensity.callout}</span>
+            <span className="font-mono font-bold">{competitiveIntensity.percentage}% typical volume</span>
+          </div>
+        </div>
 
         {/* Required skills preview if remote assignment */}
         {job.requiredSkills && job.requiredSkills.length > 0 && (
@@ -245,15 +417,6 @@ export const JobCard: React.FC<JobCardProps> = ({
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={handleShareClick}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-stone-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg font-medium transition-colors cursor-pointer text-xs border border-stone-200"
-            title="Share job opportunity"
-          >
-            <Share2 className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Share</span>
-          </button>
           <button
             type="button"
             onClick={(e) => {

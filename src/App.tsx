@@ -29,6 +29,7 @@ import { RecruiterPortal } from './components/RecruiterPortal';
 import { AdminAnalytics } from './components/AdminAnalytics';
 import { CareerGuidanceAssistant } from './components/CareerGuidanceAssistant';
 import { ResumeBuilder } from './components/ResumeBuilder';
+import { JobCompareModal } from './components/JobCompareModal';
 import { Footer } from './components/Footer';
 import { EmailAlertToast } from './components/EmailAlertToast';
 import { JobListing, Parish, JobSector, EmploymentType, WorkModel } from './types';
@@ -44,10 +45,28 @@ import {
   Layers,
   ArrowRight,
   BellRing,
+  Scale,
+  X,
 } from 'lucide-react';
 
 function DominicaJobBoardContent() {
   const { jobs, savedJobIds, isAdminLoggedIn } = useJobContext();
+
+  // Compared jobs state for side-by-side comparison modal
+  const [comparedJobIds, setComparedJobIds] = useState<string[]>([]);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+
+  const handleToggleCompare = (job: JobListing) => {
+    setComparedJobIds((prev) => {
+      if (prev.includes(job.id)) {
+        return prev.filter((id) => id !== job.id);
+      }
+      if (prev.length >= 4) {
+        return [...prev.slice(1), job.id];
+      }
+      return [...prev, job.id];
+    });
+  };
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<
@@ -384,6 +403,8 @@ function DominicaJobBoardContent() {
                           onQuickApply={() => setJobToApply(job)}
                           onPromptAuth={() => setIsAuthOpen(true)}
                           onShare={(job) => setJobToShare(job)}
+                          isCompared={comparedJobIds.includes(job.id)}
+                          onToggleCompare={handleToggleCompare}
                         />
                       ))}
                     </div>
@@ -435,6 +456,8 @@ function DominicaJobBoardContent() {
                       onQuickApply={() => setJobToApply(job)}
                       onPromptAuth={() => setIsAuthOpen(true)}
                       onShare={(job) => setJobToShare(job)}
+                      isCompared={comparedJobIds.includes(job.id)}
+                      onToggleCompare={handleToggleCompare}
                     />
                   ))}
                 </div>
@@ -519,7 +542,73 @@ function DominicaJobBoardContent() {
       {/* Floating Simulated Email Alert Toast */}
       <EmailAlertToast />
 
+      {/* Floating Compare Action Dock */}
+      {comparedJobIds.length > 0 && (
+        <aside
+          aria-label="Job Comparison Dock"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-950/95 backdrop-blur-md text-white px-4 sm:px-6 py-3.5 rounded-2xl shadow-2xl border border-emerald-500/40 flex items-center gap-3 sm:gap-5 animate-in slide-in-from-bottom-5 duration-200 max-w-[95vw]"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs sm:text-sm font-black tracking-tight whitespace-nowrap">
+              Compare Roles ({comparedJobIds.length}/4)
+            </span>
+          </div>
+
+          <div className="hidden md:flex items-center gap-1.5 max-w-sm overflow-hidden">
+            {comparedJobIds.map((id) => {
+              const job = jobs.find((j) => j.id === id);
+              return job ? (
+                <span
+                  key={id}
+                  className="text-[11px] bg-slate-800 text-stone-300 px-2 py-0.5 rounded-lg border border-slate-700 truncate max-w-[120px]"
+                >
+                  {job.title}
+                </span>
+              ) : null;
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCompareModalOpen(true)}
+              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95 whitespace-nowrap"
+            >
+              <Scale className="w-3.5 h-3.5 text-amber-300" />
+              <span>Compare Side-by-Side</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setComparedJobIds([])}
+              className="p-1.5 text-stone-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition-colors cursor-pointer"
+              title="Clear comparison selection"
+              aria-label="Clear comparison selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </aside>
+      )}
+
       {/* MODALS */}
+      {/* Side-by-Side Job Comparison Modal */}
+      <JobCompareModal
+        isOpen={isCompareModalOpen}
+        onClose={() => setIsCompareModalOpen(false)}
+        jobs={jobs.filter((j) => comparedJobIds.includes(j.id))}
+        onApply={(job) => {
+          setIsCompareModalOpen(false);
+          setSelectedJobForDetail(job);
+        }}
+        onQuickApply={(job) => {
+          setIsCompareModalOpen(false);
+          setJobToApply(job);
+        }}
+        onRemoveCompare={(id) => setComparedJobIds((prev) => prev.filter((item) => item !== id))}
+      />
+
       {/* Stripe Payment Portal Modal */}
       <StripePaymentModal
         isOpen={isStripeModalOpen}
