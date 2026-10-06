@@ -25,7 +25,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const { adminLogin } = useJobContext();
   const modalRef = useModalKeyboard({ isOpen, onClose });
 
-  const [email, setEmail] = useState('info@natureislandcareers.com');
+  const [email, setEmail] = useState('info@natureislecareers.com');
   const [password, setPassword] = useState('natureislandcareers');
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,7 +69,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   };
 
   const handleFillDemo = () => {
-    setEmail('info@natureislandcareers.com');
+    setEmail('info@natureislecareers.com');
     setPassword('natureislandcareers');
   };
 
@@ -135,11 +135,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="info@natureislandcareers.com"
+                  placeholder="info@natureislecareers.com"
                   className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono"
                 />
               </div>
-              <p className="text-[10px] text-stone-400 mt-1">Authorized email: info@natureislandcareers.com</p>
+              <p className="text-[10px] text-stone-400 mt-1">Authorized email: info@natureislecareers.com</p>
             </div>
 
             <div>
@@ -162,7 +162,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             {error && (
               <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-1.5 text-[11px]">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>Invalid credentials! Authorized email is <strong>info@natureislandcareers.com</strong> with password <strong>natureislandcareers</strong>.</span>
+                <span>Invalid credentials! Authorized email is <strong>info@natureislecareers.com</strong> with password <strong>natureislandcareers</strong>.</span>
               </div>
             )}
 

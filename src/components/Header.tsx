@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Emergency Advisory Banner if enabled by Admin */}
       {siteSettings?.showEmergencyBanner && (
         <div className="bg-amber-500 text-slate-950 px-4 py-1.5 text-xs font-bold text-center flex items-center justify-center gap-2 border-b border-amber-600">
-          <span>⚠️ Official Dominica Disaster & Weather Advisory: Nature Island Careers operates emergency staffing line. Contact info@natureislandcareers.com</span>
+          <span>⚠️ Official Dominica Disaster & Weather Advisory: Nature Island Careers operates emergency staffing line. Contact info@natureislecareers.com</span>
         </div>
       )}
 

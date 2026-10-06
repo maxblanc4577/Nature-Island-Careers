@@ -72,7 +72,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
   ).length;
 
   const handleTriggerReminders = () => {
-    const res = sendRecruiterReminders('info@natureislandcareers.com');
+    const res = sendRecruiterReminders('info@natureislecareers.com');
     setReminderStatusMsg(`Automated reminder check sent to ${res.sentCount} recruiter accounts.`);
     setTimeout(() => setReminderStatusMsg(null), 3500);
   };
@@ -138,7 +138,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
           <div>
             <span className="font-extrabold">Automated Recruiter Reminders Service: </span>
             <span className="text-slate-600">
-              Active reminders regarding pending listings and renewal dates dispatched via <strong>info@natureislandcareers.com</strong>.
+              Active reminders regarding pending listings and renewal dates dispatched via <strong>info@natureislecareers.com</strong>.
             </span>
             {reminderStatusMsg && (
               <span className="ml-2 bg-emerald-700 text-white font-bold px-2 py-0.5 rounded text-[11px] animate-pulse">

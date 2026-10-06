@@ -497,6 +497,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const adminLogin = (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const validEmails = [
+      'info@natureislecareers.com',
       'info@natureislandcareers.com',
       'info@natureislandcarees.com',
     ];
@@ -523,7 +524,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore
     }
-    return 'info@natureislandcareers.com';
+    return 'info@natureislecareers.com';
   };
 
   const addInvoice = (invoiceData: Omit<EmployerInvoice, 'id'>) => {
@@ -610,7 +611,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dispatchEmail(notif);
   };
 
-  const sendRecruiterReminders = (contactEmail: string = 'info@natureislandcareers.com') => {
+  const sendRecruiterReminders = (contactEmail: string = 'info@natureislecareers.com') => {
     const now = new Date();
     const nowStr = now.toISOString().replace('T', ' ').substring(0, 16);
     let sentCount = 0;

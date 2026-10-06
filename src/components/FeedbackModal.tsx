@@ -36,7 +36,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
       category,
       rating,
       name: name.trim() || 'Anonymous Island Resident',
-      email: email.trim() || 'info@natureislandcareers.com',
+      email: email.trim() || 'info@natureislecareers.com',
       message: message.trim(),
     });
 
@@ -65,7 +65,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
             </div>
             <div>
               <h3 className="font-bold text-base text-white">Community Feedback</h3>
-              <p className="text-xs text-emerald-200">Direct inquiries: info@natureislandcareers.com</p>
+              <p className="text-xs text-emerald-200">Direct inquiries: info@natureislecareers.com</p>
             </div>
           </div>
           <button onClick={onClose} className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer">

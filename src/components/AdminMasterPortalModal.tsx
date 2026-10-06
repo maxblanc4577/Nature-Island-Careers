@@ -303,7 +303,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
 
   // Settings form state
   const [siteName, setSiteName] = useState(siteSettings.siteName || 'Nature Island Careers');
-  const [contactEmail, setContactEmail] = useState(siteSettings.contactEmail || 'info@natureislandcareers.com');
+  const [contactEmail, setContactEmail] = useState(siteSettings.contactEmail || 'info@natureislecareers.com');
   const [announcement, setAnnouncement] = useState(siteSettings.announcement);
   const [currencyPeg, setCurrencyPeg] = useState(siteSettings.currencyPeg || 2.70);
   const [showEmergencyBanner, setShowEmergencyBanner] = useState(siteSettings.showEmergencyBanner || false);

@@ -833,7 +833,12 @@ app.post('/api/admin/verify', (req, res) => {
     return res.json({ authorized: true, role: 'super_admin' });
   }
 
-  const validAdminUsernames = ['admin', 'maxblanc4577@gmail.com', 'info@natureislandcareers.com'];
+  const validAdminUsernames = [
+    'admin',
+    'maxblanc4577@gmail.com',
+    'info@natureislecareers.com',
+    'info@natureislandcareers.com',
+  ];
   if (validAdminUsernames.includes(username.toLowerCase()) && password === adminSecret) {
     const sessionToken = `auth_${adminSecret}`;
     return res.json({

@@ -110,7 +110,7 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
             </div>
             <div>
               <h3 className="font-bold text-base text-white">Nature Island Careers Alerts</h3>
-              <p className="text-xs text-emerald-200">Delivered from info@natureislandcareers.com</p>
+              <p className="text-xs text-emerald-200">Delivered from info@natureislecareers.com</p>
             </div>
           </div>
           <button onClick={onClose} className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer">

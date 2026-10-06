@@ -66,7 +66,7 @@ export const generateSalaryPdfReport = async (options: PdfReportOptions): Promis
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(220, 252, 231);
-    doc.text('Nature Island Careers · National Labour Exchange Division · info@natureislandcareers.com', margin, 14);
+    doc.text('Nature Island Careers · National Labour Exchange Division · info@natureislecareers.com', margin, 14);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);

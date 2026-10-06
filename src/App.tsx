@@ -145,7 +145,7 @@ function DominicaJobBoardContent() {
       ? JSON.parse(saved)
       : {
           siteName: 'Nature Island Careers',
-          contactEmail: 'info@natureislandcareers.com',
+          contactEmail: 'info@natureislecareers.com',
           announcement: 'Dominica Work In Nature (WIN) 2026 Extended Visas Active · Certified 18-Month Remote Stay',
           currencyPeg: 2.70,
           showEmergencyBanner: false,

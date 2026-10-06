@@ -37,11 +37,11 @@ export const Footer: React.FC<FooterProps> = ({
             </p>
             <div className="pt-1">
               <a
-                href="mailto:info@natureislandcareers.com"
+                href="mailto:info@natureislecareers.com"
                 className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
               >
                 <Mail className="w-3.5 h-3.5" />
-                <span>info@natureislandcareers.com</span>
+                <span>info@natureislecareers.com</span>
               </a>
             </div>
             <div className="pt-2 text-[11px] text-stone-400 flex items-center gap-1.5">

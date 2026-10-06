@@ -117,7 +117,7 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
       requirements: requirements.length > 0 ? requirements : ['Reliable high-speed broadband connection and proven remote autonomy'],
       benefits: benefits.length > 0 ? benefits : ['Competitive international compensation', 'Flexible remote schedule'],
       screeningQuestions: [],
-      contactEmail: contactEmail || 'info@natureislandcareers.com',
+      contactEmail: contactEmail || 'info@natureislecareers.com',
       applicationDeadline: '2026-11-30',
       isNepApproved: isGlobalRemote ? false : isNepApproved,
       featured: isFeatured,
@@ -553,7 +553,7 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
                 required
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                placeholder="hr@yourcompany.dm or info@natureislandcareers.com"
+                placeholder="hr@yourcompany.dm or info@natureislecareers.com"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>

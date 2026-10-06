@@ -1092,7 +1092,7 @@ export const INITIAL_NOTIFICATIONS: EmailNotification[] = [
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px;">
         <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
           <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Dominica</h2>
-          <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Island-Wide Real-Time Employment Alert · info@natureislandcareers.com</p>
+          <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Island-Wide Real-Time Employment Alert · info@natureislecareers.com</p>
         </div>
         <p style="font-size: 15px; color: #1e293b;">Hello Max,</p>
         <p style="font-size: 14px; color: #475569; line-height: 1.5;">

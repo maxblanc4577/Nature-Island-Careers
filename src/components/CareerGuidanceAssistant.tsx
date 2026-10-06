@@ -58,7 +58,7 @@ const INITIAL_MESSAGES: Message[] = [
 
 I provide tailored guidance for careers across the Commonwealth of Dominica. Whether you're a Dominica State College (DSC) graduate, an experienced tradesperson, a diaspora professional planning your return, or a digital nomad exploring the **Work In Nature (WIN)** permit, I'm here to support your journey.
 
-For personalized advisory or enterprise recruiter assistance, you can also contact our team directly at **info@natureislandcareers.com**.
+For personalized advisory or enterprise recruiter assistance, you can also contact our team directly at **info@natureislecareers.com**.
 
 How can I assist your career search today?`,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -318,7 +318,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
       'VERSION:2.0',
       'PRODID:-//Nature Island Careers//Dominica Career Portal//EN',
       'BEGIN:VEVENT',
-      `UID:${event.id}@natureislandcareers.com`,
+      `UID:${event.id}@natureislecareers.com`,
       `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
       `DTSTART:${event.calendarStart}`,
       `DTEND:${event.calendarEnd}`,
