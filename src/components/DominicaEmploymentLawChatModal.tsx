@@ -71,24 +71,25 @@ How can I help you today?`,
     setIsTyping(true);
 
     try {
-      const res = await fetch('/api/career/advice', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: `Regarding Commonwealth of Dominica Labour Law & Workplace Culture: ${q}`,
+          message: `Regarding Commonwealth of Dominica Labour Law & Workplace Culture: ${q}`,
           sector: 'Legal & Regulatory Compliance',
         }),
       });
 
       if (res.ok) {
         const json = await res.json();
-        if (json.advice) {
+        const replyText = json.reply || json.advice;
+        if (replyText) {
           setMessages((prev) => [
             ...prev,
             {
               id: `b-${Date.now()}`,
               sender: 'bot',
-              text: json.advice,
+              text: replyText,
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             },
           ]);

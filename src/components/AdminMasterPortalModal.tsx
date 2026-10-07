@@ -205,6 +205,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
           { method: 'POST', path: '/api/admin/run-diagnostics', auth: 'Admin Token', category: 'Backend Console' },
           { method: 'POST', path: '/create-checkout-session', auth: 'Public', category: 'Stripe Payments' },
           { method: 'GET', path: '/api/stripe/config', auth: 'Public', category: 'Stripe Payments' },
+          { method: 'POST', path: '/api/chat', auth: 'Bearer / Optional App Token', category: 'Hardened Gemini Proxy' },
           { method: 'POST', path: '/api/ai/screen-candidate', auth: 'Rate-Limited', category: 'Gemini AI' },
           { method: 'POST', path: '/api/alerts/subscribe', auth: 'Public', category: 'Job Alerts' },
         ]);
@@ -2463,6 +2464,16 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                     </div>
                     <span className="px-2 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-lg">
                       ENFORCING
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/90 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-900 block">Hardened Gemini Proxy (/api/chat)</span>
+                      <span className="text-[11px] text-slate-500">Zero-leak API key guard, NFKC sanitize & prompt injection filter</span>
+                    </div>
+                    <span className="px-2 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-lg">
+                      SECURED
                     </span>
                   </div>
                 </div>

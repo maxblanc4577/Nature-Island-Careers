@@ -150,6 +150,7 @@ if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
 }
 
 // ---------- Hardened Gemini Server-Side Proxy Configuration ----------
+const PROXY_MODEL = process.env.MODEL || 'gemini-2.5-flash';
 const MAX_INPUT_CHARS = 2000;
 const MAX_OUTPUT_TOKENS = 800;
 
@@ -228,7 +229,7 @@ app.post('/api/chat', aiRateLimiter, requireAppToken, async (req, res) => {
   if (aiClient) {
     try {
       const response = await aiClient.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: PROXY_MODEL,
         contents: [{ role: 'user', parts: [{ text: `<user_input>\n${message}\n</user_input>` }] }],
         config: {
           systemInstruction: HARDENED_PROXY_SYSTEM_PROMPT,
@@ -1168,6 +1169,7 @@ app.get('/api/admin/routes', requireAdminAuth, (req, res) => {
       { method: 'GET', path: '/api/stripe/config', auth: 'Public', category: 'Stripe Payments' },
       { method: 'POST', path: '/api/stripe/create-payment-intent', auth: 'Public', category: 'Stripe Payments' },
       { method: 'POST', path: '/api/stripe/webhook', auth: 'Stripe Signature', category: 'Stripe Payments' },
+      { method: 'POST', path: '/api/chat', auth: 'Bearer / Optional App Token', category: 'Hardened Gemini Proxy' },
       { method: 'POST', path: '/api/ai/screen-candidate', auth: 'Rate-Limited', category: 'Gemini AI' },
       { method: 'POST', path: '/api/ai/career-guidance', auth: 'Rate-Limited', category: 'Gemini AI' },
       { method: 'POST', path: '/api/ai/parse-resume', auth: 'Rate-Limited', category: 'Gemini AI' },
