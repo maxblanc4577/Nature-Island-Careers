@@ -1,5 +1,6 @@
 import React from 'react';
 import { Parish, JobSector } from '../types';
+import { useJobContext } from '../context/JobContext';
 import {
   Search,
   MapPin,
@@ -12,6 +13,7 @@ import {
   Laptop,
   Clock,
   History,
+  X,
 } from 'lucide-react';
 
 interface HeroSectionProps {
@@ -41,54 +43,29 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   backgroundImageUrl = '/nature_island_photo.jpg',
   siteName = 'Nature Island Careers',
 }) => {
-  const [bgMode, setBgMode] = React.useState<'photo_scotts' | 'trafalgar_falls' | 'emerald_pool' | 'flag'>('photo_scotts');
+  const {
+    recentSearches,
+    addRecentSearch,
+    removeRecentSearch,
+    clearRecentSearches,
+  } = useJobContext();
 
-  // Remember last 3 user-entered search queries
-  const [recentSearches, setRecentSearches] = React.useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem('natureisland_recent_searches');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.slice(0, 3);
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return ['Eco-Resort', 'Software Developer', 'Solar Energy'];
-  });
+  const [bgMode, setBgMode] = React.useState<'photo_scotts' | 'trafalgar_falls' | 'emerald_pool' | 'flag'>('photo_scotts');
   const [showRecentDropdown, setShowRecentDropdown] = React.useState(false);
 
   const saveRecentSearch = (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) return;
-    setRecentSearches((prev) => {
-      const filtered = prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase());
-      const updated = [trimmed, ...filtered].slice(0, 3);
-      try {
-        localStorage.setItem('natureisland_recent_searches', JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
-      return updated;
-    });
+    addRecentSearch(query);
   };
 
   const handleSelectRecentSearch = (query: string) => {
     setSearchQuery(query);
-    saveRecentSearch(query);
+    addRecentSearch(query);
     setShowRecentDropdown(false);
   };
 
   const handleClearRecentSearches = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setRecentSearches([]);
-    try {
-      localStorage.removeItem('natureisland_recent_searches');
-    } catch {
-      // ignore
-    }
+    clearRecentSearches();
   };
 
   const currentBg =
@@ -285,12 +262,66 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </div>
           </div>
 
+          {/* Recent Query Chips persisted via JobProvider localStorage */}
+          {recentSearches.length > 0 && (
+            <div
+              data-testid="recent-searches-chips"
+              className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center gap-2 text-xs"
+            >
+              <span className="inline-flex items-center gap-1 text-amber-200/90 font-semibold">
+                <History className="w-3.5 h-3.5 text-amber-300" />
+                <span>Recent Queries:</span>
+              </span>
+              {recentSearches.map((query, idx) => (
+                <div
+                  key={`chip-${query}-${idx}`}
+                  className={`inline-flex items-center rounded-lg border transition-all ${
+                    searchQuery.toLowerCase() === query.toLowerCase()
+                      ? 'bg-emerald-500/35 border-emerald-300 text-white font-bold shadow-xs'
+                      : 'bg-slate-900/45 hover:bg-emerald-800/60 border-white/15 text-emerald-100'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    data-testid={`recent-query-chip-${idx}`}
+                    onClick={() => handleSelectRecentSearch(query)}
+                    className="px-2.5 py-1 text-xs cursor-pointer flex items-center gap-1.5"
+                    title={`Search for "${query}"`}
+                  >
+                    <Clock className="w-3 h-3 text-emerald-300 shrink-0" />
+                    <span>{query}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeRecentSearch(query);
+                    }}
+                    aria-label={`Remove recent query ${query}`}
+                    className="pr-2 pl-0.5 py-1 text-emerald-200/70 hover:text-rose-300 cursor-pointer"
+                    title={`Remove "${query}"`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={handleClearRecentSearches}
+                className="text-emerald-200/70 hover:text-rose-300 text-[11px] font-semibold underline ml-auto cursor-pointer"
+              >
+                Clear History
+              </button>
+            </div>
+          )}
+
           {/* Quick Filter Tag Chips */}
           <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-emerald-200/80 font-medium">Quick Searches:</span>
             <button
               onClick={() => {
                 setSearchQuery('Eco-Resort');
+                saveRecentSearch('Eco-Resort');
                 setSelectedSector('Eco-Tourism & Hospitality');
               }}
               className="bg-white/10 hover:bg-white/20 text-emerald-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border border-white/10"
@@ -300,6 +331,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <button
               onClick={() => {
                 setSearchQuery('Remote');
+                saveRecentSearch('Remote');
                 setSelectedParish('Island-wide / Remote');
               }}
               className="bg-teal-500/20 hover:bg-teal-500/30 text-teal-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border border-teal-400/30"

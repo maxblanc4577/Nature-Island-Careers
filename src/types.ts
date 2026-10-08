@@ -32,13 +32,22 @@ export type EmploymentType =
 export type WorkModel = 'On-site' | 'Hybrid' | 'Remote';
 
 export type ApplicationStatus =
+  | 'Pending'
   | 'Applied'
   | 'Screened'
   | 'Shortlisted'
   | 'Interview Scheduled'
   | 'Offer Extended'
   | 'Hired'
+  | 'Rejected'
   | 'Archived';
+
+export interface SavedJobFolder {
+  id: string;
+  name: string;
+  jobIds: string[];
+  createdAt: string;
+}
 
 export interface ScreeningQuestion {
   id: string;
@@ -151,6 +160,8 @@ export interface UserAccount {
   // Jobseeker fields
   resumeFileName?: string;
   skills?: string[];
+  experience?: ResumeExperience[];
+  education?: ResumeEducation[];
   careerSector?: JobSector;
   // Client fields
   companyName?: string;
@@ -165,6 +176,24 @@ export interface ApplicationTimelineEvent {
   note?: string;
 }
 
+export type EvaluationRecommendation =
+  | 'Strong Hire'
+  | 'Hire'
+  | 'Hold / Follow-up'
+  | 'No Hire';
+
+export interface InterviewEvaluation {
+  communication: number; // 1 to 5
+  technicalFit: number; // 1 to 5
+  culturalFit: number; // 1 to 5
+  problemSolving?: number; // 1 to 5
+  overallScore: number; // 1.0 to 5.0
+  percentage: number; // 0 to 100
+  recommendation: EvaluationRecommendation;
+  comments?: string;
+  evaluatedAt: string;
+}
+
 export interface InterviewDetails {
   date: string;
   time: string;
@@ -172,6 +201,8 @@ export interface InterviewDetails {
   mode: 'In-person' | 'Virtual Video Call';
   instructions?: string;
   interviewerName?: string;
+  notes?: string;
+  evaluation?: InterviewEvaluation;
 }
 
 export interface InterviewSlot {
@@ -203,6 +234,7 @@ export interface JobApplication {
   rating: number; // 0 to 5
   notes: string[];
   interviewDetails?: InterviewDetails;
+  interviewEvaluation?: InterviewEvaluation;
   availableInterviewSlots?: InterviewSlot[];
   selectedSlotId?: string;
   appliedAt: string;
@@ -256,6 +288,26 @@ export interface JobAlertSubscription {
   frequency: 'instant' | 'daily' | 'weekly';
   active: boolean;
   createdAt: string;
+}
+
+export interface AlertPreferenceRule {
+  id: string;
+  sector: JobSector | 'All Sectors';
+  parish: Parish | 'All Parishes';
+  keyword?: string;
+  active: boolean;
+}
+
+export interface SubscriptionCriteria {
+  email: string;
+  name: string;
+  parishes: Parish[];
+  sectors: JobSector[];
+  keyword?: string;
+  frequency: 'instant' | 'daily' | 'weekly';
+  enabled: boolean;
+  alertPreferences?: AlertPreferenceRule[];
+  updatedAt: string;
 }
 
 export interface FeedbackItem {

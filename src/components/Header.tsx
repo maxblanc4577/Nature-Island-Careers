@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { RecentSearches } from './RecentSearches';
 import {
   Briefcase,
   Bell,
-  PlusCircle,
   User,
   Laptop,
-  CheckCircle2,
   Shield,
   LogOut,
   Building,
@@ -15,6 +14,8 @@ import {
   ChevronDown,
   Bookmark,
 } from 'lucide-react';
+
+export { RecentSearches };
 
 interface HeaderProps {
   activeTab:
@@ -37,12 +38,13 @@ interface HeaderProps {
       | 'analytics'
       | 'career'
   ) => void;
-  onOpenPostJob: () => void;
   onOpenNotifications: () => void;
   onOpenAuth: () => void;
   onOpenAdminLogin: () => void;
   onOpenRemoteModal: () => void;
   onOpenAdminPortal?: () => void;
+  searchQuery?: string;
+  onSelectSearchQuery?: (query: string) => void;
   siteSettings?: {
     siteName: string;
     contactEmail: string;
@@ -55,12 +57,13 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
-  onOpenPostJob,
   onOpenNotifications,
   onOpenAuth,
   onOpenAdminLogin,
   onOpenRemoteModal,
   onOpenAdminPortal,
+  searchQuery = '',
+  onSelectSearchQuery,
   siteSettings,
 }) => {
   const {
@@ -68,11 +71,15 @@ export const Header: React.FC<HeaderProps> = ({
     currentRecruiter,
     isAdminLoggedIn,
     unreadNotificationCount,
+    unreadJobAlertCount,
+    hasUnreadAlertMatches,
     applications,
     savedJobIds,
     logoutUser,
     adminLogout,
   } = useJobContext();
+
+  const hasUnreadMatches = hasUnreadAlertMatches || unreadJobAlertCount > 0 || unreadNotificationCount > 0;
 
   const userApplicationsCount = applications.length;
 
@@ -210,28 +217,31 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Notification Bell */}
+            {/* New Job Alerts Notification Icon */}
             <button
               onClick={onOpenNotifications}
-              className="relative p-2 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-              title="Notifications"
+              data-testid="new-job-alerts-button"
+              aria-label="New Job Alerts"
+              className={`relative p-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                hasUnreadMatches
+                  ? 'text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100'
+                  : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50'
+              }`}
+              title="New Job Alerts"
             >
-              <Bell className="w-5 h-5" />
-              {unreadNotificationCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                  {unreadNotificationCount}
+              <Bell
+                data-testid="new-job-alerts-icon"
+                className={`w-5 h-5 ${hasUnreadMatches ? 'animate-heartbeat text-emerald-700' : ''}`}
+              />
+              <span className="hidden xl:inline text-xs font-semibold">New Job Alerts</span>
+              {hasUnreadMatches && (
+                <span
+                  data-testid="unread-alerts-badge"
+                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-heartbeat"
+                >
+                  {unreadJobAlertCount || unreadNotificationCount}
                 </span>
               )}
-            </button>
- 
-             {/* Post Job Button */}
-             <button
-              onClick={onOpenPostJob}
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs sm:text-sm px-3.5 py-2 rounded-lg shadow-sm shadow-emerald-700/20 transition-all hover:shadow-md cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span className="hidden sm:inline">Post a Vacancy</span>
-              <span className="sm:hidden">Post</span>
             </button>
 
             {/* Singular 'Profile' Entry in Header */}
@@ -444,6 +454,18 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Recent Searches Component in Header tracking search history in localStorage */}
+      <RecentSearches
+        activeQuery={searchQuery}
+        onSelectQuery={(query) => {
+          if (onSelectSearchQuery) {
+            onSelectSearchQuery(query);
+          } else {
+            setActiveTab('jobs');
+          }
+        }}
+      />
     </header>
   );
 };

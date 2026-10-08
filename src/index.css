@@ -4,17 +4,17 @@
   0% {
     transform: scale(1);
   }
-  20% {
-    transform: scale(1.28);
-  }
-  40% {
-    transform: scale(0.96);
-  }
-  60% {
+  15% {
     transform: scale(1.18);
   }
-  80% {
-    transform: scale(0.98);
+  30% {
+    transform: scale(0.96);
+  }
+  45% {
+    transform: scale(1.12);
+  }
+  65% {
+    transform: scale(1);
   }
   100% {
     transform: scale(1);
@@ -22,7 +22,7 @@
 }
 
 .animate-heartbeat {
-  animation: heartbeat 0.55s cubic-bezier(0.25, 1, 0.5, 1);
+  animation: heartbeat 1.5s cubic-bezier(0.25, 1, 0.5, 1) infinite;
 }
 
 /* Job Card Hover & Scale Transitions */

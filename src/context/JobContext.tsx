@@ -11,12 +11,16 @@ import {
   Parish,
   JobSector,
   InterviewDetails,
+  InterviewEvaluation,
   InterviewSlot,
   UserAccount,
   ClientSubscription,
   SubscriptionPlan,
   EmployerInvoice,
   StripeSettings,
+  SubscriptionCriteria,
+  AlertPreferenceRule,
+  SavedJobFolder,
 } from '../types';
 import {
   INITIAL_JOBS,
@@ -109,10 +113,17 @@ interface JobContextType {
   deleteJob: (id: string) => void;
   incrementJobViews: (id: string) => void;
 
-  // Bookmarks
+  // Bookmarks & Custom Named Folders
   savedJobIds: string[];
-  toggleSaveJob: (id: string) => void;
+  savedJobFolders: SavedJobFolder[];
+  toggleSaveJob: (id: string, folderName?: string) => void;
   isJobSaved: (id: string) => boolean;
+  createSavedFolder: (folderName: string) => SavedJobFolder;
+  deleteSavedFolder: (folderId: string) => void;
+  renameSavedFolder: (folderId: string, newName: string) => void;
+  saveJobToFolder: (jobId: string, folderNameOrId: string) => void;
+  removeJobFromFolder: (jobId: string, folderId: string) => void;
+  getJobFolders: (jobId: string) => SavedJobFolder[];
 
   // Applications
   applications: JobApplication[];
@@ -134,12 +145,15 @@ interface JobContextType {
   rateApplication: (appId: string, rating: number) => void;
   addApplicationNote: (appId: string, note: string) => void;
   scheduleInterview: (appId: string, details: InterviewDetails) => void;
+  saveInterviewEvaluation: (appId: string, evaluation: InterviewEvaluation) => void;
   selectInterviewSlot: (appId: string, slotId: string, candidateNote?: string) => void;
   withdrawApplication: (appId: string) => void;
 
   // Real-time Email Notifications
   notifications: EmailNotification[];
   unreadNotificationCount: number;
+  unreadJobAlertCount: number;
+  hasUnreadAlertMatches: boolean;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   latestDispatchedEmail: EmailNotification | null;
@@ -148,8 +162,19 @@ interface JobContextType {
   sendManualTestAlert: (targetEmail: string) => void;
   requestBrowserNotificationPermission: () => Promise<NotificationPermission>;
 
-  // Alerts Subscriptions
+  // Recent Searches persisted in localStorage
+  recentSearches: string[];
+  setRecentSearches: React.Dispatch<React.SetStateAction<string[]>>;
+  addRecentSearch: (query: string) => void;
+  removeRecentSearch: (query: string) => void;
+  clearRecentSearches: () => void;
+
+  // Alerts Subscriptions & Persistent Subscription Criteria
   alerts: JobAlertSubscription[];
+  subscriptionCriteria: SubscriptionCriteria;
+  setSubscriptionCriteria: React.Dispatch<React.SetStateAction<SubscriptionCriteria>>;
+  saveSubscriptionCriteria: (criteria: Partial<SubscriptionCriteria>) => SubscriptionCriteria;
+  loadSubscriptionCriteria: () => SubscriptionCriteria;
   subscribeToAlert: (data: {
     email: string;
     name: string;
@@ -171,6 +196,195 @@ interface JobContextType {
 }
 
 const JobContext = createContext<JobContextType | undefined>(undefined);
+
+export const SUBSCRIPTION_CRITERIA_STORAGE_KEY = 'dominica_subscription_criteria';
+export const RECENT_SEARCHES_STORAGE_KEY = 'dominica_recent_searches';
+export const LEGACY_RECENT_SEARCHES_KEY = 'natureisland_recent_searches';
+export const SAVED_JOB_FOLDERS_STORAGE_KEY = 'dominica_saved_job_folders';
+
+export const DEFAULT_SAVED_JOB_FOLDERS: SavedJobFolder[] = [
+  {
+    id: 'folder-priority',
+    name: 'Priority Applications',
+    jobIds: ['job-101'],
+    createdAt: '2026-09-20',
+  },
+  {
+    id: 'folder-remote',
+    name: 'Remote & WIN Roles',
+    jobIds: ['job-102'],
+    createdAt: '2026-09-22',
+  },
+  {
+    id: 'folder-eco-energy',
+    name: 'Eco-Tourism & Energy',
+    jobIds: [],
+    createdAt: '2026-09-25',
+  },
+];
+
+export function loadSavedJobFoldersFromStorage(): SavedJobFolder[] {
+  try {
+    const raw = localStorage.getItem(SAVED_JOB_FOLDERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (f): f is SavedJobFolder =>
+            Boolean(f && typeof f.id === 'string' && typeof f.name === 'string' && Array.isArray(f.jobIds))
+        );
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return DEFAULT_SAVED_JOB_FOLDERS;
+}
+
+export function saveSavedJobFoldersToStorage(folders: SavedJobFolder[]): SavedJobFolder[] {
+  try {
+    localStorage.setItem(SAVED_JOB_FOLDERS_STORAGE_KEY, JSON.stringify(folders));
+  } catch {
+    // ignore storage errors
+  }
+  return folders;
+}
+
+export const DEFAULT_RECENT_SEARCHES: string[] = [
+  'Eco-Resort',
+  'Software Developer',
+  'Solar Energy',
+  'Geothermal Engineer',
+];
+
+export function loadRecentSearchesFromStorage(): string[] {
+  try {
+    const raw =
+      localStorage.getItem(RECENT_SEARCHES_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_RECENT_SEARCHES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((item) => item.trim());
+        return cleaned;
+      }
+    }
+  } catch {
+    // ignore storage / parse errors
+  }
+  return DEFAULT_RECENT_SEARCHES;
+}
+
+export function saveRecentSearchesToStorage(searches: string[]): string[] {
+  try {
+    const serialized = JSON.stringify(searches);
+    localStorage.setItem(RECENT_SEARCHES_STORAGE_KEY, serialized);
+    localStorage.setItem(LEGACY_RECENT_SEARCHES_KEY, serialized);
+  } catch {
+    // ignore storage errors
+  }
+  return searches;
+}
+
+export const DEFAULT_SUBSCRIPTION_CRITERIA: SubscriptionCriteria = {
+  email: 'maxblanc10468@gmail.com',
+  name: 'Max Blanc',
+  parishes: ['St. George', 'St. John'],
+  sectors: [
+    'Renewable Energy & Geothermal',
+    'Eco-Tourism & Hospitality',
+    'Information Technology & Digital',
+  ],
+  keyword: '',
+  frequency: 'instant',
+  enabled: true,
+  alertPreferences: [
+    {
+      id: 'pref-1',
+      sector: 'Renewable Energy & Geothermal',
+      parish: 'St. George',
+      active: true,
+    },
+    {
+      id: 'pref-2',
+      sector: 'Eco-Tourism & Hospitality',
+      parish: 'St. George',
+      active: true,
+    },
+    {
+      id: 'pref-3',
+      sector: 'Information Technology & Digital',
+      parish: 'Island-wide / Remote',
+      active: true,
+    },
+  ],
+  updatedAt: '2026-09-24',
+};
+
+export function loadSubscriptionCriteriaFromStorage(): SubscriptionCriteria {
+  try {
+    const raw = localStorage.getItem(SUBSCRIPTION_CRITERIA_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_SUBSCRIPTION_CRITERIA,
+        ...parsed,
+        parishes: Array.isArray(parsed.parishes)
+          ? parsed.parishes
+          : DEFAULT_SUBSCRIPTION_CRITERIA.parishes,
+        sectors: Array.isArray(parsed.sectors)
+          ? parsed.sectors
+          : DEFAULT_SUBSCRIPTION_CRITERIA.sectors,
+        alertPreferences: Array.isArray(parsed.alertPreferences)
+          ? parsed.alertPreferences
+          : DEFAULT_SUBSCRIPTION_CRITERIA.alertPreferences,
+      };
+    }
+    // Fallback to dominica_alerts if present
+    const savedAlertsRaw = localStorage.getItem('dominica_alerts');
+    if (savedAlertsRaw) {
+      const parsedAlerts: JobAlertSubscription[] = JSON.parse(savedAlertsRaw);
+      const firstActive = parsedAlerts.find((a) => a.active) || parsedAlerts[0];
+      if (firstActive) {
+        const derivedPrefs: AlertPreferenceRule[] =
+          firstActive.sectors.length > 0
+            ? firstActive.sectors.map((sec, idx) => ({
+                id: `pref-derived-${idx}`,
+                sector: sec,
+                parish: firstActive.parishes[idx % Math.max(1, firstActive.parishes.length)] || 'All Parishes',
+                keyword: firstActive.keyword,
+                active: firstActive.active,
+              }))
+            : DEFAULT_SUBSCRIPTION_CRITERIA.alertPreferences || [];
+        return {
+          email: firstActive.email,
+          name: firstActive.name,
+          parishes: firstActive.parishes,
+          sectors: firstActive.sectors,
+          keyword: firstActive.keyword || '',
+          frequency: firstActive.frequency,
+          enabled: firstActive.active,
+          alertPreferences: derivedPrefs,
+          updatedAt: firstActive.createdAt || new Date().toISOString().split('T')[0],
+        };
+      }
+    }
+  } catch {
+    // ignore JSON / storage errors
+  }
+  return DEFAULT_SUBSCRIPTION_CRITERIA;
+}
+
+export function saveSubscriptionCriteriaToStorage(criteria: SubscriptionCriteria): SubscriptionCriteria {
+  try {
+    localStorage.setItem(SUBSCRIPTION_CRITERIA_STORAGE_KEY, JSON.stringify(criteria));
+  } catch {
+    // ignore storage errors
+  }
+  return criteria;
+}
 
 export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load persistent state or fallback to mock data
@@ -209,10 +423,22 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ];
   });
 
+  const [subscriptionCriteria, setSubscriptionCriteria] = useState<SubscriptionCriteria>(() =>
+    loadSubscriptionCriteriaFromStorage()
+  );
+
+  const [recentSearches, setRecentSearches] = useState<string[]>(() =>
+    loadRecentSearchesFromStorage()
+  );
+
   const [savedJobIds, setSavedJobIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('dominica_saved_jobs');
     return saved ? JSON.parse(saved) : ['job-101', 'job-102'];
   });
+
+  const [savedJobFolders, setSavedJobFolders] = useState<SavedJobFolder[]>(() =>
+    loadSavedJobFoldersFromStorage()
+  );
 
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>(() => {
     const saved = localStorage.getItem('dominica_feedbacks');
@@ -276,8 +502,94 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [alerts]);
 
   useEffect(() => {
+    saveSubscriptionCriteriaToStorage(subscriptionCriteria);
+  }, [subscriptionCriteria]);
+
+  useEffect(() => {
+    saveRecentSearchesToStorage(recentSearches);
+  }, [recentSearches]);
+
+  const addRecentSearch = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setRecentSearches((prev) => {
+      const filtered = prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, 6);
+      saveRecentSearchesToStorage(updated);
+      return updated;
+    });
+  };
+
+  const removeRecentSearch = (query: string) => {
+    const trimmed = query.trim();
+    setRecentSearches((prev) => {
+      const updated = prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase());
+      saveRecentSearchesToStorage(updated);
+      return updated;
+    });
+  };
+
+  const clearRecentSearches = () => {
+    setRecentSearches([]);
+    try {
+      localStorage.setItem(RECENT_SEARCHES_STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem(LEGACY_RECENT_SEARCHES_KEY, JSON.stringify([]));
+    } catch {
+      // ignore
+    }
+  };
+
+  const loadSubscriptionCriteria = (): SubscriptionCriteria => {
+    const loaded = loadSubscriptionCriteriaFromStorage();
+    setSubscriptionCriteria(loaded);
+    return loaded;
+  };
+
+  const saveSubscriptionCriteria = (
+    updates: Partial<SubscriptionCriteria>
+  ): SubscriptionCriteria => {
+    const merged: SubscriptionCriteria = {
+      ...subscriptionCriteria,
+      ...updates,
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+    setSubscriptionCriteria(merged);
+    saveSubscriptionCriteriaToStorage(merged);
+
+    // Keep primary alert entry in `alerts` synchronized as well
+    setAlerts((prev) => {
+      const existingIdx = prev.findIndex(
+        (a) => a.email.toLowerCase() === merged.email.toLowerCase()
+      );
+      const syncedSub: JobAlertSubscription = {
+        id: existingIdx >= 0 ? prev[existingIdx].id : `alert-${Date.now()}`,
+        email: merged.email,
+        name: merged.name,
+        parishes: merged.parishes,
+        sectors: merged.sectors,
+        keyword: merged.keyword,
+        frequency: merged.frequency,
+        active: merged.enabled,
+        createdAt: existingIdx >= 0 ? prev[existingIdx].createdAt : merged.updatedAt,
+      };
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = syncedSub;
+        return copy;
+      }
+      return [syncedSub, ...prev];
+    });
+
+    return merged;
+  };
+
+  useEffect(() => {
     localStorage.setItem('dominica_saved_jobs', JSON.stringify(savedJobIds));
   }, [savedJobIds]);
+
+  useEffect(() => {
+    saveSavedJobFoldersToStorage(savedJobFolders);
+  }, [savedJobFolders]);
 
   useEffect(() => {
     localStorage.setItem('dominica_feedbacks', JSON.stringify(feedbacks));
@@ -313,13 +625,114 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const toggleSaveJob = (id: string) => {
-    setSavedJobIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+  const createSavedFolder = (folderName: string): SavedJobFolder => {
+    const trimmed = folderName.trim() || 'Saved Opportunities';
+    const existing = savedJobFolders.find(
+      (f) => f.name.toLowerCase() === trimmed.toLowerCase()
     );
+    if (existing) return existing;
+
+    const newFolder: SavedJobFolder = {
+      id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: trimmed,
+      jobIds: [],
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+    setSavedJobFolders((prev) => {
+      const next = [...prev, newFolder];
+      saveSavedJobFoldersToStorage(next);
+      return next;
+    });
+    return newFolder;
   };
 
-  const isJobSaved = (id: string) => savedJobIds.includes(id);
+  const deleteSavedFolder = (folderId: string) => {
+    setSavedJobFolders((prev) => {
+      const next = prev.filter((f) => f.id !== folderId);
+      saveSavedJobFoldersToStorage(next);
+      return next;
+    });
+  };
+
+  const renameSavedFolder = (folderId: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setSavedJobFolders((prev) => {
+      const next = prev.map((f) => (f.id === folderId ? { ...f, name: trimmed } : f));
+      saveSavedJobFoldersToStorage(next);
+      return next;
+    });
+  };
+
+  const saveJobToFolder = (jobId: string, folderNameOrId: string) => {
+    const target = folderNameOrId.trim();
+    if (!target) return;
+
+    setSavedJobIds((prev) => (prev.includes(jobId) ? prev : [...prev, jobId]));
+
+    setSavedJobFolders((prev) => {
+      const matchIndex = prev.findIndex(
+        (f) => f.id === target || f.name.toLowerCase() === target.toLowerCase()
+      );
+      if (matchIndex >= 0) {
+        const folder = prev[matchIndex];
+        if (folder.jobIds.includes(jobId)) return prev;
+        const next = [...prev];
+        next[matchIndex] = { ...folder, jobIds: [...folder.jobIds, jobId] };
+        saveSavedJobFoldersToStorage(next);
+        return next;
+      } else {
+        const newFolder: SavedJobFolder = {
+          id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: target,
+          jobIds: [jobId],
+          createdAt: new Date().toISOString().split('T')[0],
+        };
+        const next = [...prev, newFolder];
+        saveSavedJobFoldersToStorage(next);
+        return next;
+      }
+    });
+  };
+
+  const removeJobFromFolder = (jobId: string, folderId: string) => {
+    setSavedJobFolders((prev) => {
+      const next = prev.map((f) =>
+        f.id === folderId ? { ...f, jobIds: f.jobIds.filter((id) => id !== jobId) } : f
+      );
+      saveSavedJobFoldersToStorage(next);
+      return next;
+    });
+  };
+
+  const getJobFolders = (jobId: string): SavedJobFolder[] => {
+    return savedJobFolders.filter((f) => f.jobIds.includes(jobId));
+  };
+
+  const toggleSaveJob = (id: string, folderName?: string) => {
+    if (folderName && folderName.trim()) {
+      saveJobToFolder(id, folderName.trim());
+      return;
+    }
+    setSavedJobIds((prev) => {
+      const isCurrentlySaved = prev.includes(id);
+      if (isCurrentlySaved) {
+        setSavedJobFolders((folders) => {
+          const next = folders.map((f) => ({
+            ...f,
+            jobIds: f.jobIds.filter((jid) => jid !== id),
+          }));
+          saveSavedJobFoldersToStorage(next);
+          return next;
+        });
+        return prev.filter((item) => item !== id);
+      }
+      return [...prev, id];
+    });
+  };
+
+  const isJobSaved = (id: string) =>
+    savedJobIds.includes(id) || savedJobFolders.some((f) => f.jobIds.includes(id));
 
   // User registration & authentication
   const registerJobseeker = (data: {
@@ -777,12 +1190,60 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }).catch((err) => console.warn('Backend alert check notice:', err));
 
     // Check alerts and notify matching subscribers in real-time
-    const matchingAlerts = alerts.filter(
-      (a) =>
-        a.active &&
-        (a.parishes.length === 0 || a.parishes.includes(newJob.parish)) &&
-        (a.sectors.length === 0 || a.sectors.includes(newJob.sector))
-    );
+    const matchingAlerts = alerts.filter((a) => {
+      if (!a.active) return false;
+      const parishMatch =
+        a.parishes.length === 0 ||
+        a.parishes.includes(newJob.parish) ||
+        newJob.parish === 'Island-wide / Remote';
+      const sectorMatch =
+        a.sectors.length === 0 || a.sectors.includes(newJob.sector);
+      const kw = a.keyword?.trim().toLowerCase();
+      const keywordMatch =
+        !kw ||
+        newJob.title.toLowerCase().includes(kw) ||
+        newJob.description.toLowerCase().includes(kw) ||
+        newJob.company.toLowerCase().includes(kw) ||
+        newJob.locality.toLowerCase().includes(kw) ||
+        (newJob.requiredSkills?.some((s) => s.toLowerCase().includes(kw)) ?? false);
+      return parishMatch && sectorMatch && keywordMatch;
+    });
+
+    // Background service: automatically trigger email notification to the site contact email
+    const siteContactEmail = getSiteContactEmail();
+    const siteAdminJobNotice: EmailNotification = {
+      id: `notif-site-newjob-${Date.now()}`,
+      recipientEmail: siteContactEmail,
+      recipientName: 'Nature Island Careers Operations Team',
+      subject: `[New Job Created] ${newJob.title} by ${newJob.company} (${newJob.parish})`,
+      previewText: `New classified vacancy published: ${newJob.title} at ${newJob.company}. Salary: EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()}.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+          <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Platform Administrator Alert</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automatic Notification to Site Contact (${siteContactEmail})</p>
+          </div>
+          <p style="font-size: 14px; color: #1e293b;">A new job posting has just been published on Nature Island Careers:</p>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            <p style="margin: 0; color: #0f172a;"><strong>Position:</strong> ${newJob.title}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Employer:</strong> ${newJob.company}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Parish:</strong> ${newJob.parish} (${newJob.locality})</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Sector:</strong> ${newJob.sector}</p>
+            <p style="margin: 4px 0 0 0; color: #065f46; font-weight: bold;"><strong>Salary Range:</strong> EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()} / ${newJob.salaryPeriod}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Work Model:</strong> ${newJob.workModel} · ${newJob.employmentType}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Application Deadline:</strong> ${newJob.applicationDeadline}</p>
+          </div>
+          <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+            Delivered automatically to site contact email (${siteContactEmail}) via Background Service.
+          </p>
+        </div>
+      `,
+      type: 'status_update',
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      isRead: false,
+      relatedJobId: newJob.id,
+    };
+    dispatchEmail(siteAdminJobNotice);
 
     matchingAlerts.forEach((alert) => {
       const emailNotif: EmailNotification = {
@@ -823,42 +1284,6 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       dispatchEmail(emailNotif);
     });
-
-    // Background service: automatically trigger email notification to the site contact email
-    const siteContactEmail = getSiteContactEmail();
-    const siteAdminJobNotice: EmailNotification = {
-      id: `notif-site-newjob-${Date.now()}`,
-      recipientEmail: siteContactEmail,
-      recipientName: 'Nature Island Careers Operations Team',
-      subject: `[New Job Created] ${newJob.title} by ${newJob.company} (${newJob.parish})`,
-      previewText: `New classified vacancy published: ${newJob.title} at ${newJob.company}. Salary: EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()}.`,
-      bodyHtml: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
-          <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
-            <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Platform Administrator Alert</h2>
-            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automatic Notification to Site Contact (${siteContactEmail})</p>
-          </div>
-          <p style="font-size: 14px; color: #1e293b;">A new job posting has just been published on Nature Island Careers:</p>
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
-            <p style="margin: 0; color: #0f172a;"><strong>Position:</strong> ${newJob.title}</p>
-            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Employer:</strong> ${newJob.company}</p>
-            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Parish:</strong> ${newJob.parish} (${newJob.locality})</p>
-            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Sector:</strong> ${newJob.sector}</p>
-            <p style="margin: 4px 0 0 0; color: #065f46; font-weight: bold;"><strong>Salary Range:</strong> EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()} / ${newJob.salaryPeriod}</p>
-            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Work Model:</strong> ${newJob.workModel} · ${newJob.employmentType}</p>
-            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Application Deadline:</strong> ${newJob.applicationDeadline}</p>
-          </div>
-          <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-            Delivered automatically to site contact email (${siteContactEmail}) via Background Service.
-          </p>
-        </div>
-      `,
-      type: 'status_update',
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      isRead: false,
-      relatedJobId: newJob.id,
-    };
-    dispatchEmail(siteAdminJobNotice);
 
     // Browser notification: check if newly posted job matches user's previous search criteria
     try {
@@ -1101,12 +1526,15 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!app) return;
 
     const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const trimmedNotes = details.notes?.trim();
     const updatedTimeline = [
       ...app.timeline,
       {
         date: nowTimestamp,
         action: `Interview Scheduled`,
-        note: `${details.mode} on ${details.date} at ${details.time} (${details.location})`,
+        note: `${details.mode} on ${details.date} at ${details.time} (${details.location})${
+          trimmedNotes ? ` · Recruiter Notes: ${trimmedNotes}` : ''
+        }`,
       },
     ];
 
@@ -1117,6 +1545,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...a,
               status: 'Interview Scheduled',
               interviewDetails: details,
+              notes: trimmedNotes ? [...a.notes, trimmedNotes] : a.notes,
               timeline: updatedTimeline,
             }
           : a
@@ -1159,6 +1588,38 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     dispatchEmail(interviewEmail);
+  };
+
+  // Save Post-Call Interview Evaluation
+  const saveInterviewEvaluation = (appId: string, evaluation: InterviewEvaluation) => {
+    const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const evalSummaryNote = `[Interview Evaluation: ${evaluation.overallScore}/5 (${evaluation.percentage}%) · ${evaluation.recommendation}] Comm: ${evaluation.communication}/5, Tech Fit: ${evaluation.technicalFit}/5, Cultural Fit: ${evaluation.culturalFit}/5${
+      evaluation.problemSolving ? `, Problem Solving: ${evaluation.problemSolving}/5` : ''
+    }${evaluation.comments ? ` — "${evaluation.comments}"` : ''}`;
+
+    setApplications((prev) =>
+      prev.map((a) => {
+        if (a.id !== appId) return a;
+        const updatedDetails: InterviewDetails | undefined = a.interviewDetails
+          ? { ...a.interviewDetails, evaluation }
+          : undefined;
+        return {
+          ...a,
+          rating: Math.max(1, Math.min(5, Math.round(evaluation.overallScore))),
+          interviewEvaluation: evaluation,
+          interviewDetails: updatedDetails,
+          notes: [...a.notes, evalSummaryNote],
+          timeline: [
+            ...a.timeline,
+            {
+              date: nowTimestamp,
+              action: `Interview Evaluation Completed (${evaluation.recommendation})`,
+              note: evalSummaryNote,
+            },
+          ],
+        };
+      })
+    );
   };
 
   // Candidate selects an available recruiter-provided interview slot
@@ -1266,6 +1727,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Notifications
   const unreadNotificationCount = notifications.filter((n) => !n.isRead).length;
+  const unreadJobAlertCount = notifications.filter(
+    (n) => !n.isRead && n.type === 'job_alert'
+  ).length;
+  const hasUnreadAlertMatches =
+    unreadJobAlertCount > 0 ||
+    unreadNotificationCount > 0 ||
+    Boolean(latestDispatchedEmail && !latestDispatchedEmail.isRead);
 
   const markNotificationAsRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
@@ -1317,6 +1785,41 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString().split('T')[0],
     };
     setAlerts((prev) => [newAlert, ...prev]);
+
+    // Also persist to subscriptionCriteria in localStorage
+    const derivedRules: AlertPreferenceRule[] =
+      data.sectors.length > 0
+        ? data.sectors.map((sec, idx) => ({
+            id: `pref-${Date.now()}-${idx}`,
+            sector: sec,
+            parish:
+              data.parishes[idx % Math.max(1, data.parishes.length)] || 'All Parishes',
+            keyword: data.keyword,
+            active: true,
+          }))
+        : [
+            {
+              id: `pref-${Date.now()}-0`,
+              sector: 'All Sectors',
+              parish: data.parishes[0] || 'All Parishes',
+              keyword: data.keyword,
+              active: true,
+            },
+          ];
+
+    const updatedCriteria: SubscriptionCriteria = {
+      email: data.email,
+      name: data.name,
+      parishes: data.parishes,
+      sectors: data.sectors,
+      keyword: data.keyword || '',
+      frequency: data.frequency,
+      enabled: true,
+      alertPreferences: derivedRules,
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+    setSubscriptionCriteria(updatedCriteria);
+    saveSubscriptionCriteriaToStorage(updatedCriteria);
 
     // Sync subscription criteria with backend service
     fetch('/api/alerts/subscribe', {
@@ -1512,8 +2015,15 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteJob,
         incrementJobViews,
         savedJobIds,
+        savedJobFolders,
         toggleSaveJob,
         isJobSaved,
+        createSavedFolder,
+        deleteSavedFolder,
+        renameSavedFolder,
+        saveJobToFolder,
+        removeJobFromFolder,
+        getJobFolders,
         applications,
         myApplications,
         submitApplication,
@@ -1521,10 +2031,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rateApplication,
         addApplicationNote,
         scheduleInterview,
+        saveInterviewEvaluation,
         selectInterviewSlot,
         withdrawApplication,
         notifications,
         unreadNotificationCount,
+        unreadJobAlertCount,
+        hasUnreadAlertMatches,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         latestDispatchedEmail,
@@ -1532,7 +2045,16 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatchEmail,
         sendManualTestAlert,
         requestBrowserNotificationPermission,
+        recentSearches,
+        setRecentSearches,
+        addRecentSearch,
+        removeRecentSearch,
+        clearRecentSearches,
         alerts,
+        subscriptionCriteria,
+        setSubscriptionCriteria,
+        saveSubscriptionCriteria,
+        loadSubscriptionCriteria,
         subscribeToAlert,
         toggleAlertActive,
         feedbacks,

@@ -10,7 +10,6 @@ import { JobFilters } from './components/JobFilters';
 import { JobCard } from './components/JobCard';
 import { JobDetailModal } from './components/JobDetailModal';
 import { ApplyModal } from './components/ApplyModal';
-import { PostJobModal } from './components/PostJobModal';
 import { SubscribeAlertModal } from './components/SubscribeAlertModal';
 import { FeedbackModal } from './components/FeedbackModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
@@ -97,7 +96,6 @@ function DominicaJobBoardContent() {
   // Modal dialog states
   const [selectedJobForDetail, setSelectedJobForDetail] = useState<JobListing | null>(null);
   const [jobToApply, setJobToApply] = useState<JobListing | null>(null);
-  const [isPostJobOpen, setIsPostJobOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
@@ -165,11 +163,13 @@ function DominicaJobBoardContent() {
     applicationId: string;
     candidateName: string;
     jobTitle: string;
+    notes: string;
   }>({
     isOpen: false,
     applicationId: '',
     candidateName: '',
     jobTitle: '',
+    notes: '',
   });
 
   // Filtered jobs calculation using pure helper function
@@ -279,12 +279,16 @@ function DominicaJobBoardContent() {
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenPostJob={() => setIsPostJobOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
         onOpenAdminPortal={handleOpenAdminMasterPortal}
+        searchQuery={searchQuery}
+        onSelectSearchQuery={(query) => {
+          setSearchQuery(query);
+          setActiveTab('jobs');
+        }}
         siteSettings={siteSettings}
       />
 
@@ -487,14 +491,14 @@ function DominicaJobBoardContent() {
         {/* TAB 4: RECRUITER / EMPLOYER PORTAL */}
         {activeTab === 'recruiter' && (
           <RecruiterPortal
-            onOpenPostJob={() => setIsPostJobOpen(true)}
             onOpenSubscription={() => setIsSubscriptionCheckoutOpen(true)}
-            onScheduleInterview={(applicationId, candidateName, jobTitle) => {
+            onScheduleInterview={(applicationId, candidateName, jobTitle, notes = '') => {
               setInterviewData({
                 isOpen: true,
                 applicationId,
                 candidateName,
                 jobTitle,
+                notes,
               });
             }}
           />
@@ -540,7 +544,7 @@ function DominicaJobBoardContent() {
       />
 
       {/* Floating Simulated Email Alert Toast */}
-      <EmailAlertToast />
+      <EmailAlertToast onSelectJob={(job) => setSelectedJobForDetail(job)} />
 
       {/* Floating Compare Action Dock */}
       {comparedJobIds.length > 0 && (
@@ -653,11 +657,6 @@ function DominicaJobBoardContent() {
         />
       )}
 
-      <PostJobModal
-        isOpen={isPostJobOpen}
-        onClose={() => setIsPostJobOpen(false)}
-      />
-
       <SubscribeAlertModal
         isOpen={isSubscribeAlertOpen}
         onClose={() => setIsSubscribeAlertOpen(false)}
@@ -719,11 +718,19 @@ function DominicaJobBoardContent() {
               applicationId: '',
               candidateName: '',
               jobTitle: '',
+              notes: '',
             })
           }
           applicationId={interviewData.applicationId}
           candidateName={interviewData.candidateName}
           jobTitle={interviewData.jobTitle}
+          notes={interviewData.notes}
+          onNotesChange={(notes) =>
+            setInterviewData((prev) => ({
+              ...prev,
+              notes,
+            }))
+          }
         />
       )}
 

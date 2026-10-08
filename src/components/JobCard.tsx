@@ -24,6 +24,10 @@ import {
   BarChart3,
   Scale,
   TrendingUp,
+  FolderPlus,
+  Folder,
+  Check,
+  Plus,
 } from 'lucide-react';
 
 interface JobCardProps {
@@ -49,11 +53,22 @@ export const JobCard: React.FC<JobCardProps> = ({
   isCompared = false,
   onToggleCompare,
 }) => {
-  const { toggleSaveJob, isJobSaved, currentUser } = useJobContext();
+  const {
+    toggleSaveJob,
+    isJobSaved,
+    currentUser,
+    savedJobFolders,
+    saveJobToFolder,
+    removeJobFromFolder,
+    getJobFolders,
+  } = useJobContext();
   const saved = isJobSaved(job.id);
+  const jobFolders = getJobFolders(job.id);
   const [isPulsing, setIsPulsing] = React.useState(false);
   const [showShareModal, setShowShareModal] = React.useState(false);
   const [isQuickViewOpen, setIsQuickViewOpen] = React.useState(false);
+  const [isFolderMenuOpen, setIsFolderMenuOpen] = React.useState(false);
+  const [customFolderName, setCustomFolderName] = React.useState('');
 
   // Feature: Save Toggle with Heart Icon (persisted to localStorage via JobContext)
   const handleToggleSave = (e: React.MouseEvent) => {
@@ -61,6 +76,24 @@ export const JobCard: React.FC<JobCardProps> = ({
     setIsPulsing(true);
     toggleSaveJob(job.id);
     setTimeout(() => setIsPulsing(false), 550);
+  };
+
+  const handleToggleFolderMembership = (e: React.MouseEvent, folderId: string, folderName: string, isInFolder: boolean) => {
+    e.stopPropagation();
+    if (isInFolder) {
+      removeJobFromFolder(job.id, folderId);
+    } else {
+      saveJobToFolder(job.id, folderName);
+    }
+  };
+
+  const handleCreateCustomFolderAndSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const cleaned = customFolderName.trim();
+    if (!cleaned) return;
+    saveJobToFolder(job.id, cleaned);
+    setCustomFolderName('');
   };
 
   const handleShareClick = (e: React.MouseEvent) => {
@@ -276,6 +309,101 @@ export const JobCard: React.FC<JobCardProps> = ({
                 }`}
               />
             </button>
+
+            {/* Feature: Save job to custom named folders */}
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                data-testid={`save-to-folder-btn-${job.id}`}
+                onClick={() => setIsFolderMenuOpen((prev) => !prev)}
+                className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                  jobFolders.length > 0
+                    ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
+                    : 'bg-stone-50 hover:bg-stone-100 text-stone-600 border-stone-200/80'
+                }`}
+                title="Save job to custom named folders"
+                aria-label="Save to folder"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-amber-600" />
+                <span className="hidden sm:inline">
+                  {jobFolders.length > 0 ? jobFolders[0].name : 'Folder'}
+                </span>
+                {jobFolders.length > 1 && (
+                  <span className="text-[10px] bg-amber-200/80 text-amber-950 px-1 rounded">
+                    +{jobFolders.length - 1}
+                  </span>
+                )}
+              </button>
+
+              {isFolderMenuOpen && (
+                <div
+                  data-testid={`folder-popover-${job.id}`}
+                  className="absolute right-0 top-full mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 p-3 z-30 space-y-2.5 text-left"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                      <Folder className="w-3.5 h-3.5 text-amber-600" />
+                      Save to Custom Folder
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsFolderMenuOpen(false)}
+                      className="text-slate-400 hover:text-slate-700 text-xs font-bold cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="space-y-1 max-h-36 overflow-y-auto">
+                    {savedJobFolders.map((folder) => {
+                      const isInFolder = folder.jobIds.includes(job.id);
+                      return (
+                        <button
+                          key={folder.id}
+                          type="button"
+                          onClick={(e) =>
+                            handleToggleFolderMembership(e, folder.id, folder.name, isInFolder)
+                          }
+                          className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                            isInFolder
+                              ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                              : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <span className="truncate">{folder.name}</span>
+                          {isInFolder ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          ) : (
+                            <span className="text-[10px] text-slate-400">{folder.jobIds.length}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <form
+                    onSubmit={handleCreateCustomFolderAndSave}
+                    className="pt-2 border-t border-slate-100 flex items-center gap-1.5"
+                  >
+                    <input
+                      type="text"
+                      value={customFolderName}
+                      onChange={(e) => setCustomFolderName(e.target.value)}
+                      placeholder="New folder name..."
+                      aria-label="New folder name"
+                      className="flex-1 px-2 py-1 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-600"
+                    />
+                    <button
+                      type="submit"
+                      className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg cursor-pointer shrink-0 flex items-center gap-0.5"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Save</span>
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

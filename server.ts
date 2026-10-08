@@ -3,7 +3,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 
@@ -564,67 +564,89 @@ Draft a warm, professional, and convincing cover letter formatted with formal da
   return res.json({ error: 'Fallback generator used' });
 });
 
-// 4. Gemini Resume Parser Endpoint
-app.post('/api/career/parse-resume', aiRateLimiter, async (req, res) => {
-  const textVal = validateRequiredString(req.body?.resumeText, 'resumeText', 25000);
-  if (!textVal.valid) {
-    return res.status(400).json({ error: textVal.error });
+// 4. Gemini Resume Parser Endpoint (Supports raw text and/or uploaded document base64)
+const handleParseResumeRequest = async (req: express.Request, res: express.Response) => {
+  const rawText = typeof req.body?.resumeText === 'string' ? req.body.resumeText.trim() : '';
+  const fileBase64 = typeof req.body?.fileBase64 === 'string' ? req.body.fileBase64.trim() : '';
+  const mimeType = typeof req.body?.mimeType === 'string' ? req.body.mimeType.trim() : 'text/plain';
+  const fileName = sanitizeString(req.body?.fileName, 200) || 'Uploaded_Resume.pdf';
+
+  if (!rawText && !fileBase64) {
+    return res.status(400).json({
+      error: 'Either resumeText or an uploaded document (fileBase64) is required.',
+    });
   }
 
-  const resumeText = textVal.value;
+  const resumeText = rawText.slice(0, 25000);
 
   if (aiClient) {
     try {
+      const parts: any[] = [];
+      if (fileBase64 && (mimeType === 'application/pdf' || mimeType.startsWith('image/'))) {
+        parts.push({
+          inlineData: {
+            mimeType,
+            data: fileBase64,
+          },
+        });
+      }
+      parts.push({
+        text: `You are an expert recruitment parser for Nature Island Careers in Dominica.
+Parse the uploaded candidate resume (${fileName}) and extract structured profile data including skills, experience, and education.
+${resumeText ? `\nResume text content:\n"""\n${resumeText.slice(0, 12000)}\n"""` : ''}`,
+      });
+
       const response = await aiClient.models.generateContent({
         model: 'gemini-3.8-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `You are an expert recruitment parser for Nature Island Careers in Dominica.
-Parse the following raw candidate resume text and extract structured profile data.
-
-Resume text:
-"""
-${resumeText.slice(0, 10000)}
-"""
-
-Extract the information into strict, valid JSON format matching this schema:
-{
-  "fullName": string,
-  "email": string,
-  "phone": string,
-  "parish": string (e.g. "St. George", "St. John", "St. Paul", "St. Andrew", etc. default to "St. George" if unknown),
-  "locality": string (e.g. "Roseau", "Portsmouth", "Canefield", "Marigot"),
-  "headline": string (concise professional headline),
-  "summary": string (3-4 sentences executive summary highlighting Caribbean/Dominican strengths),
-  "skills": string[] (array of 6-15 technical and domain skills),
-  "experience": [
-    {
-      "title": string,
-      "company": string,
-      "location": string,
-      "startDate": string,
-      "endDate": string,
-      "responsibilities": string[]
-    }
-  ],
-  "education": [
-    {
-      "degree": string,
-      "institution": string,
-      "year": string,
-      "fieldOfStudy": string
-    }
-  ]
-}
-
-Respond strictly with valid JSON without markdown fences.`,
+        contents: [{ role: 'user', parts }],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              fullName: { type: Type.STRING },
+              email: { type: Type.STRING },
+              phone: { type: Type.STRING },
+              parish: { type: Type.STRING },
+              locality: { type: Type.STRING },
+              headline: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              skills: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
               },
-            ],
+              experience: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    company: { type: Type.STRING },
+                    location: { type: Type.STRING },
+                    startDate: { type: Type.STRING },
+                    endDate: { type: Type.STRING },
+                    responsibilities: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                  },
+                },
+              },
+              education: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    degree: { type: Type.STRING },
+                    institution: { type: Type.STRING },
+                    year: { type: Type.STRING },
+                    fieldOfStudy: { type: Type.STRING },
+                  },
+                },
+              },
+            },
           },
-        ],
+        },
       });
 
       const text = response.text || '';
@@ -638,18 +660,34 @@ Respond strictly with valid JSON without markdown fences.`,
 
   // Realistic fallback parsing heuristics
   const lines = resumeText.split('\n').map((l: string) => l.trim()).filter(Boolean);
-  const potentialName = lines[0] || 'Candidate';
+  const potentialName = lines[0] || fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ') || 'Candidate';
   const emailMatch = resumeText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  const phoneMatch = resumeText.match(/(?:\+?1[-. ]?)?\(?767\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}|(?:\+?[0-9]{1,3}[-. ]?)?\(?[0-9]{3}\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}/);
+  const phoneMatch = resumeText.match(
+    /(?:\+?1[-. ]?)?\(?767\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}|(?:\+?[0-9]{1,3}[-. ]?)?\(?[0-9]{3}\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}/
+  );
 
-  const fallbackSkills = [
-    'Project Leadership',
-    'Customer & Client Relations',
-    'Dominica Industry Standards',
-    'Strategic Problem Solving',
-    'Team Mentorship',
-    'Microsoft 365 & Digital Tools',
-  ];
+  // Extract skills if listed in text
+  const skillsSectionMatch = resumeText.match(
+    /(?:Skills|Technical Skills|Core Competencies)[:\s]*\n*([^]*?)(?=\n(?:Experience|Work Experience|Education|Certifications):|$)/i
+  );
+  const extractedSkills = skillsSectionMatch?.[1]
+    ? skillsSectionMatch[1]
+        .split(/[,•|\n]+/)
+        .map((s: string) => s.replace(/^[-*]\s*/, '').trim())
+        .filter((s: string) => s.length > 1 && s.length < 55)
+    : [];
+
+  const fallbackSkills =
+    extractedSkills.length > 0
+      ? extractedSkills
+      : [
+          'Project Leadership',
+          'Customer & Client Relations',
+          'Dominica Industry Standards',
+          'Strategic Problem Solving',
+          'Team Mentorship',
+          'Microsoft 365 & Digital Tools',
+        ];
 
   return res.json({
     parsedProfile: {
@@ -658,7 +696,10 @@ Respond strictly with valid JSON without markdown fences.`,
       phone: phoneMatch ? phoneMatch[0] : '+1 (767) 448-2000',
       parish: resumeText.includes('Portsmouth') ? 'St. John' : 'St. George',
       locality: resumeText.includes('Portsmouth') ? 'Portsmouth' : 'Roseau',
-      headline: lines[1] && lines[1].length < 80 ? lines[1] : 'Experienced Professional & Industry Practitioner',
+      headline:
+        lines[1] && lines[1].length < 80
+          ? lines[1]
+          : 'Experienced Professional & Industry Practitioner',
       summary: `Motivated professional with proven hands-on leadership, dedicated to advancing Dominica’s sustainable economic development. Experienced in cross-functional coordination, operational resilience, and delivering client satisfaction across public and private sectors.`,
       skills: fallbackSkills,
       experience: [
@@ -684,7 +725,10 @@ Respond strictly with valid JSON without markdown fences.`,
       ],
     },
   });
-});
+};
+
+app.post('/api/career/parse-resume', aiRateLimiter, handleParseResumeRequest);
+app.post('/api/ai/parse-resume', aiRateLimiter, handleParseResumeRequest);
 
 // 4b. AI Cover Letter Generator Endpoint (Personalized for Dominica Job Seeker)
 app.post('/api/ai/cover-letter', aiRateLimiter, async (req, res) => {
