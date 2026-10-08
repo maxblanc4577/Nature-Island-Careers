@@ -14,7 +14,7 @@ import { SubscribeAlertModal } from './components/SubscribeAlertModal';
 import { FeedbackModal } from './components/FeedbackModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { AuthModal } from './components/AuthModal';
-import { AdminLoginModal } from './components/AdminLoginModal';
+import { AdminLoginModal, StandaloneAdminLoginPage } from './components/AdminLoginModal';
 import { SubscriptionCheckoutModal } from './components/SubscriptionCheckoutModal';
 import { RemoteAssignmentModal } from './components/RemoteAssignmentModal';
 import { InterviewSchedulerModal } from './components/InterviewSchedulerModal';
@@ -99,6 +99,27 @@ function DominicaJobBoardContent() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [currentPath, setCurrentPath] = useState<string>(() =>
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
+
+  const navigateToPath = React.useCallback((path: string) => {
+    try {
+      window.history.pushState({}, '', path);
+    } catch {
+      // ignore history errors in test environments
+    }
+    setCurrentPath(path);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname || '/');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
   const [isSubscribeAlertOpen, setIsSubscribeAlertOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isSubscriptionCheckoutOpen, setIsSubscriptionCheckoutOpen] = useState(false);
@@ -218,9 +239,28 @@ function DominicaJobBoardContent() {
     if (isAdminLoggedIn) {
       setIsMasterAdminOpen(true);
     } else {
-      setIsAdminLoginOpen(true);
+      navigateToPath('/admin-login');
     }
   };
+
+  // Dedicated Standalone Admin Login Gateway (/admin-login) completely isolated from public layout
+  if (currentPath === '/admin-login' || currentPath.startsWith('/admin-login/')) {
+    return (
+      <>
+        <Helmet>
+          <title>Admin Console Gateway | Nature Island Careers</title>
+          <meta name="robots" content="noindex, nofollow" />
+        </Helmet>
+        <StandaloneAdminLoginPage
+          onSuccess={() => {
+            navigateToPath('/');
+            setIsMasterAdminOpen(true);
+          }}
+          onReturnPublic={() => navigateToPath('/')}
+        />
+      </>
+    );
+  }
 
   return (
     <div
@@ -281,7 +321,7 @@ function DominicaJobBoardContent() {
         setActiveTab={setActiveTab}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
+        onOpenAdminLogin={() => navigateToPath('/admin-login')}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
         onOpenAdminPortal={handleOpenAdminMasterPortal}
         searchQuery={searchQuery}

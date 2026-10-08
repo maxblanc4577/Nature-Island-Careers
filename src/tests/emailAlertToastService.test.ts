@@ -27,6 +27,12 @@ import {
   applyParsedResumeToCandidateProfile,
 } from '../components/CandidateProfileHub';
 import {
+  evaluateHoneypotTrap,
+  recordFailedAdminAttempt,
+  isAdminLoginLockedOut,
+  INITIAL_ADMIN_SECURITY_STATE,
+} from '../components/AdminLoginModal';
+import {
   saveRecentSearchesToStorage,
   loadRecentSearchesFromStorage,
   DEFAULT_RECENT_SEARCHES,
@@ -383,5 +389,31 @@ B.Sc. in Electrical Engineering | University of the West Indies (UWI) | 2020`;
     expect(updatedProfile.skills).toContain('Node.js');
     expect(updatedProfile.experience?.length).toBeGreaterThan(0);
     expect(updatedProfile.education?.length).toBeGreaterThan(0);
+  });
+
+  it('enforces bot-honeypot trap and brute-force attempt tracking with temporary lockout on Admin Login', () => {
+    expect(evaluateHoneypotTrap('')).toBe(false);
+    expect(evaluateHoneypotTrap('   ')).toBe(false);
+    expect(evaluateHoneypotTrap('https://spam-bot.example')).toBe(true);
+
+    const t0 = 1700000000000;
+    const after1 = recordFailedAdminAttempt(INITIAL_ADMIN_SECURITY_STATE, t0, 3, 30000);
+    expect(after1.failedAttempts).toBe(1);
+    expect(isAdminLoginLockedOut(after1, t0).locked).toBe(false);
+
+    const after2 = recordFailedAdminAttempt(after1, t0 + 1000, 3, 30000);
+    expect(after2.failedAttempts).toBe(2);
+    expect(isAdminLoginLockedOut(after2, t0 + 1000).locked).toBe(false);
+
+    const after3 = recordFailedAdminAttempt(after2, t0 + 2000, 3, 30000);
+    expect(after3.failedAttempts).toBe(3);
+    const lockCheck = isAdminLoginLockedOut(after3, t0 + 5000);
+    expect(lockCheck.locked).toBe(true);
+    expect(lockCheck.remainingSeconds).toBe(27);
+
+    // After 30s lockout expires, gateway unlocks
+    const expiredCheck = isAdminLoginLockedOut(after3, t0 + 35000);
+    expect(expiredCheck.locked).toBe(false);
+    expect(expiredCheck.remainingSeconds).toBe(0);
   });
 });

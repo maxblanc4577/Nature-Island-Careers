@@ -111,7 +111,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const success = loginUser(loginEmail);
+    const matchedUser = users.find(
+      (u) => u.email.toLowerCase() === loginEmail.trim().toLowerCase() && u.role !== 'admin'
+    );
+    if (!matchedUser) {
+      setLoginError(true);
+      return;
+    }
+    const success = loginUser(matchedUser.email);
     if (success) {
       setLoginError(false);
       onClose();
@@ -454,32 +461,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </button>
               </form>
 
-              {/* Quick One-Click Switchers for Demonstration */}
+              {/* Quick One-Click Switchers for Member Personas Only (No Admin Accounts or Hints) */}
               <div className="pt-3 border-t border-stone-100">
                 <span className="block text-[11px] font-semibold uppercase text-stone-400 mb-2">
-                  Quick Select Active Persona:
+                  Quick Select Member Persona:
                 </span>
                 <div className="space-y-1.5">
-                  {users.slice(0, 4).map((u) => (
-                    <button
-                      key={u.id}
-                      onClick={() => {
-                        loginUser(u.email);
-                        onClose();
-                      }}
-                      className="w-full text-left p-2.5 bg-stone-50 hover:bg-emerald-50 rounded-lg border border-stone-200 flex items-center justify-between transition-colors cursor-pointer"
-                    >
-                      <div>
-                        <div className="font-semibold text-stone-900">
-                          {u.name} {u.companyName ? `(${u.companyName})` : ''}
+                  {users
+                    .filter((u) => u.role !== 'admin')
+                    .slice(0, 4)
+                    .map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => {
+                          loginUser(u.email);
+                          onClose();
+                        }}
+                        className="w-full text-left p-2.5 bg-stone-50 hover:bg-emerald-50 rounded-lg border border-stone-200 flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <div>
+                          <div className="font-semibold text-stone-900">
+                            {u.name} {u.companyName ? `(${u.companyName})` : ''}
+                          </div>
+                          <div className="text-[10px] text-stone-500 font-mono">
+                            {u.email} · {u.role.toUpperCase()}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-stone-500 font-mono">
-                          {u.email} · {u.role.toUpperCase()}
-                        </div>
-                      </div>
-                      <span className="text-emerald-800 text-[11px] font-medium">Switch &rarr;</span>
-                    </button>
-                  ))}
+                        <span className="text-emerald-800 text-[11px] font-medium">Switch &rarr;</span>
+                      </button>
+                    ))}
                 </div>
               </div>
             </div>

@@ -189,16 +189,18 @@ export const Footer: React.FC<FooterProps> = ({
             <span>DSS & NEP Accredited</span>
             {onOpenAdminPortal && (
               <>
-                <span>·</span>
-                <button
-                  type="button"
-                  onClick={onOpenAdminPortal}
-                  className="text-stone-400 hover:text-emerald-400 transition-colors cursor-pointer flex items-center gap-1 font-medium"
-                  title="Admin Master Console & Site Settings"
+                <span className="text-stone-700">·</span>
+                <a
+                  href="/admin-login"
+                  data-testid="discreet-admin-footer-link"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenAdminPortal();
+                  }}
+                  className="text-stone-600 hover:text-stone-400 transition-colors cursor-pointer text-[10px] font-normal tracking-tight"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Admin Console</span>
-                </button>
+                  Admin Console
+                </a>
               </>
             )}
           </div>
