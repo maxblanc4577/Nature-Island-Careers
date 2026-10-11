@@ -1,7 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { useJobContext } from '../context/JobContext';
+import {
+  useJobContext,
+  ADMIN_ACTIVITY_LOG_STORAGE_KEY,
+  ADMIN_IDLE_TIMEOUT_MS,
+  loadAdminActivityLogsFromStorage,
+  saveAdminActivityLogsToStorage,
+  appendAdminActivityLogEntry,
+  isAdminSessionIdleExpired,
+  getRemainingAdminSessionMs,
+} from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
-import { JobListing, Parish, JobSector, ApplicationStatus, RecruiterAccount, EmployerInvoice } from '../types';
+import {
+  JobListing,
+  Parish,
+  JobSector,
+  ApplicationStatus,
+  RecruiterAccount,
+  EmployerInvoice,
+  AdminActivityCategory,
+  AdminActivityLogEntry,
+} from '../types';
 import {
   X,
   Shield,
@@ -39,7 +57,20 @@ import {
   Power,
   Wifi,
   ShieldAlert,
+  Clock,
+  History,
+  LogOut,
 } from 'lucide-react';
+
+export {
+  ADMIN_ACTIVITY_LOG_STORAGE_KEY,
+  ADMIN_IDLE_TIMEOUT_MS,
+  loadAdminActivityLogsFromStorage,
+  saveAdminActivityLogsToStorage,
+  appendAdminActivityLogEntry,
+  isAdminSessionIdleExpired,
+  getRemainingAdminSessionMs,
+};
 
 interface AdminMasterPortalModalProps {
   isOpen: boolean;
@@ -63,6 +94,7 @@ interface AdminMasterPortalModalProps {
     fullPageBackground?: boolean;
   }) => void;
   onOpenStripe?: () => void;
+  onReauthenticateAdmin?: () => void;
 }
 
 export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
@@ -71,6 +103,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
   siteSettings,
   onUpdateSiteSettings,
   onOpenStripe,
+  onReauthenticateAdmin,
 }) => {
   const {
     jobs,
@@ -88,9 +121,67 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
     invoices,
     addInvoice,
     sendRecruiterReminders,
+    isAdminLoggedIn,
+    adminActivityLogs,
+    logAdminActivity,
+    clearAdminActivityLogs,
+    isAdminSessionExpiredPromptOpen,
+    dismissAdminSessionExpiredPrompt,
+    triggerAdminIdleTimeout,
+    resetAdminIdleTimer,
+    lastAdminActivityAt,
+    adminIdleTimeoutMs,
   } = useJobContext();
 
-  const [activeTab, setActiveTab] = useState<'jobs' | 'recruiters' | 'applications' | 'settings' | 'sync' | 'stripe' | 'payment-logs' | 'backend'>('jobs');
+  const [activeTab, setActiveTab] = useState<
+    | 'jobs'
+    | 'recruiters'
+    | 'applications'
+    | 'settings'
+    | 'sync'
+    | 'stripe'
+    | 'payment-logs'
+    | 'backend'
+    | 'activity-log'
+  >('jobs');
+
+  // Lightweight Admin Activity Log panel state
+  const [activityCategoryFilter, setActivityCategoryFilter] = useState<
+    'All' | AdminActivityCategory
+  >('All');
+  const [isActivityPanelCollapsed, setIsActivityPanelCollapsed] = useState(false);
+
+  // Live countdown ticker for the 15-minute idle session timeout
+  const [remainingIdleSeconds, setRemainingIdleSeconds] = useState<number>(() =>
+    Math.ceil(
+      getRemainingAdminSessionMs(lastAdminActivityAt, Date.now(), adminIdleTimeoutMs) /
+        1000
+    )
+  );
+
+  useEffect(() => {
+    if (!isOpen && !isAdminLoggedIn) return;
+    const updateTicker = () => {
+      const remMs = getRemainingAdminSessionMs(
+        lastAdminActivityAt,
+        Date.now(),
+        adminIdleTimeoutMs
+      );
+      setRemainingIdleSeconds(Math.ceil(remMs / 1000));
+      if (isAdminLoggedIn && isAdminSessionIdleExpired(lastAdminActivityAt, Date.now(), adminIdleTimeoutMs)) {
+        triggerAdminIdleTimeout();
+      }
+    };
+    updateTicker();
+    const interval = window.setInterval(updateTicker, 1000);
+    return () => window.clearInterval(interval);
+  }, [isOpen, isAdminLoggedIn, lastAdminActivityAt, adminIdleTimeoutMs, triggerAdminIdleTimeout]);
+
+  const formatIdleTimeRemaining = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
 
   // Backend Console State
   const [backendStatus, setBackendStatus] = useState<any>(null);
@@ -334,6 +425,11 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
     } catch {
       // ignore
     }
+    logAdminActivity(
+      'Site Settings Updated (Auto-Save)',
+      `Saved portal settings: "${siteName}" · Contact: ${contactEmail} · Peg: ${currencyPeg} XCD/USD.`,
+      'Site Settings'
+    );
     setSettingsSaved(true);
     const timer = setTimeout(() => setSettingsSaved(false), 2000);
     return () => clearTimeout(timer);
@@ -404,7 +500,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
   const [newMinSalary, setNewMinSalary] = useState(3500);
   const [newMaxSalary, setNewMaxSalary] = useState(5500);
 
-  if (!isOpen) return null;
+  if (!isOpen && !isAdminSessionExpiredPromptOpen) return null;
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -417,6 +513,11 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
       backgroundImageUrl,
       fullPageBackground,
     });
+    logAdminActivity(
+      'Site Settings Force Saved',
+      `Committed site settings: "${siteName}" (${contactEmail}) · Peg: ${currencyPeg} XCD/USD${showEmergencyBanner ? ' · Weather Advisory Active' : ''}.`,
+      'Site Settings'
+    );
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2000);
   };
@@ -437,6 +538,12 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
       isNepApproved: editingJob.isNepApproved,
       description: editingJob.description,
     });
+
+    logAdminActivity(
+      'Vacancy Updated',
+      `Edited "${editingJob.title}" at ${editingJob.company} (${editingJob.parish}).`,
+      'Vacancy Management'
+    );
 
     setEditingJob(null);
   };
@@ -468,9 +575,98 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
       recruiterId: 'rec_fort_young',
     });
 
+    logAdminActivity(
+      'Quick Vacancy Published',
+      `Published "${newTitle}" for ${newCompany} in ${newParish}.`,
+      'Vacancy Management'
+    );
+
     setNewTitle('');
     setIsAddingJob(false);
   };
+
+  const filteredActivityLogs = adminActivityLogs.filter((entry) =>
+    activityCategoryFilter === 'All' ? true : entry.category === activityCategoryFilter
+  );
+
+  // If session expired prompt is triggered while modal was closed or open, render the Session Expiration Prompt
+  if (isAdminSessionExpiredPromptOpen) {
+    return (
+      <div
+        data-testid="admin-session-expired-prompt"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="admin-session-expired-title"
+        className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md"
+      >
+        <div className="w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden text-white p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 bg-amber-500/20 border border-amber-400/40 rounded-xl text-amber-300 shrink-0">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <span className="inline-block text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                15-Minute Inactivity Guard
+              </span>
+              <h3 id="admin-session-expired-title" className="text-lg font-black text-white">
+                Admin Session Expired
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Your administrative session timed out after <strong>15 minutes of inactivity</strong>. For platform security, your <code className="text-amber-300 font-mono">isAdminLoggedIn</code> state has been automatically cleared.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-400 space-y-1 font-mono">
+            <div className="flex justify-between">
+              <span>Session Status:</span>
+              <span className="text-rose-400 font-bold">CLEARED (Signed Out)</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Idle Threshold:</span>
+              <span className="text-slate-200">15 Minutes (900s)</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-1">
+            <button
+              type="button"
+              data-testid="dismiss-session-expired-btn"
+              onClick={() => {
+                dismissAdminSessionExpiredPrompt();
+                onClose();
+              }}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Dismiss & Close
+            </button>
+            <button
+              type="button"
+              data-testid="reauthenticate-admin-btn"
+              onClick={() => {
+                dismissAdminSessionExpiredPrompt();
+                onClose();
+                if (onReauthenticateAdmin) {
+                  onReauthenticateAdmin();
+                } else {
+                  try {
+                    window.history.pushState({}, '', '/admin-login');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  } catch {
+                    // ignore
+                  }
+                }
+              }}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Sign In Again</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-xs overflow-y-auto">
@@ -483,7 +679,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
         className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-emerald-900/30 overflow-hidden my-6 flex flex-col max-h-[90vh]"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center space-x-3">
             <div className="p-2.5 bg-emerald-800/80 rounded-xl border border-emerald-500/40 text-amber-300">
               <Shield className="w-6 h-6" />
@@ -500,12 +696,36 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-emerald-200 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-          >
-            <X className="w-6 h-6" />
-          </button>
+
+          <div className="flex items-center gap-2.5">
+            {/* Automatic 15-Minute Idle Session Timeout Indicator */}
+            <div
+              data-testid="admin-idle-timeout-badge"
+              className="flex items-center gap-2 bg-slate-900/90 border border-emerald-500/30 px-3 py-1.5 rounded-xl text-xs"
+              title="Automatic 15-minute idle session timeout protection"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span className="text-[11px] font-mono text-emerald-200">
+                Idle Timeout: <strong className="text-white">{formatIdleTimeRemaining(remainingIdleSeconds)}</strong> / 15:00
+              </span>
+              <button
+                type="button"
+                data-testid="simulate-idle-timeout-btn"
+                onClick={triggerAdminIdleTimeout}
+                className="ml-1 px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30 rounded text-[10px] font-bold transition-colors cursor-pointer"
+                title="Simulate 15-minute inactivity session expiration"
+              >
+                Expire Now
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="text-emerald-200 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -605,6 +825,19 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
             <Server className="w-4 h-4 text-emerald-500" />
             <span>Backend Server Console</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+          </button>
+
+          <button
+            data-testid="admin-activity-log-tab"
+            onClick={() => setActiveTab('activity-log')}
+            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'activity-log'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+            }`}
+          >
+            <History className="w-4 h-4 text-emerald-600" />
+            <span>Admin Activity Log ({adminActivityLogs.length})</span>
           </button>
         </div>
 
@@ -2547,6 +2780,178 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Tab 9: ADMIN ACTIVITY LOG FULL VIEW */}
+        {activeTab === 'activity-log' && (
+          <div className="p-6 flex-1 overflow-y-auto space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                  <History className="w-4 h-4 text-emerald-700" />
+                  <span>Persistent Admin Activity Log</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Timestamped audit trail of site setting changes, Stripe payment updates, and administrative actions persisted in localStorage
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    logAdminActivity(
+                      'Manual Audit Checkpoint',
+                      `Administrator recorded manual audit verification for "${siteName}".`,
+                      'System & Sync'
+                    )
+                  }
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  + Record Checkpoint
+                </button>
+                <button
+                  type="button"
+                  onClick={clearAdminActivityLogs}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  Clear Log
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {filteredActivityLogs.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                  No admin activity logs recorded in this category.
+                </div>
+              ) : (
+                filteredActivityLogs.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            entry.category === 'Payment Update'
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                              : entry.category === 'Site Settings'
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                              : entry.category === 'Session & Security'
+                              ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                              : 'bg-slate-200 text-slate-800'
+                          }`}
+                        >
+                          {entry.category}
+                        </span>
+                        <span className="font-bold text-slate-900">{entry.action}</span>
+                      </div>
+                      <p className="text-slate-600 text-[11px]">{entry.details}</p>
+                    </div>
+                    <div className="text-right font-mono text-[11px] text-slate-500 shrink-0">
+                      {entry.timestamp}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Lightweight Persistent 'Admin Activity Log' Panel inside AdminMasterPortalModal */}
+        <div
+          data-testid="admin-activity-log-panel"
+          className="bg-slate-900 text-slate-100 border-t border-slate-800 px-5 py-3 space-y-2.5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-emerald-400" />
+              <h4 className="text-xs font-black tracking-wide uppercase text-white">
+                Admin Activity Log
+              </h4>
+              <span className="bg-emerald-950 text-emerald-300 border border-emerald-700/50 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                {adminActivityLogs.length} Persistent Entries (localStorage)
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              {(['All', 'Site Settings', 'Payment Update', 'Session & Security'] as const).map(
+                (cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActivityCategoryFilter(cat)}
+                    className={`px-2 py-0.5 rounded font-bold transition-colors cursor-pointer ${
+                      activityCategoryFilter === cat
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                data-testid="clear-admin-activity-log-btn"
+                onClick={clearAdminActivityLogs}
+                className="px-2 py-0.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 rounded font-semibold transition-colors cursor-pointer"
+                title="Clear persisted activity log"
+              >
+                Clear
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsActivityPanelCollapsed(!isActivityPanelCollapsed)}
+                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-semibold transition-colors cursor-pointer"
+              >
+                {isActivityPanelCollapsed ? 'Expand' : 'Minimize'}
+              </button>
+            </div>
+          </div>
+
+          {!isActivityPanelCollapsed && (
+            <div
+              data-testid="admin-activity-log-list"
+              className="max-h-28 overflow-y-auto space-y-1.5 pr-1 font-mono text-[11px]"
+            >
+              {filteredActivityLogs.length === 0 ? (
+                <div className="text-slate-500 py-1">
+                  No recent administrative actions recorded. Changes to site settings or payments will appear here automatically.
+                </div>
+              ) : (
+                filteredActivityLogs.slice(0, 8).map((entry) => (
+                  <div
+                    key={entry.id}
+                    data-testid="admin-activity-log-item"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 bg-slate-950/90 border border-slate-800/90 rounded-lg px-3 py-1.5"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`text-[9px] font-sans font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${
+                          entry.category === 'Payment Update'
+                            ? 'bg-amber-950 text-amber-300 border border-amber-700/50'
+                            : entry.category === 'Site Settings'
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-700/50'
+                            : entry.category === 'Session & Security'
+                            ? 'bg-rose-950 text-rose-300 border border-rose-700/50'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        {entry.category}
+                      </span>
+                      <span className="font-bold text-emerald-300 shrink-0">{entry.action}:</span>
+                      <span className="text-slate-300 truncate">{entry.details}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 shrink-0">{entry.timestamp}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Footer */}
         <div className="bg-slate-100 border-t border-slate-200 p-4 flex items-center justify-between text-xs">

@@ -21,6 +21,8 @@ import {
   SubscriptionCriteria,
   AlertPreferenceRule,
   SavedJobFolder,
+  AdminActivityCategory,
+  AdminActivityLogEntry,
 } from '../types';
 import {
   INITIAL_JOBS,
@@ -87,10 +89,23 @@ interface JobContextType {
   logoutUser: () => void;
   updateCurrentUser: (updatedFields: Partial<UserAccount>) => void;
 
-  // Admin Portal Login & Security
+  // Admin Portal Login, Activity Log & Idle Session Security
   isAdminLoggedIn: boolean;
   adminLogin: (email: string, pass: string) => boolean;
   adminLogout: () => void;
+  adminActivityLogs: AdminActivityLogEntry[];
+  logAdminActivity: (
+    action: string,
+    details: string,
+    category?: AdminActivityCategory
+  ) => AdminActivityLogEntry;
+  clearAdminActivityLogs: () => void;
+  isAdminSessionExpiredPromptOpen: boolean;
+  dismissAdminSessionExpiredPrompt: () => void;
+  triggerAdminIdleTimeout: () => void;
+  resetAdminIdleTimer: () => void;
+  lastAdminActivityAt: number;
+  adminIdleTimeoutMs: number;
 
   // Jobs & Remote Assignments
   jobs: JobListing[];
@@ -201,6 +216,116 @@ export const SUBSCRIPTION_CRITERIA_STORAGE_KEY = 'dominica_subscription_criteria
 export const RECENT_SEARCHES_STORAGE_KEY = 'dominica_recent_searches';
 export const LEGACY_RECENT_SEARCHES_KEY = 'natureisland_recent_searches';
 export const SAVED_JOB_FOLDERS_STORAGE_KEY = 'dominica_saved_job_folders';
+export const ADMIN_ACTIVITY_LOG_STORAGE_KEY = 'dominica_admin_activity_log';
+export const ADMIN_LAST_ACTIVE_STORAGE_KEY = 'dominica_admin_last_active';
+export const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+
+export const DEFAULT_ADMIN_ACTIVITY_LOGS: AdminActivityLogEntry[] = [
+  {
+    id: 'adm-log-init-1',
+    action: 'Site Settings Synchronized',
+    details: 'Portal branding & XCD/USD currency peg (2.70) verified in localStorage.',
+    category: 'Site Settings',
+    timestamp: '2026-10-08 09:15:00 AST',
+    actor: 'info@natureislecareers.com',
+  },
+  {
+    id: 'adm-log-init-2',
+    action: 'Stripe Payment Gateway Verified',
+    details: 'Live XCD checkout & recurring employer billing webhook configured.',
+    category: 'Payment Update',
+    timestamp: '2026-10-08 09:10:00 AST',
+    actor: 'info@natureislecareers.com',
+  },
+];
+
+let inMemoryAdminActivityLogs: AdminActivityLogEntry[] | null = null;
+
+export function loadAdminActivityLogsFromStorage(): AdminActivityLogEntry[] {
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+      const raw = localStorage.getItem(ADMIN_ACTIVITY_LOG_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (item): item is AdminActivityLogEntry =>
+              Boolean(
+                item &&
+                  typeof item.id === 'string' &&
+                  typeof item.action === 'string' &&
+                  typeof item.timestamp === 'string'
+              )
+          );
+        }
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  if (inMemoryAdminActivityLogs !== null) {
+    return inMemoryAdminActivityLogs;
+  }
+  return DEFAULT_ADMIN_ACTIVITY_LOGS;
+}
+
+export function saveAdminActivityLogsToStorage(
+  logs: AdminActivityLogEntry[]
+): AdminActivityLogEntry[] {
+  inMemoryAdminActivityLogs = logs;
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
+      localStorage.setItem(ADMIN_ACTIVITY_LOG_STORAGE_KEY, JSON.stringify(logs));
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return logs;
+}
+
+export function appendAdminActivityLogEntry(
+  currentLogs: AdminActivityLogEntry[],
+  entry: {
+    action: string;
+    details: string;
+    category?: AdminActivityCategory;
+    actor?: string;
+    timestamp?: string;
+  }
+): AdminActivityLogEntry[] {
+  const formattedTime =
+    entry.timestamp ||
+    new Date().toISOString().replace('T', ' ').substring(0, 19) + ' AST';
+  const newItem: AdminActivityLogEntry = {
+    id: `adm-log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    action: entry.action,
+    details: entry.details,
+    category: entry.category || 'Site Settings',
+    timestamp: formattedTime,
+    actor: entry.actor || 'info@natureislecareers.com',
+  };
+  const updated = [newItem, ...currentLogs].slice(0, 100);
+  saveAdminActivityLogsToStorage(updated);
+  return updated;
+}
+
+export function isAdminSessionIdleExpired(
+  lastActivityMs: number,
+  nowMs: number = Date.now(),
+  timeoutMs: number = ADMIN_IDLE_TIMEOUT_MS
+): boolean {
+  if (!Number.isFinite(lastActivityMs) || lastActivityMs <= 0) return false;
+  return nowMs - lastActivityMs >= timeoutMs;
+}
+
+export function getRemainingAdminSessionMs(
+  lastActivityMs: number,
+  nowMs: number = Date.now(),
+  timeoutMs: number = ADMIN_IDLE_TIMEOUT_MS
+): number {
+  if (!Number.isFinite(lastActivityMs) || lastActivityMs <= 0) return timeoutMs;
+  return Math.max(0, timeoutMs - (nowMs - lastActivityMs));
+}
 
 export const DEFAULT_SAVED_JOB_FOLDERS: SavedJobFolder[] = [
   {
@@ -464,6 +589,26 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('dominica_admin_logged') === 'true';
   });
 
+  const [adminActivityLogs, setAdminActivityLogs] = useState<AdminActivityLogEntry[]>(() =>
+    loadAdminActivityLogsFromStorage()
+  );
+
+  const [lastAdminActivityAt, setLastAdminActivityAt] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(ADMIN_LAST_ACTIVE_STORAGE_KEY);
+      if (saved) {
+        const parsed = Number(saved);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return Date.now();
+  });
+
+  const [isAdminSessionExpiredPromptOpen, setIsAdminSessionExpiredPromptOpen] =
+    useState<boolean>(false);
+
   const [invoices, setInvoices] = useState<EmployerInvoice[]>(() => {
     const saved = localStorage.getItem('dominica_employer_invoices');
     return saved ? JSON.parse(saved) : INITIAL_INVOICES;
@@ -614,6 +759,115 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('dominica_admin_logged', isAdminLoggedIn ? 'true' : 'false');
   }, [isAdminLoggedIn]);
+
+  useEffect(() => {
+    saveAdminActivityLogsToStorage(adminActivityLogs);
+  }, [adminActivityLogs]);
+
+  const logAdminActivity = React.useCallback(
+    (
+      action: string,
+      details: string,
+      category: AdminActivityCategory = 'Site Settings'
+    ): AdminActivityLogEntry => {
+      const formattedTime =
+        new Date().toISOString().replace('T', ' ').substring(0, 19) + ' AST';
+      const newEntry: AdminActivityLogEntry = {
+        id: `adm-log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        action,
+        details,
+        category,
+        timestamp: formattedTime,
+        actor: 'info@natureislecareers.com',
+      };
+      setAdminActivityLogs((prev) => {
+        const updated = [newEntry, ...prev].slice(0, 100);
+        saveAdminActivityLogsToStorage(updated);
+        return updated;
+      });
+      return newEntry;
+    },
+    []
+  );
+
+  const clearAdminActivityLogs = React.useCallback(() => {
+    setAdminActivityLogs([]);
+    saveAdminActivityLogsToStorage([]);
+  }, []);
+
+  const resetAdminIdleTimer = React.useCallback(() => {
+    const now = Date.now();
+    setLastAdminActivityAt(now);
+    try {
+      localStorage.setItem(ADMIN_LAST_ACTIVE_STORAGE_KEY, String(now));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const triggerAdminIdleTimeout = React.useCallback(() => {
+    setIsAdminLoggedIn(false);
+    setActiveRole((prev) => (prev === 'admin' ? 'jobseeker' : prev));
+    try {
+      localStorage.setItem('dominica_admin_logged', 'false');
+    } catch {
+      // ignore
+    }
+    setIsAdminSessionExpiredPromptOpen(true);
+    logAdminActivity(
+      'Admin Session Expired (15m Idle Timeout)',
+      'Automatic idle session timeout cleared isAdminLoggedIn state after 15 minutes of inactivity.',
+      'Session & Security'
+    );
+  }, [logAdminActivity]);
+
+  const dismissAdminSessionExpiredPrompt = React.useCallback(() => {
+    setIsAdminSessionExpiredPromptOpen(false);
+  }, []);
+
+  // Automatic 15-minute idle session timeout monitor when isAdminLoggedIn is true
+  useEffect(() => {
+    if (!isAdminLoggedIn) return;
+
+    const handleActivity = () => {
+      const now = Date.now();
+      setLastAdminActivityAt(now);
+      try {
+        localStorage.setItem(ADMIN_LAST_ACTIVE_STORAGE_KEY, String(now));
+      } catch {
+        // ignore
+      }
+    };
+
+    const activityEvents = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'scroll',
+      'touchstart',
+      'click',
+    ];
+    activityEvents.forEach((evt) =>
+      window.addEventListener(evt, handleActivity, { passive: true })
+    );
+
+    const remainingMs = getRemainingAdminSessionMs(
+      lastAdminActivityAt,
+      Date.now(),
+      ADMIN_IDLE_TIMEOUT_MS
+    );
+
+    const timeoutId = window.setTimeout(() => {
+      triggerAdminIdleTimeout();
+    }, remainingMs);
+
+    return () => {
+      activityEvents.forEach((evt) =>
+        window.removeEventListener(evt, handleActivity)
+      );
+      window.clearTimeout(timeoutId);
+    };
+  }, [isAdminLoggedIn, lastAdminActivityAt, triggerAdminIdleTimeout]);
 
   const currentRecruiter = recruiters.find((r) => r.id === currentRecruiterId) || recruiters[0];
 
@@ -917,6 +1171,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (validEmails.includes(cleanEmail) && pass === 'natureislandcareers') {
       setIsAdminLoggedIn(true);
       setActiveRole('admin');
+      setIsAdminSessionExpiredPromptOpen(false);
+      resetAdminIdleTimer();
+      logAdminActivity(
+        'Admin Console Authenticated',
+        `Administrator session started for ${cleanEmail} (15m idle guard active).`,
+        'Session & Security'
+      );
       return true;
     }
     return false;
@@ -925,6 +1186,11 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const adminLogout = () => {
     setIsAdminLoggedIn(false);
     setActiveRole('jobseeker');
+    logAdminActivity(
+      'Admin Session Signed Out',
+      'Administrator manually signed out and cleared session state.',
+      'Session & Security'
+    );
   };
 
   const getSiteContactEmail = (): string => {
@@ -956,6 +1222,11 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         Number(((invoiceData.amountXCD * 0.029) + 0.81).toFixed(2)),
     };
     setInvoices((prev) => [newInvoice, ...prev]);
+    logAdminActivity(
+      'Payment Update: Employer Invoice Generated',
+      `Billed ${newInvoice.companyName} EC$${newInvoice.amountXCD} (${newInvoice.plan} · ${newInvoice.invoiceNumber}).`,
+      'Payment Update'
+    );
     return newInvoice;
   };
 
@@ -994,7 +1265,15 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateStripeSettings = (updates: Partial<StripeSettings>) => {
-    setStripeSettings((prev) => ({ ...prev, ...updates }));
+    setStripeSettings((prev) => {
+      const next = { ...prev, ...updates };
+      logAdminActivity(
+        'Payment Update: Stripe Gateway Configuration',
+        `Updated Stripe mode (${next.mode.toUpperCase()}), peg (${next.currencyPeg} XCD/USD), and discount (${next.monthlyDiscountPercent}%).`,
+        'Payment Update'
+      );
+      return next;
+    });
   };
 
   const toggleRecruiterAutoRenew = (recruiterId: string, enabled: boolean) => {
@@ -2006,6 +2285,15 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAdminLoggedIn,
         adminLogin,
         adminLogout,
+        adminActivityLogs,
+        logAdminActivity,
+        clearAdminActivityLogs,
+        isAdminSessionExpiredPromptOpen,
+        dismissAdminSessionExpiredPrompt,
+        triggerAdminIdleTimeout,
+        resetAdminIdleTimer,
+        lastAdminActivityAt,
+        adminIdleTimeoutMs: ADMIN_IDLE_TIMEOUT_MS,
         // Jobs & Remote
         jobs,
         getJobById,

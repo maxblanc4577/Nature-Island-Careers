@@ -2,15 +2,27 @@ import React, { useState } from 'react';
 import { JobListing } from '../types';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
-import { ShareJobModal } from './ShareJobModal';
+import { ShareJobModal, buildJobShareUrl } from './ShareJobModal';
 import { CompanyReviewModule } from './CompanyReviewModule';
-import { X, MapPin, Building, Calendar, DollarSign, ShieldCheck, CheckCircle2, Bookmark, BookmarkCheck, Globe, Share2 } from 'lucide-react';
+import { X, MapPin, Building, Calendar, DollarSign, ShieldCheck, CheckCircle2, Bookmark, BookmarkCheck, Globe, Share2, Printer } from 'lucide-react';
 
 interface JobDetailModalProps {
   job: JobListing | null;
   onClose: () => void;
   onApply: (job: JobListing) => void;
   onOpenAlert: () => void;
+}
+
+export function triggerPrintJobDialog(customPrintFn?: () => void): boolean {
+  if (typeof customPrintFn === 'function') {
+    customPrintFn();
+    return true;
+  }
+  if (typeof window !== 'undefined' && typeof window.print === 'function') {
+    window.print();
+    return true;
+  }
+  return false;
 }
 
 export const JobDetailModal: React.FC<JobDetailModalProps> = ({
@@ -25,20 +37,25 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
   if (!job) return null;
   const saved = isJobSaved(job.id);
+  const directJobUrl = buildJobShareUrl(job.id);
+
+  const handlePrintJob = () => {
+    triggerPrintJobDialog();
+  };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+    <div className="job-detail-modal-backdrop fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 print:static print:bg-white print:p-0 print:block">
       <div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-label={job.title}
         tabIndex={-1}
-        className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+        className="job-detail-modal-container bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none"
       >
         
         {/* Modal Top Bar */}
-        <div className="p-4 sm:p-6 border-b border-stone-200 flex items-start justify-between gap-4 bg-stone-50/70">
+        <div className="p-4 sm:p-6 border-b border-stone-200 flex items-start justify-between gap-4 bg-stone-50/70 print:bg-white print:px-0">
           <div>
             <div className="flex items-center gap-2 text-xs text-stone-500 mb-1">
               <span className="font-semibold text-emerald-900">{job.company}</span>
@@ -59,10 +76,28 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
             <h2 className="text-xl sm:text-2xl font-bold text-stone-955 font-display">
               {job.title}
             </h2>
+            <div className="hidden print:block text-[11px] text-stone-500 font-mono mt-1">
+              Dominica Classified Vacancy ID: {job.id} · {directJobUrl}
+            </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div
+            data-non-essential-print="true"
+            className="no-print print:hidden flex items-center gap-1 sm:gap-2 shrink-0"
+          >
             <button
+              type="button"
+              onClick={handlePrintJob}
+              data-testid="print-this-job-btn"
+              aria-label="Print this Job"
+              className="p-2 text-stone-600 hover:text-emerald-800 hover:bg-stone-200/60 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+              title="Print this Job"
+            >
+              <Printer className="w-4 h-4 text-emerald-700" />
+              <span>Print this Job</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setShowShareModal(true)}
               className="p-2 text-stone-500 hover:text-emerald-800 hover:bg-stone-200/60 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
               title="Share job opportunity"
@@ -71,6 +106,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               <span className="hidden sm:inline">Share</span>
             </button>
             <button
+              type="button"
               onClick={() => toggleSaveJob(job.id)}
               className="p-2 text-stone-400 hover:text-emerald-800 hover:bg-stone-200/60 rounded-xl transition-colors cursor-pointer"
               title={saved ? 'Remove saved' : 'Save job'}
@@ -82,6 +118,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               )}
             </button>
             <button
+              type="button"
               onClick={onClose}
               className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-xl transition-colors cursor-pointer"
               aria-label="Close details"
@@ -92,7 +129,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-7 overflow-y-auto space-y-6 text-stone-800 text-sm">
+        <div className="job-detail-modal-body p-5 sm:p-7 overflow-y-auto space-y-6 text-stone-800 text-sm print:overflow-visible print:max-h-none print:px-0">
           
           {/* Global Remote Employer Banner */}
           {job.isGlobalRemote && (
@@ -227,7 +264,9 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
           )}
 
           {/* Standardized Candidate Experience & Company Reviews */}
-          <CompanyReviewModule companyName={job.company} parish={job.parish} />
+          <div data-non-essential-print="true" className="no-print print:hidden">
+            <CompanyReviewModule companyName={job.company} parish={job.parish} />
+          </div>
 
           {/* Parish context note */}
           <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100 text-xs text-emerald-950 flex items-start gap-2">
@@ -243,8 +282,12 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
         </div>
 
         {/* Modal Action Footer */}
-        <div className="p-4 sm:p-5 border-t border-stone-200 bg-stone-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div
+          data-non-essential-print="true"
+          className="no-print print:hidden p-4 sm:p-5 border-t border-stone-200 bg-stone-50 flex flex-col sm:flex-row items-center justify-between gap-3"
+        >
           <button
+            type="button"
             onClick={onOpenAlert}
             className="text-xs text-stone-600 hover:text-emerald-900 font-medium underline underline-offset-2 cursor-pointer"
           >
@@ -253,12 +296,14 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
+              type="button"
               onClick={onClose}
               className="flex-1 sm:flex-none px-4 py-2 border border-stone-300 text-stone-700 hover:bg-stone-100 rounded-xl text-xs font-semibold cursor-pointer"
             >
               Close
             </button>
             <button
+              type="button"
               onClick={() => {
                 onClose();
                 onApply(job);

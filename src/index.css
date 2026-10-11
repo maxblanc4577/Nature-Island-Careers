@@ -36,3 +36,50 @@
   box-shadow: 0 16px 32px -8px rgba(5, 112, 70, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.04);
 }
 
+/* Print Media Queries for JobDetailModal ("Print this Job") */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Hide non-essential UI elements when printing a job listing */
+  header,
+  footer,
+  nav,
+  aside,
+  .no-print,
+  .job-card-container,
+  [data-non-essential-print="true"] {
+    display: none !important;
+  }
+
+  /* Ensure the JobDetailModal backdrop and dialog expand cleanly for print */
+  .job-detail-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .job-detail-modal-container {
+    position: static !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+
+  .job-detail-modal-body {
+    overflow: visible !important;
+    max-height: none !important;
+    padding: 1rem 0 !important;
+  }
+}
+
+

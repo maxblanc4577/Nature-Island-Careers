@@ -5,6 +5,16 @@ import {
   createSubscriptionEmailNotification,
 } from '../components/EmailAlertToast';
 import {
+  buildJobShareUrl,
+  buildShareViaEmailMailto,
+  buildShareViaWhatsAppUrl,
+  buildJobBoardPreviewHtml,
+  openJobBoardPreviewPopup,
+} from '../components/ShareJobModal';
+import {
+  triggerPrintJobDialog,
+} from '../components/JobDetailModal';
+import {
   normalizeInterviewDate,
   getApplicationStatusIndicator,
   buildEmployerActivityFeed,
@@ -39,6 +49,12 @@ import {
   saveSavedJobFoldersToStorage,
   loadSavedJobFoldersFromStorage,
   DEFAULT_SAVED_JOB_FOLDERS,
+  ADMIN_IDLE_TIMEOUT_MS,
+  loadAdminActivityLogsFromStorage,
+  saveAdminActivityLogsToStorage,
+  appendAdminActivityLogEntry,
+  isAdminSessionIdleExpired,
+  getRemainingAdminSessionMs,
 } from '../context/JobContext';
 import { JobListing, JobAlertSubscription, AlertPreferenceRule, JobApplication } from '../types';
 
@@ -415,5 +431,134 @@ B.Sc. in Electrical Engineering | University of the West Indies (UWI) | 2020`;
     const expiredCheck = isAdminLoginLockedOut(after3, t0 + 35000);
     expect(expiredCheck.locked).toBe(false);
     expect(expiredCheck.remainingSeconds).toBe(0);
+  });
+
+  it('records timestamped Admin Activity Log actions (site settings and payment updates) and persists in localStorage', () => {
+    const initialLogs = loadAdminActivityLogsFromStorage();
+    expect(initialLogs.length).toBeGreaterThan(0);
+
+    const afterSettingsUpdate = appendAdminActivityLogEntry(initialLogs, {
+      action: 'Site Settings Updated',
+      details: 'Updated portal currency peg to 2.70 XCD/USD',
+      category: 'Site Settings',
+      timestamp: '2026-10-10 14:22:00 AST',
+    });
+    expect(afterSettingsUpdate[0].action).toBe('Site Settings Updated');
+    expect(afterSettingsUpdate[0].category).toBe('Site Settings');
+    expect(afterSettingsUpdate[0].timestamp).toBe('2026-10-10 14:22:00 AST');
+
+    const afterPaymentUpdate = appendAdminActivityLogEntry(afterSettingsUpdate, {
+      action: 'Payment Update: Employer Invoice Generated',
+      details: 'Billed Fort Young Hotel EC$350 via Stripe',
+      category: 'Payment Update',
+      timestamp: '2026-10-10 14:25:10 AST',
+    });
+    expect(afterPaymentUpdate[0].category).toBe('Payment Update');
+    expect(afterPaymentUpdate[0].details).toContain('EC$350');
+
+    saveAdminActivityLogsToStorage(afterPaymentUpdate);
+    const reloaded = loadAdminActivityLogsFromStorage();
+    expect(reloaded[0].action).toBe('Payment Update: Employer Invoice Generated');
+    expect(reloaded[1].action).toBe('Site Settings Updated');
+  });
+
+  it('evaluates 15-minute automatic idle session timeout for the admin portal', () => {
+    expect(ADMIN_IDLE_TIMEOUT_MS).toBe(15 * 60 * 1000);
+
+    const startTime = 1700000000000;
+    // After 10 minutes of inactivity -> not expired, 5 minutes remaining
+    const tenMinutesLater = startTime + 10 * 60 * 1000;
+    expect(isAdminSessionIdleExpired(startTime, tenMinutesLater)).toBe(false);
+    expect(getRemainingAdminSessionMs(startTime, tenMinutesLater)).toBe(5 * 60 * 1000);
+
+    // After 15 minutes of inactivity -> session expires
+    const fifteenMinutesLater = startTime + 15 * 60 * 1000;
+    expect(isAdminSessionIdleExpired(startTime, fifteenMinutesLater)).toBe(true);
+    expect(getRemainingAdminSessionMs(startTime, fifteenMinutesLater)).toBe(0);
+  });
+
+  it('builds a native mailto link for Share via Email with pre-filled job title, company, and URL', () => {
+    const shareUrl = buildJobShareUrl('dom-job-101', 'https://natureislandcareers.com');
+    expect(shareUrl).toBe('https://natureislandcareers.com?job=dom-job-101');
+
+    const mailtoLink = buildShareViaEmailMailto(
+      {
+        id: 'dom-job-101',
+        title: 'Senior Geothermal Operations Engineer',
+        company: 'Dominica Geothermal Development Company',
+        parish: 'St. George',
+        locality: 'Laudat',
+        minSalary: 8500,
+        maxSalary: 11200,
+      },
+      shareUrl
+    );
+
+    expect(mailtoLink.startsWith('mailto:?subject=')).toBe(true);
+    const decoded = decodeURIComponent(mailtoLink);
+    expect(decoded).toContain('Senior Geothermal Operations Engineer');
+    expect(decoded).toContain('Dominica Geothermal Development Company');
+    expect(decoded).toContain('https://natureislandcareers.com?job=dom-job-101');
+  });
+
+  it('triggers the browser print dialog when Print this Job is invoked', () => {
+    let printCalled = false;
+    const result = triggerPrintJobDialog(() => {
+      printCalled = true;
+    });
+    expect(result).toBe(true);
+    expect(printCalled).toBe(true);
+  });
+
+  it('builds a wa.me WhatsApp intent link with pre-formatted job title, company, and direct URL', () => {
+    const shareUrl = buildJobShareUrl('dom-job-101', 'https://natureislandcareers.com');
+    const waLink = buildShareViaWhatsAppUrl(
+      {
+        id: 'dom-job-101',
+        title: 'Senior Geothermal Operations Engineer',
+        company: 'Dominica Geothermal Development Company',
+        parish: 'St. George',
+        minSalary: 8500,
+        maxSalary: 11200,
+      },
+      shareUrl
+    );
+
+    expect(waLink.startsWith('https://wa.me/?text=')).toBe(true);
+    const decoded = decodeURIComponent(waLink.replace('https://wa.me/?text=', ''));
+    expect(decoded).toContain('Senior Geothermal Operations Engineer');
+    expect(decoded).toContain('Dominica Geothermal Development Company');
+    expect(decoded).toContain('https://natureislandcareers.com?job=dom-job-101');
+  });
+
+  it('generates a read-only main board preview HTML and opens a small pop-up window', () => {
+    const html = buildJobBoardPreviewHtml(mockJob, 'https://natureislandcareers.com?job=job-test-901');
+    expect(html).toContain('Read-Only Preview');
+    expect(html).toContain('Senior Geothermal Turbine Engineer');
+    expect(html).toContain('Dominica Geothermal Development Company');
+
+    let openedFeatures = '';
+    let writtenHtml = '';
+    const fakePopup = {
+      document: {
+        open: () => {},
+        write: (content: string) => {
+          writtenHtml = content;
+        },
+        close: () => {},
+      },
+      focus: () => {},
+    } as unknown as Window;
+
+    const popupResult = openJobBoardPreviewPopup(mockJob, (_url, _target, features) => {
+      openedFeatures = features || '';
+      return fakePopup;
+    });
+
+    expect(popupResult).toBe(fakePopup);
+    expect(openedFeatures).toContain('width=640');
+    expect(openedFeatures).toContain('height=560');
+    expect(writtenHtml).toContain('Senior Geothermal Turbine Engineer');
+    expect(writtenHtml).toContain('Read-Only Preview');
   });
 });

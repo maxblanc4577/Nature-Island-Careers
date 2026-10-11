@@ -669,6 +669,7 @@ function DominicaJobBoardContent() {
           setIsMasterAdminOpen(false);
           setIsStripeModalOpen(true);
         }}
+        onReauthenticateAdmin={() => navigateToPath('/admin-login')}
       />
       {selectedJobForDetail && (
         <JobDetailModal

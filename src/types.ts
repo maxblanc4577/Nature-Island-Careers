@@ -446,4 +446,21 @@ export interface ResumeLibraryDocument {
   versionHistory: ResumeVersionHistoryEntry[];
 }
 
+export type AdminActivityCategory =
+  | 'Site Settings'
+  | 'Payment Update'
+  | 'Vacancy Management'
+  | 'Session & Security'
+  | 'System & Sync';
+
+export interface AdminActivityLogEntry {
+  id: string;
+  action: string;
+  details: string;
+  category: AdminActivityCategory;
+  timestamp: string;
+  actor?: string;
+}
+
+
 
