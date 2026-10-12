@@ -28,6 +28,7 @@ import {
   Folder,
   Check,
   Plus,
+  X,
 } from 'lucide-react';
 
 interface JobCardProps {
@@ -65,17 +66,43 @@ export const JobCard: React.FC<JobCardProps> = ({
   const saved = isJobSaved(job.id);
   const jobFolders = getJobFolders(job.id);
   const [isPulsing, setIsPulsing] = React.useState(false);
+  const [saveToastVisible, setSaveToastVisible] = React.useState(false);
   const [showShareModal, setShowShareModal] = React.useState(false);
   const [isQuickViewOpen, setIsQuickViewOpen] = React.useState(false);
   const [isFolderMenuOpen, setIsFolderMenuOpen] = React.useState(false);
   const [customFolderName, setCustomFolderName] = React.useState('');
+  const saveToastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Feature: Save Toggle with Heart Icon (persisted to localStorage via JobContext)
+  React.useEffect(() => {
+    return () => {
+      if (saveToastTimerRef.current) clearTimeout(saveToastTimerRef.current);
+      if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+    };
+  }, []);
+
+  // Feature: Save Toggle with Heart Icon (persisted to localStorage via JobContext) + Confirmation Toast
   const handleToggleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
+    const willBeSaved = !saved;
     setIsPulsing(true);
     toggleSaveJob(job.id);
-    setTimeout(() => setIsPulsing(false), 550);
+    if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+    pulseTimerRef.current = setTimeout(() => setIsPulsing(false), 550);
+
+    if (saveToastTimerRef.current) {
+      clearTimeout(saveToastTimerRef.current);
+      saveToastTimerRef.current = null;
+    }
+
+    if (willBeSaved) {
+      setSaveToastVisible(true);
+      saveToastTimerRef.current = setTimeout(() => {
+        setSaveToastVisible(false);
+      }, 3500);
+    } else {
+      setSaveToastVisible(false);
+    }
   };
 
   const handleToggleFolderMembership = (e: React.MouseEvent, folderId: string, folderName: string, isInFolder: boolean) => {
@@ -679,6 +706,45 @@ export const JobCard: React.FC<JobCardProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {saveToastVisible && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="save-job-toast"
+          onClick={(e) => e.stopPropagation()}
+          className="fixed bottom-5 right-5 z-50 max-w-sm bg-slate-900 text-white rounded-xl shadow-2xl border border-emerald-500/50 p-3.5 flex items-start gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200"
+        >
+          <div className="w-8 h-8 rounded-lg bg-rose-500/20 border border-rose-400/30 flex items-center justify-center shrink-0 mt-0.5">
+            <Heart className="w-4 h-4 fill-rose-500 text-rose-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-extrabold text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Added to Saved List</span>
+            </p>
+            <p className="text-xs text-slate-200 mt-0.5 leading-snug">
+              <strong className="font-bold text-white">{job.title}</strong> at {job.company} has been added to your saved list.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSaveToastVisible(false);
+              if (saveToastTimerRef.current) {
+                clearTimeout(saveToastTimerRef.current);
+                saveToastTimerRef.current = null;
+              }
+            }}
+            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            aria-label="Dismiss notification"
+            title="Dismiss notification"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

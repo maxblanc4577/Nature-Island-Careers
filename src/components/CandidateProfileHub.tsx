@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { ResumeBuilder } from './ResumeBuilder';
+import { ResumeTemplateView } from './ResumeTemplates';
+import { generateResumePdf } from '../utils/generateResumePdf';
 import { JobAlertAutomationManager } from './JobAlertAutomationManager';
 import { CandidateCoverLetterGenerator } from './CandidateCoverLetterGenerator';
 import { CandidateLinkedInExportTool } from './CandidateLinkedInExportTool';
@@ -42,6 +44,7 @@ import {
   GraduationCap,
   Loader2,
   FileCheck,
+  Download,
 } from 'lucide-react';
 
 export type CandidateHubSubTab =
@@ -67,6 +70,144 @@ export interface ParsedResumeProfileData {
   experience: ResumeExperience[];
   education: ResumeEducation[];
   fileName?: string;
+}
+
+export interface ProfileCompletionItem {
+  id:
+    | 'profile_photo'
+    | 'resume_details'
+    | 'education_history'
+    | 'work_experience'
+    | 'core_skills'
+    | 'personal_bio';
+  name: string;
+  description: string;
+  done: boolean;
+  weight: number;
+  tab: CandidateHubSubTab;
+}
+
+export interface ProfileCompletionResult {
+  percentage: number;
+  completedCount: number;
+  totalCount: number;
+  items: ProfileCompletionItem[];
+  missingItems: ProfileCompletionItem[];
+}
+
+/**
+ * Calculates candidate profile completion progress (0-100%) based on essential fields:
+ * profile photo, resume details, education history, work experience, core skills, and personal bio.
+ */
+export function calculateCandidateProfileCompletion(input: {
+  avatarUrl?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  parish?: string | null;
+  headline?: string | null;
+  bio?: string | null;
+  resumeFileName?: string | null;
+  skills?: string[] | null;
+  experience?: ResumeExperience[] | null;
+  education?: ResumeEducation[] | null;
+}): ProfileCompletionResult {
+  const hasPhoto = Boolean(input.avatarUrl && input.avatarUrl.trim().length > 0);
+  const hasResumeDetails = Boolean(
+    input.resumeFileName && input.resumeFileName.trim().length > 0
+  );
+  const hasEducationHistory = Boolean(
+    Array.isArray(input.education) &&
+      input.education.length > 0 &&
+      input.education.some(
+        (ed) => Boolean(ed && (ed.institution?.trim() || ed.degree?.trim()))
+      )
+  );
+  const hasWorkExperience = Boolean(
+    Array.isArray(input.experience) &&
+      input.experience.length > 0 &&
+      input.experience.some(
+        (exp) => Boolean(exp && (exp.title?.trim() || exp.company?.trim()))
+      )
+  );
+  const hasCoreSkills = Boolean(
+    Array.isArray(input.skills) &&
+      input.skills.filter((s) => Boolean(s && s.trim().length > 0)).length >= 3
+  );
+  const hasPersonalBio = Boolean(
+    input.name &&
+      input.name.trim().length > 0 &&
+      input.email &&
+      input.email.trim().length > 0 &&
+      input.headline &&
+      input.headline.trim().length > 3 &&
+      input.bio &&
+      input.bio.trim().length > 10
+  );
+
+  const items: ProfileCompletionItem[] = [
+    {
+      id: 'profile_photo',
+      name: 'Profile Photo',
+      description: 'Professional headshot or verified Dominica avatar',
+      done: hasPhoto,
+      weight: 20,
+      tab: 'details',
+    },
+    {
+      id: 'resume_details',
+      name: 'Resume Details & CV',
+      description: 'Uploaded or parsed CV document on file',
+      done: hasResumeDetails,
+      weight: 20,
+      tab: 'details',
+    },
+    {
+      id: 'education_history',
+      name: 'Education History',
+      description: 'Academic degrees, diplomas, or college credentials',
+      done: hasEducationHistory,
+      weight: 20,
+      tab: 'details',
+    },
+    {
+      id: 'work_experience',
+      name: 'Work Experience',
+      description: 'Professional employment roles and achievements',
+      done: hasWorkExperience,
+      weight: 15,
+      tab: 'details',
+    },
+    {
+      id: 'core_skills',
+      name: 'Core Skills (3+)',
+      description: 'At least 3 technical or sector competencies',
+      done: hasCoreSkills,
+      weight: 15,
+      tab: 'details',
+    },
+    {
+      id: 'personal_bio',
+      name: 'Personal & Bio Summary',
+      description: 'Full name, email, headline, and executive summary',
+      done: hasPersonalBio,
+      weight: 10,
+      tab: 'details',
+    },
+  ];
+
+  const completedWeight = items.reduce((acc, item) => (item.done ? acc + item.weight : acc), 0);
+  const percentage = Math.min(100, Math.max(0, completedWeight));
+  const missingItems = items.filter((item) => !item.done);
+  const completedCount = items.length - missingItems.length;
+
+  return {
+    percentage,
+    completedCount,
+    totalCount: items.length,
+    items,
+    missingItems,
+  };
 }
 
 const DOMINICA_PARISHES: Parish[] = [
@@ -549,22 +690,23 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   }, [initialSubTab]);
 
   // Personal details form state
-  const [name, setName] = useState(currentUser?.name || 'Max Blanc');
-  const [email, setEmail] = useState(currentUser?.email || 'maxblanc4577@gmail.com');
-  const [phone, setPhone] = useState(currentUser?.phone || '+1 (767) 275-4577');
-  const [parish, setParish] = useState<Parish>(currentUser?.parish || 'St. George');
+  const [avatarUrl, setAvatarUrl] = useState<string>(currentUser?.avatarUrl ?? '');
+  const [name, setName] = useState(currentUser?.name ?? 'Max Blanc');
+  const [email, setEmail] = useState(currentUser?.email ?? 'maxblanc4577@gmail.com');
+  const [phone, setPhone] = useState(currentUser?.phone ?? '+1 (767) 275-4577');
+  const [parish, setParish] = useState<Parish>(currentUser?.parish ?? 'St. George');
   const [headline, setHeadline] = useState(
-    currentUser?.headline || 'Senior Full-Stack Cloud & Web Architect'
+    currentUser?.headline ?? 'Senior Full-Stack Cloud & Web Architect'
   );
   const [residencyStatus, setResidencyStatus] = useState(
-    currentUser?.residencyStatus || 'Dominican Citizen (Waitukubuli)'
+    currentUser?.residencyStatus ?? 'Dominican Citizen (Waitukubuli)'
   );
   const [bio, setBio] = useState(
-    currentUser?.bio ||
+    currentUser?.bio ??
       'Experienced Dominican software engineer with 6+ years building sustainable digital platforms, clean energy IoT monitoring tools, and remote cloud infrastructure across the Eastern Caribbean.'
   );
   const [skills, setSkills] = useState<string[]>(
-    currentUser?.skills || [
+    currentUser?.skills ?? [
       'React & TypeScript',
       'Node.js & Express',
       'PostgreSQL',
@@ -574,7 +716,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
     ]
   );
   const [experience, setExperience] = useState<ResumeExperience[]>(
-    currentUser?.experience || [
+    currentUser?.experience ?? [
       {
         id: 'exp-init-1',
         title: 'Senior Full-Stack Cloud Architect',
@@ -590,7 +732,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
     ]
   );
   const [education, setEducation] = useState<ResumeEducation[]>(
-    currentUser?.education || [
+    currentUser?.education ?? [
       {
         id: 'edu-init-1',
         institution: 'Dominica State College (DSC)',
@@ -609,7 +751,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   // AI Resume Parsing Tool State
   const [isParsingResume, setIsParsingResume] = useState(false);
   const [uploadedResumeFileName, setUploadedResumeFileName] = useState<string>(
-    currentUser?.resumeFileName || ''
+    currentUser?.resumeFileName ?? ''
   );
   const [rawResumeTextInput, setRawResumeTextInput] = useState<string>('');
   const [showPasteResumeInput, setShowPasteResumeInput] = useState<boolean>(false);
@@ -619,34 +761,72 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   // Refs for file uploads
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resumeUploadInputRef = useRef<HTMLInputElement>(null);
+  const overviewResumeRef = useRef<HTMLDivElement>(null);
+  const [isDownloadingOverviewPdf, setIsDownloadingOverviewPdf] = useState(false);
 
-  // Sync state if currentUser changes from outside
+  const currentResumeTemplateData = useMemo(
+    () => ({
+      fullName: name || 'Max Blanc',
+      email: email || 'maxblanc4577@gmail.com',
+      phone: phone || '+1 (767) 275-4577',
+      parish: parish || ('St. George' as Parish),
+      locality: parish === 'St. John' ? 'Portsmouth' : 'Roseau',
+      headline: headline || 'Senior Full-Stack Cloud & Web Architect',
+      summary: bio,
+      skills,
+      experiences: experience,
+      education,
+      certifications: [],
+      languages: ['English (Native)', 'Dominican Creole / Kweyol'],
+    }),
+    [name, email, phone, parish, headline, bio, skills, experience, education]
+  );
+
+  const handleOverviewDownloadPdf = async () => {
+    setIsDownloadingOverviewPdf(true);
+    try {
+      await generateResumePdf({
+        element: overviewResumeRef.current,
+        fileName: `${(name || 'Candidate').replace(/\s+/g, '_')}_Dominica_modern_CV.pdf`,
+        candidateName: name || 'Candidate',
+        resumeData: currentResumeTemplateData,
+        layoutTemplate: 'modern',
+      });
+      setSaveSuccessNotice(true);
+      setTimeout(() => setSaveSuccessNotice(false), 2500);
+    } finally {
+      setIsDownloadingOverviewPdf(false);
+    }
+  };
+
+  // Sync state if currentUser account changes from outside
   useEffect(() => {
     if (currentUser) {
-      setName(currentUser.name || '');
-      setEmail(currentUser.email || '');
-      setPhone(currentUser.phone || '+1 (767) 275-4577');
-      setParish(currentUser.parish || 'St. George');
-      setHeadline(currentUser.headline || 'Senior Full-Stack Cloud & Web Architect');
-      setResidencyStatus(currentUser.residencyStatus || 'Dominican Citizen (Waitukubuli)');
+      setAvatarUrl(currentUser.avatarUrl ?? '');
+      setName(currentUser.name ?? '');
+      setEmail(currentUser.email ?? '');
+      setPhone(currentUser.phone ?? '+1 (767) 275-4577');
+      setParish(currentUser.parish ?? 'St. George');
+      setHeadline(currentUser.headline ?? 'Senior Full-Stack Cloud & Web Architect');
+      setResidencyStatus(currentUser.residencyStatus ?? 'Dominican Citizen (Waitukubuli)');
       setBio(
-        currentUser.bio ||
+        currentUser.bio ??
           'Experienced Dominican software engineer with 6+ years building sustainable digital platforms, clean energy IoT monitoring tools, and remote cloud infrastructure across the Eastern Caribbean.'
       );
-      if (currentUser.skills && currentUser.skills.length > 0) {
+      if (Array.isArray(currentUser.skills)) {
         setSkills(currentUser.skills);
       }
-      if (currentUser.experience && currentUser.experience.length > 0) {
+      if (Array.isArray(currentUser.experience)) {
         setExperience(currentUser.experience);
       }
-      if (currentUser.education && currentUser.education.length > 0) {
+      if (Array.isArray(currentUser.education)) {
         setEducation(currentUser.education);
       }
-      if (currentUser.resumeFileName) {
+      if (currentUser.resumeFileName !== undefined) {
         setUploadedResumeFileName(currentUser.resumeFileName);
       }
     }
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   // Apply parsed resume data to component state, JobContext currentUser, and localStorage
   const applyExtractedResumeData = (parsed: ParsedResumeProfileData) => {
@@ -838,32 +1018,36 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   };
 
   // Profile Completion Calculation
-  const completionDetails = useMemo(() => {
-    const items = [
-      { name: 'Profile Photo', done: Boolean(currentUser?.avatarUrl), weight: 15, tab: 'details' as const },
-      { name: 'Full Name & Email', done: Boolean(name && email), weight: 15, tab: 'details' as const },
-      { name: 'Professional Headline', done: Boolean(headline && headline.length > 5), weight: 15, tab: 'details' as const },
-      { name: 'Dominica Parish', done: Boolean(parish), weight: 10, tab: 'details' as const },
-      { name: 'Executive Bio', done: Boolean(bio && bio.length > 20), weight: 15, tab: 'details' as const },
-      { name: 'Core Skills (3+)', done: skills.length >= 3, weight: 15, tab: 'details' as const },
-      {
-        name: 'Stored Resume / CV',
-        done: Boolean(
-          uploadedResumeFileName ||
-            currentUser?.resumeFileName ||
-            localStorage.getItem('dominica_candidate_resume')
-        ),
-        weight: 15,
-        tab: 'resume_builder' as const,
-      },
-    ];
-
-    const completedWeight = items.reduce((acc, item) => (item.done ? acc + item.weight : acc), 0);
-    const percentage = Math.min(100, completedWeight);
-    const missingItems = items.filter((item) => !item.done);
-
-    return { percentage, missingItems };
-  }, [currentUser, name, email, headline, parish, bio, skills, uploadedResumeFileName]);
+  const effectiveAvatarUrl = avatarUrl || currentUser?.avatarUrl || '';
+  const completionDetails = useMemo(
+    () =>
+      calculateCandidateProfileCompletion({
+        avatarUrl: effectiveAvatarUrl,
+        name,
+        email,
+        phone,
+        parish,
+        headline,
+        bio,
+        resumeFileName: uploadedResumeFileName,
+        skills,
+        experience,
+        education,
+      }),
+    [
+      effectiveAvatarUrl,
+      name,
+      email,
+      phone,
+      parish,
+      headline,
+      bio,
+      uploadedResumeFileName,
+      skills,
+      experience,
+      education,
+    ]
+  );
 
   // Upcoming Interviews
   const upcomingInterviews = useMemo(() => {
@@ -939,6 +1123,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
+      setAvatarUrl(dataUrl);
       updateCurrentUser({ avatarUrl: dataUrl });
       setSaveSuccessNotice(true);
       setTimeout(() => setSaveSuccessNotice(false), 2500);
@@ -950,27 +1135,44 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   };
 
   const handleSelectPresetAvatar = (url: string) => {
+    setAvatarUrl(url);
     updateCurrentUser({ avatarUrl: url });
     setSaveSuccessNotice(true);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
   };
 
   const handleRemovePhoto = () => {
+    setAvatarUrl('');
     updateCurrentUser({ avatarUrl: undefined });
     setSaveSuccessNotice(true);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
   };
 
+  const handleRemoveResumeFile = () => {
+    setUploadedResumeFileName('');
+    setLastParsedResult(null);
+    updateCurrentUser({ resumeFileName: '' });
+    try {
+      localStorage.removeItem('dominica_candidate_resume');
+    } catch {
+      // ignore storage errors
+    }
+  };
+
   const handleAddSkill = () => {
     const trimmed = newSkillInput.trim();
     if (trimmed && !skills.includes(trimmed)) {
-      setSkills((prev) => [...prev, trimmed]);
+      const next = [...skills, trimmed];
+      setSkills(next);
+      updateCurrentUser({ skills: next });
       setNewSkillInput('');
     }
   };
 
   const handleRemoveSkill = (skillToRemove: string) => {
-    setSkills((prev) => prev.filter((s) => s !== skillToRemove));
+    const next = skills.filter((s) => s !== skillToRemove);
+    setSkills(next);
+    updateCurrentUser({ skills: next });
   };
 
   // Handle Save Personal Details
@@ -1139,9 +1341,18 @@ END:VCALENDAR`;
           </button>
         ))}
         {uploadedResumeFileName && (
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-300">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-800 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-300">
             <FileCheck className="w-3.5 h-3.5 text-emerald-700" />
-            Active File: {uploadedResumeFileName}
+            <span>Active File: {uploadedResumeFileName}</span>
+            <button
+              type="button"
+              data-testid="remove-resume-file-btn"
+              onClick={handleRemoveResumeFile}
+              title="Remove uploaded resume"
+              className="text-emerald-700 hover:text-rose-600 font-black ml-0.5 cursor-pointer"
+            >
+              ×
+            </button>
           </span>
         )}
       </div>
@@ -1310,10 +1521,10 @@ END:VCALENDAR`;
             {/* Profile Photo with Camera Overlay */}
             <div className="relative group shrink-0">
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-emerald-800 border-2 border-emerald-400/40 overflow-hidden shadow-lg flex items-center justify-center">
-                {currentUser?.avatarUrl ? (
+                {effectiveAvatarUrl ? (
                   <img
-                    src={currentUser.avatarUrl}
-                    alt={currentUser.name || 'Candidate profile'}
+                    src={effectiveAvatarUrl}
+                    alt={currentUser?.name || name || 'Candidate profile'}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -1427,6 +1638,145 @@ END:VCALENDAR`;
         </div>
       </div>
 
+      {/* Persistent Visual Profile Completion Progress Card */}
+      <div
+        data-testid="profile-completion-card"
+        className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200 inline-block">
+                Readiness Score
+              </span>
+              <span
+                data-testid="profile-completion-count-badge"
+                className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200"
+              >
+                {completionDetails.completedCount} of {completionDetails.totalCount} Essential Fields Completed
+              </span>
+            </div>
+            <h2 className="text-lg font-black text-slate-900">
+              Profile Completion: {completionDetails.percentage}%
+            </h2>
+            <p className="text-xs text-slate-500">
+              {completionDetails.percentage === 100
+                ? 'Your Dominica candidate profile is 100% complete across resume details, profile photo, and education history.'
+                : 'Calculated from your essential fields including profile photo, resume details, education history, work experience, and skills.'}
+            </p>
+          </div>
+
+          <div className="text-left sm:text-right shrink-0">
+            <span
+              data-testid="profile-completion-percentage"
+              className="text-3xl font-black text-emerald-800"
+            >
+              {completionDetails.percentage}%
+            </span>
+            <span className="block text-[11px] font-bold text-slate-500">
+              {completionDetails.percentage === 100 ? 'Fully Optimized' : 'In Progress'}
+            </span>
+          </div>
+        </div>
+
+        {/* Visual Progress Bar */}
+        <div
+          role="progressbar"
+          aria-label="Profile Completion"
+          aria-valuenow={completionDetails.percentage}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          data-testid="profile-completion-progress-bar"
+          className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden border border-slate-200/80"
+        >
+          <div
+            data-testid="profile-completion-progress-fill"
+            className={`h-full rounded-full transition-all duration-500 ease-out ${
+              completionDetails.percentage === 100
+                ? 'bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-400'
+                : completionDetails.percentage >= 70
+                ? 'bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500'
+                : completionDetails.percentage >= 40
+                ? 'bg-gradient-to-r from-amber-500 to-emerald-500'
+                : 'bg-gradient-to-r from-rose-500 to-amber-500'
+            }`}
+            style={{ width: `${completionDetails.percentage}%` }}
+          />
+        </div>
+
+        {/* Essential Fields Checklist Breakdown */}
+        <div
+          data-testid="profile-completion-checklist"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1"
+        >
+          {completionDetails.items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              data-testid={`completion-item-${item.id}`}
+              onClick={() => setActiveSubTab(item.tab)}
+              className={`p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                item.done
+                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950 hover:bg-emerald-50'
+                  : 'bg-amber-50/60 border-amber-200 text-slate-800 hover:bg-amber-100/70'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {item.done ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Plus className="w-4 h-4 text-amber-600 shrink-0" />
+                )}
+                <div className="truncate">
+                  <span className="text-xs font-bold block truncate">{item.name}</span>
+                  <span className="text-[10px] text-slate-500 block truncate">
+                    {item.description}
+                  </span>
+                </div>
+              </div>
+              <span
+                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                  item.done
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                }`}
+              >
+                {item.done ? `✓ ${item.weight}%` : `+${item.weight}%`}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Actionable Next Steps Chips if incomplete */}
+        {completionDetails.missingItems.length > 0 && (
+          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">
+                Missing Essential Fields:
+              </span>
+              {completionDetails.missingItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  data-testid={`missing-field-btn-${item.id}`}
+                  onClick={() => {
+                    setActiveSubTab(item.tab);
+                    if (item.id === 'profile_photo') {
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-xl border border-emerald-200 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Add {item.name}</span>
+                  <span className="text-[10px] font-bold text-emerald-600">(+{item.weight}%)</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Navigation Sub-Tabs Bar */}
       <div className="flex border-b border-slate-200 overflow-x-auto bg-white p-2 rounded-2xl shadow-xs border gap-1.5 no-scrollbar">
         <button
@@ -1491,7 +1841,7 @@ END:VCALENDAR`;
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Resume Builder & PDF</span>
+          <span>Resume Builder</span>
         </button>
 
         <button
@@ -1552,62 +1902,6 @@ END:VCALENDAR`;
         <div className="space-y-6 animate-in fade-in">
           {/* AI Resume Parsing Tool integrated directly into CandidateProfileHub */}
           {renderAiResumeParserWidget()}
-
-          {/* Profile Completion Progress Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-block mb-1">
-                  Readiness Score
-                </span>
-                <h3 className="text-lg font-black text-slate-900">
-                  Profile Completion Status: {completionDetails.percentage}%
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {completionDetails.percentage === 100
-                    ? 'Your Dominica candidate profile is 100% complete and fully optimized for recruiter visibility.'
-                    : 'Complete the remaining items to boost your match ranking with verified Dominican employers.'}
-                </p>
-              </div>
-
-              <div className="text-right shrink-0">
-                <span className="text-3xl font-black text-emerald-800">
-                  {completionDetails.percentage}%
-                </span>
-              </div>
-            </div>
-
-            {/* Visual Progress Bar */}
-            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200/80">
-              <div
-                className="bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500 h-full rounded-full transition-all duration-700 ease-out"
-                style={{ width: `${completionDetails.percentage}%` }}
-              />
-            </div>
-
-            {/* Next Steps Chips if incomplete */}
-            {completionDetails.missingItems.length > 0 && (
-              <div className="pt-2 border-t border-slate-100">
-                <span className="text-xs font-bold text-slate-700 block mb-2">
-                  Actionable Steps to Reach 100%:
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {completionDetails.missingItems.map((item, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setActiveSubTab(item.tab)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-xl border border-emerald-200 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{item.name}</span>
-                      <span className="text-[10px] font-bold text-emerald-600">(+{item.weight}%)</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Upcoming Interview Reminders & Quick Actions Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1750,19 +2044,40 @@ END:VCALENDAR`;
               </p>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveSubTab('resume_builder')}
-              className="p-4 bg-white hover:bg-emerald-50/50 rounded-2xl border border-slate-200 hover:border-emerald-300 transition-all text-left space-y-2 cursor-pointer shadow-xs group"
-            >
-              <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <FileText className="w-4 h-4 text-teal-700" />
+            <div className="p-4 bg-white hover:bg-emerald-50/50 rounded-2xl border border-slate-200 hover:border-emerald-300 transition-all text-left space-y-2 shadow-xs group flex flex-col justify-between">
+              <div
+                onClick={() => setActiveSubTab('resume_builder')}
+                className="space-y-2 cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <FileText className="w-4 h-4 text-teal-700" />
+                </div>
+                <h4 className="font-bold text-sm text-slate-900">Resume & PDF Studio</h4>
+                <p className="text-xs text-slate-500">
+                  Select from 3 templates and download an executive PDF CV.
+                </p>
               </div>
-              <h4 className="font-bold text-sm text-slate-900">Resume & PDF Studio</h4>
-              <p className="text-xs text-slate-500">
-                Select from 3 templates and download an executive PDF CV.
-              </p>
-            </button>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  data-testid="download-resume-pdf-btn"
+                  aria-label="Download as PDF"
+                  disabled={isDownloadingOverviewPdf}
+                  onClick={handleOverviewDownloadPdf}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download as PDF</span>
+                </button>
+              </div>
+              <div className="sr-only" aria-hidden="true">
+                <ResumeTemplateView
+                  ref={overviewResumeRef}
+                  data={currentResumeTemplateData}
+                  layout="modern"
+                />
+              </div>
+            </div>
 
             <button
               type="button"
@@ -1823,9 +2138,9 @@ END:VCALENDAR`;
               {/* Photo Preview & Controls */}
               <div className="flex flex-col items-center gap-3">
                 <div className="w-28 h-28 rounded-2xl bg-slate-100 border-2 border-emerald-500/30 overflow-hidden shadow-inner flex items-center justify-center">
-                  {currentUser?.avatarUrl ? (
+                  {effectiveAvatarUrl ? (
                     <img
-                      src={currentUser.avatarUrl}
+                      src={effectiveAvatarUrl}
                       alt="Profile preview"
                       className="w-full h-full object-cover"
                     />
@@ -1847,7 +2162,7 @@ END:VCALENDAR`;
                     <span>Upload File</span>
                   </button>
 
-                  {currentUser?.avatarUrl && (
+                  {effectiveAvatarUrl && (
                     <button
                       type="button"
                       onClick={handleRemovePhoto}
@@ -1872,7 +2187,7 @@ END:VCALENDAR`;
                       type="button"
                       onClick={() => handleSelectPresetAvatar(preset.url)}
                       className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 cursor-pointer hover:border-emerald-500 ${
-                        currentUser?.avatarUrl === preset.url
+                        effectiveAvatarUrl === preset.url
                           ? 'border-emerald-600 bg-emerald-50 shadow-xs'
                           : 'border-slate-200 bg-white'
                       }`}
@@ -2065,9 +2380,9 @@ END:VCALENDAR`;
                   </label>
                   <button
                     type="button"
-                    onClick={() =>
-                      setExperience((prev) => [
-                        ...prev,
+                    onClick={() => {
+                      const nextExp: ResumeExperience[] = [
+                        ...experience,
                         {
                           id: `exp-manual-${Date.now()}`,
                           title: 'Project Specialist',
@@ -2078,8 +2393,10 @@ END:VCALENDAR`;
                           isCurrent: true,
                           highlights: ['Led key operational initiatives.'],
                         },
-                      ])
-                    }
+                      ];
+                      setExperience(nextExp);
+                      updateCurrentUser({ experience: nextExp });
+                    }}
                     className="text-xs font-bold text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -2109,9 +2426,11 @@ END:VCALENDAR`;
                       </div>
                       <button
                         type="button"
-                        onClick={() =>
-                          setExperience((prev) => prev.filter((_, i) => i !== idx))
-                        }
+                        onClick={() => {
+                          const nextExp = experience.filter((_, i) => i !== idx);
+                          setExperience(nextExp);
+                          updateCurrentUser({ experience: nextExp });
+                        }}
                         className="text-slate-400 hover:text-rose-600 p-1 self-end sm:self-center cursor-pointer"
                         title="Remove experience entry"
                       >
@@ -2130,9 +2449,9 @@ END:VCALENDAR`;
                   </label>
                   <button
                     type="button"
-                    onClick={() =>
-                      setEducation((prev) => [
-                        ...prev,
+                    onClick={() => {
+                      const nextEdu: ResumeEducation[] = [
+                        ...education,
                         {
                           id: `edu-manual-${Date.now()}`,
                           institution: 'Dominica State College (DSC)',
@@ -2141,8 +2460,10 @@ END:VCALENDAR`;
                           location: 'Roseau, Dominica',
                           graduationYear: '2023',
                         },
-                      ])
-                    }
+                      ];
+                      setEducation(nextEdu);
+                      updateCurrentUser({ education: nextEdu });
+                    }}
                     className="text-xs font-bold text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -2166,9 +2487,11 @@ END:VCALENDAR`;
                       </div>
                       <button
                         type="button"
-                        onClick={() =>
-                          setEducation((prev) => prev.filter((_, i) => i !== idx))
-                        }
+                        onClick={() => {
+                          const nextEdu = education.filter((_, i) => i !== idx);
+                          setEducation(nextEdu);
+                          updateCurrentUser({ education: nextEdu });
+                        }}
                         className="text-slate-400 hover:text-rose-600 p-1 self-end sm:self-center cursor-pointer"
                         title="Remove education entry"
                       >
@@ -2320,7 +2643,10 @@ END:VCALENDAR`;
       {/* SECTION 3: RESUME BUILDER & PDF STUDIO */}
       {activeSubTab === 'resume_builder' && (
         <div className="animate-in fade-in">
-          <ResumeBuilder jobs={jobs} />
+          <ResumeBuilder
+            jobs={jobs}
+            candidateProfile={currentResumeTemplateData}
+          />
         </div>
       )}
 

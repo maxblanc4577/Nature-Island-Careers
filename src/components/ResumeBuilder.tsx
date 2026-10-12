@@ -47,9 +47,13 @@ import {
 
 interface ResumeBuilderProps {
   jobs: JobListing[];
+  candidateProfile?: Partial<ResumeData>;
 }
 
-export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
+export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({
+  jobs,
+  candidateProfile,
+}) => {
   // Load versions from localStorage or initial seed
   const [versions, setVersions] = useState<ResumeVersion[]>(() => {
     try {
@@ -60,6 +64,39 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
       }
     } catch {
       // ignore
+    }
+    if (candidateProfile) {
+      return INITIAL_RESUME_VERSIONS.map((ver, idx) =>
+        idx === 0
+          ? {
+              ...ver,
+              data: {
+                ...ver.data,
+                fullName: candidateProfile.fullName || ver.data.fullName,
+                email: candidateProfile.email || ver.data.email,
+                phone: candidateProfile.phone || ver.data.phone,
+                parish: candidateProfile.parish || ver.data.parish,
+                locality: candidateProfile.locality || ver.data.locality,
+                headline: candidateProfile.headline || ver.data.headline,
+                summary: candidateProfile.summary || ver.data.summary,
+                skills:
+                  candidateProfile.skills && candidateProfile.skills.length > 0
+                    ? candidateProfile.skills
+                    : ver.data.skills,
+                experiences:
+                  candidateProfile.experiences &&
+                  candidateProfile.experiences.length > 0
+                    ? candidateProfile.experiences
+                    : ver.data.experiences,
+                education:
+                  candidateProfile.education &&
+                  candidateProfile.education.length > 0
+                    ? candidateProfile.education
+                    : ver.data.education,
+              },
+            }
+          : ver
+      );
     }
     return INITIAL_RESUME_VERSIONS;
   });
@@ -178,7 +215,6 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
 
   // Handle PDF Export
   const handleExportPdf = async () => {
-    if (!resumePreviewRef.current) return;
     setIsExportingPdf(true);
 
     try {
@@ -186,12 +222,13 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
         element: resumePreviewRef.current,
         fileName: `${activeVersion.data.fullName || 'Candidate'}_Dominica_${activeVersion.layoutTemplate}_CV.pdf`,
         candidateName: activeVersion.data.fullName || 'Candidate',
+        resumeData: activeVersion.data,
+        layoutTemplate: activeVersion.layoutTemplate,
       });
       setExportNotice(true);
       setTimeout(() => setExportNotice(false), 2500);
     } catch (err) {
       console.error(err);
-      window.print();
     } finally {
       setIsExportingPdf(false);
     }
@@ -338,6 +375,8 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
 
             <button
               type="button"
+              data-testid="download-resume-pdf-btn"
+              aria-label="Download as PDF"
               onClick={handleExportPdf}
               disabled={isExportingPdf}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
@@ -345,12 +384,12 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ jobs }) => {
               {isExportingPdf ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Generating PDF...</span>
+                  <span>Download as PDF</span>
                 </>
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5" />
-                  <span>Export to PDF</span>
+                  <span>Download as PDF</span>
                 </>
               )}
             </button>

@@ -239,6 +239,8 @@ export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
   const notifiedPairsRef = useRef<Set<string>>(new Set());
   // Track known job IDs to detect newly added jobs immediately
   const knownJobIdsRef = useRef<Set<string>>(new Set());
+  // Ref for pending matches queue to avoid calling context setState inside a state updater
+  const pendingMatchesRef = useRef<SubscriptionMatchResult[]>([]);
   const initializedRef = useRef(false);
 
   // Sync local alertPreferences whenever subscriptionCriteria.alertPreferences changes externally
@@ -435,7 +437,9 @@ export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
     }
 
     if (newlyDiscoveredMatches.length > 0) {
-      setPendingMatches((prev) => [...prev, ...newlyDiscoveredMatches]);
+      const updated = [...pendingMatchesRef.current, ...newlyDiscoveredMatches];
+      pendingMatchesRef.current = updated;
+      setPendingMatches(updated);
     }
   }, [
     jobs,
@@ -446,20 +450,20 @@ export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
     markPairNotified,
   ]);
 
-  // Dispatch the next queued subscription match
+  // Dispatch the next queued subscription match outside of any state updater
   const triggerNextQueuedMatch = useCallback(() => {
-    setPendingMatches((prev) => {
-      if (prev.length === 0) return prev;
-      const [nextMatch, ...rest] = prev;
-      const emailNotif = createSubscriptionEmailNotification(
-        nextMatch.job,
-        nextMatch.subscription
-      );
-      setActiveMatchMeta(nextMatch);
-      setVisibleToast(emailNotif);
-      dispatchEmail(emailNotif);
-      return rest;
-    });
+    if (pendingMatchesRef.current.length === 0) return;
+    const [nextMatch, ...rest] = pendingMatchesRef.current;
+    pendingMatchesRef.current = rest;
+    setPendingMatches(rest);
+
+    const emailNotif = createSubscriptionEmailNotification(
+      nextMatch.job,
+      nextMatch.subscription
+    );
+    setActiveMatchMeta(nextMatch);
+    setVisibleToast(emailNotif);
+    dispatchEmail(emailNotif);
   }, [dispatchEmail]);
 
   // Periodic useEffect interval to simulate checking for 'new' jobs based on mock subscription criteria & alertPreferences

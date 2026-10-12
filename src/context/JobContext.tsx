@@ -684,11 +684,11 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const loadSubscriptionCriteria = (): SubscriptionCriteria => {
+  const loadSubscriptionCriteria = React.useCallback((): SubscriptionCriteria => {
     const loaded = loadSubscriptionCriteriaFromStorage();
     setSubscriptionCriteria(loaded);
     return loaded;
-  };
+  }, []);
 
   const saveSubscriptionCriteria = (
     updates: Partial<SubscriptionCriteria>
@@ -968,21 +968,20 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       saveJobToFolder(id, folderName.trim());
       return;
     }
-    setSavedJobIds((prev) => {
-      const isCurrentlySaved = prev.includes(id);
-      if (isCurrentlySaved) {
-        setSavedJobFolders((folders) => {
-          const next = folders.map((f) => ({
-            ...f,
-            jobIds: f.jobIds.filter((jid) => jid !== id),
-          }));
-          saveSavedJobFoldersToStorage(next);
-          return next;
-        });
-        return prev.filter((item) => item !== id);
-      }
-      return [...prev, id];
-    });
+    const isCurrentlySaved = isJobSaved(id);
+    if (isCurrentlySaved) {
+      setSavedJobIds((prev) => prev.filter((item) => item !== id));
+      setSavedJobFolders((folders) => {
+        const next = folders.map((f) => ({
+          ...f,
+          jobIds: f.jobIds.filter((jid) => jid !== id),
+        }));
+        saveSavedJobFoldersToStorage(next);
+        return next;
+      });
+    } else {
+      setSavedJobIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    }
   };
 
   const isJobSaved = (id: string) =>
@@ -1138,26 +1137,24 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCurrentUser = (updatedFields: Partial<UserAccount>) => {
-    setCurrentUser((prev) => {
-      const base = prev || {
-        id: `user-${Date.now()}`,
-        name: 'Dominica Job Seeker',
-        email: 'jobseeker@waitukubuli.dm',
-        role: 'jobseeker' as const,
-        parish: 'St. George' as Parish,
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-      const updated: UserAccount = { ...base, ...updatedFields };
-      localStorage.setItem('dominica_current_user', JSON.stringify(updated));
-      setUsers((prevUsers) => {
-        const exists = prevUsers.some((u) => u.id === updated.id);
-        const nextUsers = exists
-          ? prevUsers.map((u) => (u.id === updated.id ? updated : u))
-          : [updated, ...prevUsers];
-        localStorage.setItem('dominica_users', JSON.stringify(nextUsers));
-        return nextUsers;
-      });
-      return updated;
+    const base = currentUser || {
+      id: `user-${Date.now()}`,
+      name: 'Dominica Job Seeker',
+      email: 'jobseeker@waitukubuli.dm',
+      role: 'jobseeker' as const,
+      parish: 'St. George' as Parish,
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+    const updated: UserAccount = { ...base, ...updatedFields };
+    setCurrentUser(updated);
+    localStorage.setItem('dominica_current_user', JSON.stringify(updated));
+    setUsers((prevUsers) => {
+      const exists = prevUsers.some((u) => u.id === updated.id);
+      const nextUsers = exists
+        ? prevUsers.map((u) => (u.id === updated.id ? updated : u))
+        : [updated, ...prevUsers];
+      localStorage.setItem('dominica_users', JSON.stringify(nextUsers));
+      return nextUsers;
     });
   };
 
@@ -1265,15 +1262,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateStripeSettings = (updates: Partial<StripeSettings>) => {
-    setStripeSettings((prev) => {
-      const next = { ...prev, ...updates };
-      logAdminActivity(
-        'Payment Update: Stripe Gateway Configuration',
-        `Updated Stripe mode (${next.mode.toUpperCase()}), peg (${next.currencyPeg} XCD/USD), and discount (${next.monthlyDiscountPercent}%).`,
-        'Payment Update'
-      );
-      return next;
-    });
+    const next = { ...stripeSettings, ...updates };
+    setStripeSettings(next);
+    logAdminActivity(
+      'Payment Update: Stripe Gateway Configuration',
+      `Updated Stripe mode (${next.mode.toUpperCase()}), peg (${next.currencyPeg} XCD/USD), and discount (${next.monthlyDiscountPercent}%).`,
+      'Payment Update'
+    );
   };
 
   const toggleRecruiterAutoRenew = (recruiterId: string, enabled: boolean) => {
@@ -1440,14 +1435,14 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Dispatch email helper
-  const dispatchEmail = (notification: EmailNotification) => {
+  const dispatchEmail = React.useCallback((notification: EmailNotification) => {
     setNotifications((prev) => [notification, ...prev]);
     setLatestDispatchedEmail(notification);
-  };
+  }, []);
 
-  const dismissLatestEmail = () => {
+  const dismissLatestEmail = React.useCallback(() => {
     setLatestDispatchedEmail(null);
-  };
+  }, []);
 
   // Create Job
   const createJob = (jobData: Omit<JobListing, 'id' | 'postedAt' | 'viewsCount' | 'applicantsCount'>) => {
