@@ -1,6 +1,7 @@
 import React from 'react';
 import { Parish, JobSector } from '../types';
 import { useJobContext } from '../context/JobContext';
+import { BrandLogoMark } from './BrandLogo';
 import {
   Search,
   MapPin,
@@ -102,8 +103,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       <div className="relative max-w-5xl mx-auto text-center space-y-6">
         {/* Top Controls: Background Switcher & Badge */}
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <div className="inline-flex items-center gap-2 bg-emerald-950/85 border border-emerald-500/50 rounded-full px-3.5 py-1 text-xs font-semibold text-emerald-100 shadow-xl backdrop-blur-md">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <div className="inline-flex items-center gap-2 bg-[#082407]/90 border border-lime-500/40 rounded-full px-3.5 py-1 text-xs font-semibold text-emerald-100 shadow-xl backdrop-blur-md">
+            <BrandLogoMark className="w-5 h-5 shrink-0" />
             <span>{siteName} • Commonwealth of Dominica Official Job Exchange</span>
             <span className="bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full text-[10px] font-bold">
               10 Parishes + Global Remote

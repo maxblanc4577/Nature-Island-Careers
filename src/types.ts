@@ -152,6 +152,7 @@ export interface UserAccount {
   role: 'jobseeker' | 'client' | 'admin';
   parish: Parish;
   phone?: string;
+  password?: string;
   avatarUrl?: string;
   headline?: string;
   bio?: string;
@@ -166,6 +167,9 @@ export interface UserAccount {
   // Client fields
   companyName?: string;
   dssRegistrationNo?: string;
+  industry?: JobSector;
+  locality?: string;
+  recruiterId?: string;
   subscription?: ClientSubscription;
   createdAt: string;
 }
@@ -349,7 +353,12 @@ export interface DatabaseSyncRecord {
 }
 
 // Resume Builder & Career Suite Types
-export type ResumeTemplateLayout = 'modern' | 'classic' | 'creative';
+export type ResumeTemplateLayout =
+  | 'modern'
+  | 'executive'
+  | 'minimalist'
+  | 'classic'
+  | 'creative';
 
 export interface ResumeExperience {
   id: string;
@@ -461,6 +470,16 @@ export interface AdminActivityLogEntry {
   timestamp: string;
   actor?: string;
 }
+
+export type DatePostedFilter =
+  | 'All'
+  | 'Last 24 hours'
+  | 'Last 7 days'
+  | 'Last 30 days'
+  | '24h'
+  | '7d'
+  | '30d';
+
 
 
 

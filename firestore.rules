@@ -1,0 +1,125 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    // Validation Blueprint for UserProfile (/users/{userId})
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid',
+          'email',
+          'name',
+          'accountType',
+          'parish',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'email',
+          'name',
+          'accountType',
+          'parish',
+          'phone',
+          'companyName',
+          'dssRegistrationNo',
+          'careerSector',
+          'skills',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.uid is string
+        && data.uid == request.auth.uid
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 160
+        && data.name is string
+        && data.name.size() >= 2
+        && data.name.size() <= 120
+        && data.accountType is string
+        && (data.accountType == 'candidate' || data.accountType == 'employer')
+        && data.parish is string
+        && data.parish.size() >= 2
+        && data.parish.size() <= 64
+        && (!('phone' in data) || (data.phone is string && data.phone.size() >= 4 && data.phone.size() <= 40))
+        && (!('companyName' in data) || (data.companyName is string && data.companyName.size() >= 1 && data.companyName.size() <= 140))
+        && (!('dssRegistrationNo' in data) || (data.dssRegistrationNo is string && data.dssRegistrationNo is string && data.dssRegistrationNo.size() >= 1 && data.dssRegistrationNo.size() <= 64))
+        && (!('careerSector' in data) || (data.careerSector is string && data.careerSector.size() >= 2 && data.careerSector.size() <= 100))
+        && (!('skills' in data) || (
+          data.skills is list
+          && data.skills.size() <= 10
+          && (data.skills.size() == 0 || (data.skills[0] is string && data.skills[0].size() <= 80))
+        ))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      // Strictly isolated PII: only document owner can get; collection list is forbidden
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().accountType == existing().accountType
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Update Profile Details
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name',
+            'parish',
+            'phone',
+            'companyName',
+            'dssRegistrationNo',
+            'careerSector',
+            'skills',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+    }
+  }
+}

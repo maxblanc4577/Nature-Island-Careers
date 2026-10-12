@@ -41,6 +41,15 @@ import {
   requestBrowserNotificationPermission,
   getBrowserNotificationPermission,
 } from '../utils/browserNotifications';
+import {
+  signInWithGooglePopup,
+  signInWithGithubPopup,
+  signInWithSocialProviderPopup,
+  SocialAuthProviderType,
+  signOutFromFirebase,
+  syncAuthenticatedUserToFirestore,
+  sendFirebasePasswordReset,
+} from '../firebase';
 
 interface JobContextType {
   // Role & Recruiter
@@ -70,6 +79,10 @@ interface JobContextType {
     careerSector: JobSector;
     skills: string[];
     resumeFileName?: string;
+    password?: string;
+    headline?: string;
+    bio?: string;
+    residencyStatus?: string;
   }) => UserAccount;
   registerClient: (data: {
     companyName: string;
@@ -79,15 +92,70 @@ interface JobContextType {
     parish: Parish;
     dssRegistrationNo: string;
     industry: JobSector;
+    password?: string;
+    locality?: string;
+    nepPartner?: boolean;
   }) => UserAccount;
   subscribeClientPlan: (
     userId: string,
     plan: SubscriptionPlan,
     paymentMethod: 'National Bank of Dominica (NBD)' | 'Credit/Debit Card (XCD)' | 'Republic Bank / Wire'
   ) => void;
-  loginUser: (email: string) => boolean;
+  loginUser: (email: string, password?: string, roleFilter?: 'jobseeker' | 'client') => boolean;
+  authenticateWithGoogle: (
+    preferredRole: 'jobseeker' | 'client',
+    extraFields?: {
+      companyName?: string;
+      dssRegistrationNo?: string;
+      parish?: Parish;
+      phone?: string;
+      careerSector?: JobSector;
+      skills?: string[];
+    }
+  ) => Promise<UserAccount>;
+  authenticateWithGithub: (
+    preferredRole: 'jobseeker' | 'client',
+    extraFields?: {
+      companyName?: string;
+      dssRegistrationNo?: string;
+      parish?: Parish;
+      phone?: string;
+      careerSector?: JobSector;
+      skills?: string[];
+    }
+  ) => Promise<UserAccount>;
+  authenticateWithSocialProvider: (
+    providerType: SocialAuthProviderType,
+    preferredRole: 'jobseeker' | 'client',
+    extraFields?: {
+      companyName?: string;
+      dssRegistrationNo?: string;
+      parish?: Parish;
+      phone?: string;
+      careerSector?: JobSector;
+      skills?: string[];
+    }
+  ) => Promise<UserAccount>;
   logoutUser: () => void;
   updateCurrentUser: (updatedFields: Partial<UserAccount>) => void;
+  requestPasswordReset: (email: string) => {
+    success: boolean;
+    code?: string;
+    resetLink?: string;
+    oobCode?: string;
+    accountName?: string;
+    accountRole?: 'jobseeker' | 'client' | 'admin';
+    error?: string;
+  };
+  confirmPasswordReset: (
+    email: string,
+    code: string,
+    newPassword: string
+  ) => {
+    success: boolean;
+    error?: string;
+    user?: UserAccount;
+  };
 
   // Admin Portal Login, Activity Log & Idle Session Security
   isAdminLoggedIn: boolean;
@@ -140,9 +208,20 @@ interface JobContextType {
   removeJobFromFolder: (jobId: string, folderId: string) => void;
   getJobFolders: (jobId: string) => SavedJobFolder[];
 
+  // Dismissed Job Cards (Swipe to Dismiss on Mobile / iOS / Android)
+  dismissedJobIds: string[];
+  dismissJob: (jobId: string) => void;
+  restoreDismissedJob: (jobId: string) => void;
+  clearDismissedJobs: () => void;
+
   // Applications
   applications: JobApplication[];
   myApplications: JobApplication[];
+  quickApplyToJob: (jobId: string) => {
+    applicationId: string;
+    resumeFileName: string;
+    alreadyApplied: boolean;
+  } | null;
   submitApplication: (applicationData: {
     jobId: string;
     applicantName: string;
@@ -514,27 +593,63 @@ export function saveSubscriptionCriteriaToStorage(criteria: SubscriptionCriteria
 export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load persistent state or fallback to mock data
   const [activeRole, setActiveRole] = useState<'jobseeker' | 'recruiter' | 'admin'>('jobseeker');
-  const [recruiters] = useState<RecruiterAccount[]>(INITIAL_RECRUITERS);
-  const [currentRecruiterId, setCurrentRecruiterId] = useState<string>('rec_fort_young');
+  const [recruiters, setRecruiters] = useState<RecruiterAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem('dominica_recruiters');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return INITIAL_RECRUITERS;
+  });
+  const [currentRecruiterId, setCurrentRecruiterId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('dominica_current_recruiter_id');
+      if (saved) return saved;
+    } catch {
+      // ignore
+    }
+    return 'rec_fort_young';
+  });
 
   const [jobs, setJobs] = useState<JobListing[]>(() => {
-    const saved = localStorage.getItem('dominica_jobs');
-    return saved ? JSON.parse(saved) : INITIAL_JOBS;
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_jobs') : null;
+      return saved ? JSON.parse(saved) : INITIAL_JOBS;
+    } catch {
+      return INITIAL_JOBS;
+    }
   });
 
   const [applications, setApplications] = useState<JobApplication[]>(() => {
-    const saved = localStorage.getItem('dominica_applications');
-    return saved ? JSON.parse(saved) : INITIAL_APPLICATIONS;
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_applications') : null;
+      return saved ? JSON.parse(saved) : INITIAL_APPLICATIONS;
+    } catch {
+      return INITIAL_APPLICATIONS;
+    }
   });
 
   const [notifications, setNotifications] = useState<EmailNotification[]>(() => {
-    const saved = localStorage.getItem('dominica_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_notifications') : null;
+      return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    } catch {
+      return INITIAL_NOTIFICATIONS;
+    }
   });
 
   const [alerts, setAlerts] = useState<JobAlertSubscription[]>(() => {
-    const saved = localStorage.getItem('dominica_alerts');
-    return saved ? JSON.parse(saved) : [
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_alerts') : null;
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return [
       {
         id: 'alert-1',
         email: 'maxblanc10468@gmail.com',
@@ -557,36 +672,76 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const [savedJobIds, setSavedJobIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('dominica_saved_jobs');
-    return saved ? JSON.parse(saved) : ['job-101', 'job-102'];
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_saved_jobs') : null;
+      return saved ? JSON.parse(saved) : ['job-101', 'job-102'];
+    } catch {
+      return ['job-101', 'job-102'];
+    }
   });
 
   const [savedJobFolders, setSavedJobFolders] = useState<SavedJobFolder[]>(() =>
     loadSavedJobFoldersFromStorage()
   );
 
+  const [dismissedJobIds, setDismissedJobIds] = useState<string[]>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_dismissed_jobs') : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>(() => {
-    const saved = localStorage.getItem('dominica_feedbacks');
-    return saved ? JSON.parse(saved) : INITIAL_FEEDBACK;
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_feedbacks') : null;
+      return saved ? JSON.parse(saved) : INITIAL_FEEDBACK;
+    } catch {
+      return INITIAL_FEEDBACK;
+    }
   });
 
   const [syncRecords, setSyncRecords] = useState<DatabaseSyncRecord[]>(() => {
-    const saved = localStorage.getItem('dominica_sync_records');
-    return saved ? JSON.parse(saved) : INITIAL_SYNC_RECORDS;
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_sync_records') : null;
+      return saved ? JSON.parse(saved) : INITIAL_SYNC_RECORDS;
+    } catch {
+      return INITIAL_SYNC_RECORDS;
+    }
   });
 
   const [users, setUsers] = useState<UserAccount[]>(() => {
-    const saved = localStorage.getItem('dominica_users');
-    return saved ? JSON.parse(saved) : (INITIAL_USERS as UserAccount[]);
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_users') : null;
+      return saved ? JSON.parse(saved) : (INITIAL_USERS as UserAccount[]);
+    } catch {
+      return INITIAL_USERS as UserAccount[];
+    }
   });
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    const saved = localStorage.getItem('dominica_current_user');
-    return saved ? JSON.parse(saved) : ((INITIAL_USERS[0] as UserAccount) || null);
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('dominica_logged_out') === 'true') {
+        return null;
+      }
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_current_user') : null;
+      return saved ? JSON.parse(saved) : ((INITIAL_USERS[0] as UserAccount) || null);
+    } catch {
+      return (INITIAL_USERS[0] as UserAccount) || null;
+    }
   });
 
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('dominica_admin_logged') === 'true';
+    try {
+      return typeof localStorage !== 'undefined' && localStorage.getItem('dominica_admin_logged') === 'true';
+    } catch {
+      return false;
+    }
   });
 
   const [adminActivityLogs, setAdminActivityLogs] = useState<AdminActivityLogEntry[]>(() =>
@@ -595,7 +750,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [lastAdminActivityAt, setLastAdminActivityAt] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem(ADMIN_LAST_ACTIVE_STORAGE_KEY);
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(ADMIN_LAST_ACTIVE_STORAGE_KEY) : null;
       if (saved) {
         const parsed = Number(saved);
         if (Number.isFinite(parsed) && parsed > 0) return parsed;
@@ -610,13 +765,21 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useState<boolean>(false);
 
   const [invoices, setInvoices] = useState<EmployerInvoice[]>(() => {
-    const saved = localStorage.getItem('dominica_employer_invoices');
-    return saved ? JSON.parse(saved) : INITIAL_INVOICES;
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_employer_invoices') : null;
+      return saved ? JSON.parse(saved) : INITIAL_INVOICES;
+    } catch {
+      return INITIAL_INVOICES;
+    }
   });
 
   const [stripeSettings, setStripeSettings] = useState<StripeSettings>(() => {
-    const saved = localStorage.getItem('dominica_stripe_settings');
-    return saved ? JSON.parse(saved) : INITIAL_STRIPE_SETTINGS;
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_stripe_settings') : null;
+      return saved ? JSON.parse(saved) : INITIAL_STRIPE_SETTINGS;
+    } catch {
+      return INITIAL_STRIPE_SETTINGS;
+    }
   });
 
   const [latestDispatchedEmail, setLatestDispatchedEmail] = useState<EmailNotification | null>(null);
@@ -749,8 +912,25 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem('dominica_recruiters', JSON.stringify(recruiters));
+    } catch {
+      // ignore
+    }
+  }, [recruiters]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('dominica_current_recruiter_id', currentRecruiterId);
+    } catch {
+      // ignore
+    }
+  }, [currentRecruiterId]);
+
+  useEffect(() => {
     if (currentUser) {
       localStorage.setItem('dominica_current_user', JSON.stringify(currentUser));
+      localStorage.removeItem('dominica_logged_out');
     } else {
       localStorage.removeItem('dominica_current_user');
     }
@@ -996,22 +1176,50 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     careerSector: JobSector;
     skills: string[];
     resumeFileName?: string;
+    password?: string;
+    headline?: string;
+    bio?: string;
+    residencyStatus?: string;
   }) => {
+    const cleanEmail = data.email.trim();
+    const existing = users.find(
+      (u) => u.email.toLowerCase() === cleanEmail.toLowerCase() && u.role === 'jobseeker'
+    );
     const newUser: UserAccount = {
-      id: `usr-jobseeker-${Date.now()}`,
-      email: data.email,
-      name: data.name,
+      id: existing?.id || `usr-jobseeker-${Date.now()}`,
+      email: cleanEmail,
+      name: data.name.trim(),
       role: 'jobseeker',
       parish: data.parish,
-      phone: data.phone,
+      phone: data.phone.trim(),
+      password: data.password,
+      headline: data.headline,
+      bio: data.bio,
+      residencyStatus: data.residencyStatus || 'Dominican Citizen (Waitukubuli)',
       careerSector: data.careerSector,
       skills: data.skills,
       resumeFileName: data.resumeFileName || 'Dominica_Candidate_Resume.pdf',
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: existing?.createdAt || new Date().toISOString().split('T')[0],
     };
-    setUsers((prev) => [newUser, ...prev]);
+    setUsers((prev) => {
+      const filtered = prev.filter((u) => u.email.toLowerCase() !== cleanEmail.toLowerCase());
+      const updated = [newUser, ...filtered];
+      try {
+        localStorage.setItem('dominica_users', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+    try {
+      localStorage.removeItem('dominica_logged_out');
+      localStorage.setItem('dominica_current_user', JSON.stringify(newUser));
+    } catch {
+      // ignore
+    }
     setCurrentUser(newUser);
     setActiveRole('jobseeker');
+    syncAuthenticatedUserToFirestore(newUser).catch(() => {});
     return newUser;
   };
 
@@ -1023,17 +1231,61 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     parish: Parish;
     dssRegistrationNo: string;
     industry: JobSector;
+    password?: string;
+    locality?: string;
+    nepPartner?: boolean;
   }) => {
+    const cleanEmail = data.email.trim();
+    const cleanCompany = data.companyName.trim();
+    const existingRecruiter = recruiters.find(
+      (r) =>
+        r.email.toLowerCase() === cleanEmail.toLowerCase() ||
+        r.companyName.toLowerCase() === cleanCompany.toLowerCase()
+    );
+    const recruiterId = existingRecruiter?.id || `rec_${Date.now()}`;
+    const newRecruiter: RecruiterAccount = {
+      id: recruiterId,
+      companyName: cleanCompany,
+      parish: data.parish,
+      locality: data.locality?.trim() || `${data.parish} Headquarters`,
+      industry: data.industry,
+      verified: true,
+      contactPerson: data.name.trim(),
+      phone: data.phone.trim(),
+      email: cleanEmail,
+      dssRegistrationNo: data.dssRegistrationNo.trim(),
+      nepPartner: data.nepPartner ?? true,
+    };
+
+    setRecruiters((prev) => {
+      const filtered = prev.filter((r) => r.id !== recruiterId);
+      const next = [newRecruiter, ...filtered];
+      try {
+        localStorage.setItem('dominica_recruiters', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+    setCurrentRecruiterId(recruiterId);
+
+    const existingUser = users.find(
+      (u) => u.email.toLowerCase() === cleanEmail.toLowerCase() && u.role === 'client'
+    );
     const newUser: UserAccount = {
-      id: `usr-client-${Date.now()}`,
-      email: data.email,
-      name: data.name,
-      companyName: data.companyName,
+      id: existingUser?.id || `usr-client-${Date.now()}`,
+      email: cleanEmail,
+      name: data.name.trim(),
+      companyName: cleanCompany,
       role: 'client',
       parish: data.parish,
-      phone: data.phone,
-      dssRegistrationNo: data.dssRegistrationNo,
-      subscription: {
+      phone: data.phone.trim(),
+      password: data.password,
+      dssRegistrationNo: data.dssRegistrationNo.trim(),
+      industry: data.industry,
+      locality: newRecruiter.locality,
+      recruiterId,
+      subscription: existingUser?.subscription || {
         plan: 'Standard Local Employer',
         priceXCD: 250,
         status: 'pending_payment',
@@ -1044,11 +1296,27 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         quotaPostings: 5,
         remoteWorkEnabled: false,
       },
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: existingUser?.createdAt || new Date().toISOString().split('T')[0],
     };
-    setUsers((prev) => [newUser, ...prev]);
+    setUsers((prev) => {
+      const filtered = prev.filter((u) => u.email.toLowerCase() !== cleanEmail.toLowerCase());
+      const updated = [newUser, ...filtered];
+      try {
+        localStorage.setItem('dominica_users', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+    try {
+      localStorage.removeItem('dominica_logged_out');
+      localStorage.setItem('dominica_current_user', JSON.stringify(newUser));
+    } catch {
+      // ignore
+    }
     setCurrentUser(newUser);
     setActiveRole('recruiter');
+    syncAuthenticatedUserToFirestore(newUser).catch(() => {});
     return newUser;
   };
 
@@ -1113,15 +1381,72 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dispatchEmail(emailNotif);
   };
 
-  const loginUser = (email: string) => {
-    const found = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  const loginUser = (
+    email: string,
+    password?: string,
+    roleFilter?: 'jobseeker' | 'client'
+  ) => {
+    const cleanEmail = email.trim().toLowerCase();
+    let found = users.find((u) => {
+      const emailMatches = u.email.toLowerCase() === cleanEmail;
+      if (!emailMatches) return false;
+      if (roleFilter && u.role !== roleFilter) return false;
+      return true;
+    });
+
+    // If not in users array yet, check if email matches a RecruiterAccount
+    if (!found && (!roleFilter || roleFilter === 'client')) {
+      const matchingRecruiter = recruiters.find(
+        (r) => r.email.toLowerCase() === cleanEmail
+      );
+      if (matchingRecruiter) {
+        found = {
+          id: `usr-client-${matchingRecruiter.id}`,
+          email: matchingRecruiter.email,
+          name: matchingRecruiter.contactPerson,
+          companyName: matchingRecruiter.companyName,
+          role: 'client',
+          parish: matchingRecruiter.parish,
+          phone: matchingRecruiter.phone,
+          dssRegistrationNo: matchingRecruiter.dssRegistrationNo,
+          industry: matchingRecruiter.industry,
+          locality: matchingRecruiter.locality,
+          recruiterId: matchingRecruiter.id,
+          createdAt: '2026-09-01',
+        };
+        setUsers((prev) => [found!, ...prev]);
+      }
+    }
+
     if (found) {
+      // Check password if the user account has a password set and a password was passed
+      if (found.password && password !== undefined && password !== '' && found.password !== password) {
+        return false;
+      }
+
+      try {
+        localStorage.removeItem('dominica_logged_out');
+        localStorage.setItem('dominica_current_user', JSON.stringify(found));
+      } catch {
+        // ignore
+      }
+
       setCurrentUser(found);
       if (found.role === 'admin') {
         setIsAdminLoggedIn(true);
         setActiveRole('admin');
       } else if (found.role === 'client') {
         setActiveRole('recruiter');
+        const matchingRec = recruiters.find(
+          (r) =>
+            r.id === found?.recruiterId ||
+            r.email.toLowerCase() === found?.email.toLowerCase() ||
+            (found?.companyName &&
+              r.companyName.toLowerCase() === found.companyName.toLowerCase())
+        );
+        if (matchingRec) {
+          setCurrentRecruiterId(matchingRec.id);
+        }
       } else {
         setActiveRole('jobseeker');
       }
@@ -1130,7 +1455,115 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
+  const authenticateWithSocialProvider = async (
+    providerType: SocialAuthProviderType,
+    preferredRole: 'jobseeker' | 'client',
+    extraFields?: {
+      companyName?: string;
+      dssRegistrationNo?: string;
+      parish?: Parish;
+      phone?: string;
+      careerSector?: JobSector;
+      skills?: string[];
+    }
+  ): Promise<UserAccount> => {
+    const account =
+      providerType === 'github'
+        ? await signInWithGithubPopup(preferredRole, extraFields)
+        : await signInWithGooglePopup(preferredRole, extraFields);
+
+    if (account.role === 'client') {
+      const recId = account.recruiterId || `rec_${account.id.slice(0, 8)}`;
+      const newRec: RecruiterAccount = {
+        id: recId,
+        companyName: account.companyName || `${account.name} Organization`,
+        parish: account.parish || 'St. George',
+        locality: `${account.parish || 'St. George'} Headquarters`,
+        industry: account.careerSector || 'Eco-Tourism & Hospitality',
+        verified: true,
+        contactPerson: account.name,
+        phone: account.phone || '+1 (767) 275-0100',
+        email: account.email,
+        dssRegistrationNo: account.dssRegistrationNo || 'DSS-DOM-88410',
+        nepPartner: true,
+      };
+      setRecruiters((prev) => {
+        const filtered = prev.filter(
+          (r) => r.id !== recId && r.email.toLowerCase() !== account.email.toLowerCase()
+        );
+        const next = [newRec, ...filtered];
+        try {
+          localStorage.setItem('dominica_recruiters', JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+      setCurrentRecruiterId(recId);
+      setActiveRole('recruiter');
+    } else {
+      setActiveRole('jobseeker');
+    }
+
+    setUsers((prev) => {
+      const filtered = prev.filter(
+        (u) => u.id !== account.id && u.email.toLowerCase() !== account.email.toLowerCase()
+      );
+      const next = [account, ...filtered];
+      try {
+        localStorage.setItem('dominica_users', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+
+    try {
+      localStorage.removeItem('dominica_logged_out');
+      localStorage.setItem('dominica_current_user', JSON.stringify(account));
+    } catch {
+      // ignore
+    }
+    setCurrentUser(account);
+    return account;
+  };
+
+  const authenticateWithGoogle = async (
+    preferredRole: 'jobseeker' | 'client',
+    extraFields?: {
+      companyName?: string;
+      dssRegistrationNo?: string;
+      parish?: Parish;
+      phone?: string;
+      careerSector?: JobSector;
+      skills?: string[];
+    }
+  ): Promise<UserAccount> => {
+    return authenticateWithSocialProvider('google', preferredRole, extraFields);
+  };
+
+  const authenticateWithGithub = async (
+    preferredRole: 'jobseeker' | 'client',
+    extraFields?: {
+      companyName?: string;
+      dssRegistrationNo?: string;
+      parish?: Parish;
+      phone?: string;
+      careerSector?: JobSector;
+      skills?: string[];
+    }
+  ): Promise<UserAccount> => {
+    return authenticateWithSocialProvider('github', preferredRole, extraFields);
+  };
+
   const logoutUser = () => {
+    signOutFromFirebase().catch(() => {});
+    try {
+      localStorage.setItem('dominica_logged_out', 'true');
+      localStorage.removeItem('dominica_current_user');
+    } catch {
+      // ignore
+    }
     setCurrentUser(null);
     setIsAdminLoggedIn(false);
     setActiveRole('jobseeker');
@@ -1156,6 +1589,257 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('dominica_users', JSON.stringify(nextUsers));
       return nextUsers;
     });
+  };
+
+  // Password Recovery via Email Verification
+  const [passwordResetCodes, setPasswordResetCodes] = useState<
+    Record<string, { code: string; expiresAt: number }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem('dominica_password_reset_codes');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return {};
+  });
+
+  const requestPasswordReset = (email: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return {
+        success: false,
+        error: 'Please enter a valid registered email address.',
+      };
+    }
+
+    let targetUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (!targetUser) {
+      const matchingRecruiter = recruiters.find(
+        (r) => r.email.toLowerCase() === cleanEmail
+      );
+      if (matchingRecruiter) {
+        targetUser = {
+          id: `usr-client-${matchingRecruiter.id}`,
+          email: matchingRecruiter.email,
+          name: matchingRecruiter.contactPerson,
+          companyName: matchingRecruiter.companyName,
+          role: 'client',
+          parish: matchingRecruiter.parish,
+          phone: matchingRecruiter.phone,
+          dssRegistrationNo: matchingRecruiter.dssRegistrationNo,
+          industry: matchingRecruiter.industry,
+          locality: matchingRecruiter.locality,
+          recruiterId: matchingRecruiter.id,
+          createdAt: '2026-09-01',
+        };
+        setUsers((prev) => {
+          const next = [targetUser!, ...prev];
+          try {
+            localStorage.setItem('dominica_users', JSON.stringify(next));
+          } catch {
+            // ignore
+          }
+          return next;
+        });
+      }
+    }
+
+    if (!targetUser) {
+      return {
+        success: false,
+        error:
+          'No registered Candidate or Employer account was found for that email address.',
+      };
+    }
+
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const oobCode = `oob_${verificationCode}_${Date.now().toString(36)}`;
+    const origin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'https://natureislecareers.com';
+    const resetLink = `${origin}/?mode=resetPassword&oobCode=${encodeURIComponent(
+      oobCode
+    )}&email=${encodeURIComponent(cleanEmail)}`;
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    setPasswordResetCodes((prev) => {
+      const updated = {
+        ...prev,
+        [cleanEmail]: { code: verificationCode, expiresAt },
+      };
+      try {
+        localStorage.setItem('dominica_password_reset_codes', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+
+    // Trigger Firebase Auth password reset email link dispatch
+    sendFirebasePasswordReset(cleanEmail, verificationCode).catch(() => {});
+
+    const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const resetEmailNotif: EmailNotification = {
+      id: `notif-pwd-reset-${Date.now()}`,
+      recipientEmail: targetUser.email,
+      recipientName: targetUser.name,
+      subject: `Password Reset Link & Verification Code (${verificationCode}) · Nature Island Careers`,
+      previewText: `Click the secure Firebase password reset link or enter verification code ${verificationCode} to reset your ${
+        targetUser.role === 'client' ? 'Employer' : 'Candidate'
+      } account password.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+          <h2 style="color: #006b4d; margin-top: 0;">Nature Island Careers · Password Reset & Email Verification</h2>
+          <p style="font-size: 14px; color: #334155;">
+            Hello <strong>${targetUser.name}</strong>, we received a request to recover access to your ${
+        targetUser.role === 'client'
+          ? `Employer (${targetUser.companyName || 'Recruiter'})`
+          : 'Candidate'
+      } account.
+          </p>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin: 14px 0;">
+            <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 700; color: #0f172a;">Option 1: Secure Password Reset Link (Firebase Auth)</p>
+            <p style="margin: 0; font-size: 12px; font-family: monospace; word-break: break-all; color: #047857;">${resetLink}</p>
+          </div>
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0; text-align: center;">
+            <p style="margin: 0 0 6px 0; font-size: 12px; color: #065f46; text-transform: uppercase; letter-spacing: 0.08em;">Option 2: 6-Digit Email Verification Code</p>
+            <p style="margin: 0; font-size: 28px; font-weight: 800; font-family: monospace; letter-spacing: 0.2em; color: #064e3b;">${verificationCode}</p>
+            <p style="margin: 8px 0 0 0; font-size: 12px; color: #047857;">Expires in 15 minutes</p>
+          </div>
+          <p style="font-size: 13px; color: #64748b;">
+            Use either the Firebase reset link or the 6-digit verification code in the Password Recovery window to verify your email and set a new password.
+          </p>
+        </div>
+      `,
+      type: 'status_update',
+      timestamp: nowTimestamp,
+      isRead: false,
+    };
+    dispatchEmail(resetEmailNotif);
+
+    return {
+      success: true,
+      code: verificationCode,
+      resetLink,
+      oobCode,
+      accountName: targetUser.name,
+      accountRole: targetUser.role,
+    };
+  };
+
+  const confirmPasswordReset = (email: string, code: string, newPassword: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = code.trim();
+
+    if (!cleanEmail) {
+      return { success: false, error: 'Email address is required.' };
+    }
+    if (!cleanCode || cleanCode.length < 6) {
+      return {
+        success: false,
+        error: 'Please enter the 6-digit verification code sent to your email.',
+      };
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return {
+        success: false,
+        error: 'New password must be at least 6 characters long.',
+      };
+    }
+
+    const storedRecord = passwordResetCodes[cleanEmail];
+    if (!storedRecord) {
+      return {
+        success: false,
+        error: 'No active verification code found for this email. Please request a new code.',
+      };
+    }
+    if (Date.now() > storedRecord.expiresAt) {
+      return {
+        success: false,
+        error: 'Your verification code has expired. Please request a new verification code.',
+      };
+    }
+    if (storedRecord.code !== cleanCode) {
+      return {
+        success: false,
+        error: 'Invalid verification code. Please check the 6-digit code sent to your email and try again.',
+      };
+    }
+
+    const existingTarget = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (!existingTarget) {
+      return {
+        success: false,
+        error: 'Account could not be located for password update.',
+      };
+    }
+
+    const updatedUser: UserAccount = {
+      ...existingTarget,
+      password: newPassword,
+    };
+
+    setUsers((prev) => {
+      const next = prev.map((u) =>
+        u.email.toLowerCase() === cleanEmail ? updatedUser : u
+      );
+      try {
+        localStorage.setItem('dominica_users', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+
+    if (currentUser && currentUser.email.toLowerCase() === cleanEmail) {
+      setCurrentUser(updatedUser);
+      try {
+        localStorage.setItem('dominica_current_user', JSON.stringify(updatedUser));
+      } catch {
+        // ignore
+      }
+    }
+
+    // Clear the used reset code
+    setPasswordResetCodes((prev) => {
+      const next = { ...prev };
+      delete next[cleanEmail];
+      try {
+        localStorage.setItem('dominica_password_reset_codes', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+
+    const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const confirmNotif: EmailNotification = {
+      id: `notif-pwd-confirmed-${Date.now()}`,
+      recipientEmail: updatedUser.email,
+      recipientName: updatedUser.name,
+      subject: `Security Notice: Your Password Was Reset · Nature Island Careers`,
+      previewText: `The password for ${updatedUser.email} was successfully updated via email verification.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+          <h2 style="color: #006b4d; margin-top: 0;">Password Successfully Updated</h2>
+          <p style="font-size: 14px; color: #334155;">
+            Hello <strong>${updatedUser.name}</strong>, your Nature Island Careers account password for <strong>${updatedUser.email}</strong> has been securely reset following email verification.
+          </p>
+        </div>
+      `,
+      type: 'status_update',
+      timestamp: nowTimestamp,
+      isRead: false,
+    };
+    dispatchEmail(confirmNotif);
+
+    return {
+      success: true,
+      user: updatedUser,
+    };
   };
 
   const adminLogin = (email: string, pass: string) => {
@@ -1603,6 +2287,116 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteJob = (id: string) => {
     setJobs((prev) => prev.filter((j) => j.id !== id));
+  };
+
+  // Dismiss / Restore Job Cards (Swipe to Dismiss on Mobile / iOS / Android)
+  const dismissJob = (jobId: string) => {
+    setDismissedJobIds((prev) => {
+      if (prev.includes(jobId)) return prev;
+      const next = [...prev, jobId];
+      try {
+        localStorage.setItem('dominica_dismissed_jobs', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const restoreDismissedJob = (jobId: string) => {
+    setDismissedJobIds((prev) => {
+      const next = prev.filter((id) => id !== jobId);
+      try {
+        localStorage.setItem('dominica_dismissed_jobs', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const clearDismissedJobs = () => {
+    setDismissedJobIds([]);
+    try {
+      localStorage.removeItem('dominica_dismissed_jobs');
+    } catch {
+      // ignore
+    }
+  };
+
+  // 1-Click Quick Apply using authenticated user's primary resume
+  const quickApplyToJob = (
+    jobId: string
+  ): {
+    applicationId: string;
+    resumeFileName: string;
+    alreadyApplied: boolean;
+  } | null => {
+    if (!currentUser) return null;
+
+    const primaryResumeFileName =
+      currentUser.resumeFileName?.trim() ||
+      `${currentUser.name.trim().replace(/\s+/g, '_')}_Primary_Resume.pdf`;
+
+    const existingApp = applications.find(
+      (app) =>
+        app.jobId === jobId &&
+        app.applicantEmail.toLowerCase() === currentUser.email.toLowerCase()
+    );
+    if (existingApp) {
+      return {
+        applicationId: existingApp.id,
+        resumeFileName: existingApp.resumeFileName || primaryResumeFileName,
+        alreadyApplied: true,
+      };
+    }
+
+    const job = getJobById(jobId);
+    const autoScreeningAnswers: Record<string, string> = {};
+    if (job?.screeningQuestions) {
+      job.screeningQuestions.forEach((question) => {
+        const qKey =
+          typeof question === 'string'
+            ? question
+            : question.id || question.question;
+        autoScreeningAnswers[qKey] = `Verified via ${currentUser.name}'s Candidate Profile (1-Click Quick Apply)`;
+      });
+    }
+
+    const validCitizenStatuses = [
+      'Dominican Citizen',
+      'CARICOM CSME',
+      'Work Permit Holder',
+      'NEP Trainee',
+    ] as const;
+    const citizenStatus = validCitizenStatuses.includes(
+      currentUser.residencyStatus as any
+    )
+      ? (currentUser.residencyStatus as
+          | 'Dominican Citizen'
+          | 'CARICOM CSME'
+          | 'Work Permit Holder'
+          | 'NEP Trainee')
+      : 'Dominican Citizen';
+
+    const applicationId = submitApplication({
+      jobId,
+      applicantName: currentUser.name,
+      applicantEmail: currentUser.email,
+      applicantPhone: currentUser.phone || '+1 (767) 275-0000',
+      parish: currentUser.parish || 'St. George',
+      citizenStatus,
+      resumeFileName: primaryResumeFileName,
+      resumeFileSize: '340 KB',
+      coverNote: `Submitted via 1-Click Quick Apply using primary profile resume (${primaryResumeFileName}).`,
+      screeningAnswers: autoScreeningAnswers,
+    });
+
+    return {
+      applicationId,
+      resumeFileName: primaryResumeFileName,
+      alreadyApplied: false,
+    };
   };
 
   // Submit Application
@@ -2275,8 +3069,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         registerClient,
         subscribeClientPlan,
         loginUser,
+        authenticateWithGoogle,
+        authenticateWithGithub,
+        authenticateWithSocialProvider,
         logoutUser,
         updateCurrentUser,
+        requestPasswordReset,
+        confirmPasswordReset,
         isAdminLoggedIn,
         adminLogin,
         adminLogout,
@@ -2307,8 +3106,13 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveJobToFolder,
         removeJobFromFolder,
         getJobFolders,
+        dismissedJobIds,
+        dismissJob,
+        restoreDismissedJob,
+        clearDismissedJobs,
         applications,
         myApplications,
+        quickApplyToJob,
         submitApplication,
         updateApplicationStatus,
         rateApplication,

@@ -1,4 +1,13 @@
-import { JobListing, Parish, JobSector, EmploymentType, WorkModel } from '../types';
+import {
+  JobListing,
+  Parish,
+  JobSector,
+  EmploymentType,
+  WorkModel,
+  DatePostedFilter,
+} from '../types';
+
+export type { DatePostedFilter };
 
 export interface FilterJobsOptions {
   activeTab?: string;
@@ -9,9 +18,30 @@ export interface FilterJobsOptions {
   selectedSector?: JobSector | 'All';
   selectedType?: EmploymentType | 'All';
   selectedWorkModel?: WorkModel | 'All';
+  selectedDatePosted?: DatePostedFilter;
+  datePosted?: DatePostedFilter;
+  referenceDate?: string | number | Date;
   nepOnly?: boolean;
   minSalary?: number;
   sortBy?: 'recent' | 'salaryHigh' | 'views';
+}
+
+function getDatePostedMaxAgeMs(filterValue?: DatePostedFilter): number | null {
+  if (!filterValue) return null;
+  const normalized = filterValue.trim().toLowerCase();
+  if (normalized === 'all' || normalized === 'any' || normalized === 'any time') {
+    return null;
+  }
+  if (normalized === 'last 24 hours' || normalized === '24h' || normalized === '1d') {
+    return 24 * 60 * 60 * 1000;
+  }
+  if (normalized === 'last 7 days' || normalized === '7d') {
+    return 7 * 24 * 60 * 60 * 1000;
+  }
+  if (normalized === 'last 30 days' || normalized === '30d') {
+    return 30 * 24 * 60 * 60 * 1000;
+  }
+  return null;
 }
 
 /**
@@ -31,12 +61,19 @@ export function filterAndSortJobs(
     selectedSector = 'All',
     selectedType = 'All',
     selectedWorkModel = 'All',
+    selectedDatePosted,
+    datePosted,
+    referenceDate,
     nepOnly = false,
     minSalary = 0,
     sortBy = 'recent',
   } = options;
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
+  const activeDateFilter = selectedDatePosted ?? datePosted ?? 'All';
+  const maxAgeMs = getDatePostedMaxAgeMs(activeDateFilter);
+  const referenceTimestampMs =
+    referenceDate !== undefined ? new Date(referenceDate).getTime() : Date.now();
 
   return jobs
     .filter((job) => {
@@ -79,6 +116,17 @@ export function filterAndSortJobs(
       // Work Model filter
       if (selectedWorkModel !== 'All' && job.workModel !== selectedWorkModel) {
         return false;
+      }
+
+      // Date Posted filter ('Last 24 hours', 'Last 7 days', 'Last 30 days')
+      if (maxAgeMs !== null) {
+        if (!job.postedAt) return false;
+        const postedTimeMs = new Date(job.postedAt).getTime();
+        if (isNaN(postedTimeMs)) return false;
+        const diffMs = referenceTimestampMs - postedTimeMs;
+        if (diffMs < -86400000 || diffMs > maxAgeMs) {
+          return false;
+        }
       }
 
       // NEP Approved only

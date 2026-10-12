@@ -1,6 +1,6 @@
 import React from 'react';
-import { Parish, JobSector, EmploymentType, WorkModel } from '../types';
-import { RotateCcw, Check, Sparkles } from 'lucide-react';
+import { Parish, JobSector, EmploymentType, WorkModel, DatePostedFilter } from '../types';
+import { RotateCcw, Sparkles, Clock } from 'lucide-react';
 
 interface JobFiltersProps {
   selectedParish: Parish | 'All';
@@ -11,6 +11,8 @@ interface JobFiltersProps {
   setSelectedType: (t: EmploymentType | 'All') => void;
   selectedWorkModel: WorkModel | 'All';
   setSelectedWorkModel: (w: WorkModel | 'All') => void;
+  selectedDatePosted?: DatePostedFilter;
+  setSelectedDatePosted?: (d: DatePostedFilter) => void;
   nepOnly: boolean;
   setNepOnly: (n: boolean) => void;
   minSalaryXCD: number;
@@ -18,6 +20,17 @@ interface JobFiltersProps {
   onReset: () => void;
   filteredCount: number;
 }
+
+const DATE_POSTED_OPTIONS: Array<{
+  value: DatePostedFilter;
+  label: string;
+  testId: string;
+}> = [
+  { value: 'All', label: 'Any Time', testId: 'date-posted-all' },
+  { value: 'Last 24 hours', label: 'Last 24 hours', testId: 'date-posted-24h' },
+  { value: 'Last 7 days', label: 'Last 7 days', testId: 'date-posted-7d' },
+  { value: 'Last 30 days', label: 'Last 30 days', testId: 'date-posted-30d' },
+];
 
 const PARISHES: (Parish | 'All')[] = [
   'All',
@@ -67,6 +80,8 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
   setSelectedType,
   selectedWorkModel,
   setSelectedWorkModel,
+  selectedDatePosted,
+  setSelectedDatePosted,
   nepOnly,
   setNepOnly,
   minSalaryXCD,
@@ -74,6 +89,24 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
   onReset,
   filteredCount,
 }) => {
+  const [internalDatePosted, setInternalDatePosted] = React.useState<DatePostedFilter>('All');
+  const activeDatePosted = selectedDatePosted ?? internalDatePosted;
+
+  const handleSelectDatePosted = (val: DatePostedFilter) => {
+    setInternalDatePosted(val);
+    if (setSelectedDatePosted) {
+      setSelectedDatePosted(val);
+    }
+  };
+
+  const handleFullReset = () => {
+    setInternalDatePosted('All');
+    if (setSelectedDatePosted) {
+      setSelectedDatePosted('All');
+    }
+    onReset();
+  };
+
   return (
     <aside className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-6">
       
@@ -86,13 +119,42 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
           </p>
         </div>
         <button
-          onClick={onReset}
+          onClick={handleFullReset}
           className="flex items-center gap-1 text-xs text-stone-500 hover:text-emerald-900 transition-colors cursor-pointer"
           title="Reset all filters"
         >
           <RotateCcw className="w-3 h-3" />
           <span>Reset</span>
         </button>
+      </div>
+
+      {/* Date Posted Filter ('Last 24 hours', 'Last 7 days', 'Last 30 days') */}
+      <div data-testid="date-posted-filter">
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-900 mb-2">
+          <Clock className="w-3.5 h-3.5 text-emerald-700" />
+          <span>Date Posted</span>
+        </label>
+        <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Date Posted">
+          {DATE_POSTED_OPTIONS.map((option) => {
+            const isSelected = activeDatePosted === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                data-testid={option.testId}
+                aria-pressed={isSelected}
+                onClick={() => handleSelectDatePosted(option.value)}
+                className={`px-2.5 py-1.5 text-xs rounded-lg transition-colors text-center cursor-pointer whitespace-nowrap ${
+                  isSelected
+                    ? 'bg-emerald-800 text-white font-semibold shadow-2xs'
+                    : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* NEP Programme Toggle */}

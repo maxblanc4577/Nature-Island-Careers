@@ -1,7 +1,7 @@
 import React from 'react';
 import { JobListing, JobSector } from '../types';
 import { useJobContext } from '../context/JobContext';
-import { ShareJobModal } from './ShareJobModal';
+import { ShareJobModal, buildShareViaEmailMailto } from './ShareJobModal';
 import {
   Bookmark,
   BookmarkCheck,
@@ -12,6 +12,7 @@ import {
   Globe,
   Zap,
   Share2,
+  Mail,
   Eye,
   ChevronDown,
   ChevronUp,
@@ -41,6 +42,8 @@ interface JobCardProps {
   onShare?: (job: JobListing) => void;
   isCompared?: boolean;
   onToggleCompare?: (job: JobListing) => void;
+  onDismiss?: (jobId: string) => void;
+  isAuthenticated?: boolean;
 }
 
 export const JobCard: React.FC<JobCardProps> = ({
@@ -53,6 +56,8 @@ export const JobCard: React.FC<JobCardProps> = ({
   onShare,
   isCompared = false,
   onToggleCompare,
+  onDismiss,
+  isAuthenticated,
 }) => {
   const {
     toggleSaveJob,
@@ -62,8 +67,14 @@ export const JobCard: React.FC<JobCardProps> = ({
     saveJobToFolder,
     removeJobFromFolder,
     getJobFolders,
+    applications,
+    quickApplyToJob,
+    dismissJob,
+    restoreDismissedJob,
   } = useJobContext();
   const saved = isJobSaved(job.id);
+  const isUserAuthenticated =
+    isAuthenticated !== undefined ? isAuthenticated : Boolean(currentUser);
   const jobFolders = getJobFolders(job.id);
   const [isPulsing, setIsPulsing] = React.useState(false);
   const [saveToastVisible, setSaveToastVisible] = React.useState(false);
@@ -71,15 +82,103 @@ export const JobCard: React.FC<JobCardProps> = ({
   const [isQuickViewOpen, setIsQuickViewOpen] = React.useState(false);
   const [isFolderMenuOpen, setIsFolderMenuOpen] = React.useState(false);
   const [customFolderName, setCustomFolderName] = React.useState('');
+  const [quickApplyReceipt, setQuickApplyReceipt] = React.useState<{
+    applicationId: string;
+    resumeFileName: string;
+  } | null>(null);
+  const [quickApplyToastVisible, setQuickApplyToastVisible] = React.useState(false);
+
+  // Mobile Swipe to Dismiss state
+  const [swipeStartX, setSwipeStartX] = React.useState<number | null>(null);
+  const [swipeDeltaX, setSwipeDeltaX] = React.useState(0);
+  const [isCardDismissed, setIsCardDismissed] = React.useState(false);
+
   const saveToastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pulseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quickApplyToastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     return () => {
       if (saveToastTimerRef.current) clearTimeout(saveToastTimerRef.current);
       if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+      if (quickApplyToastTimerRef.current) clearTimeout(quickApplyToastTimerRef.current);
     };
   }, []);
+
+  const primaryResumeFileName = React.useMemo(() => {
+    if (!currentUser) return '';
+    return (
+      currentUser.resumeFileName?.trim() ||
+      `${currentUser.name.trim().replace(/\s+/g, '_')}_Primary_Resume.pdf`
+    );
+  }, [currentUser]);
+
+  const existingApplication = React.useMemo(() => {
+    if (!currentUser) return undefined;
+    return applications.find(
+      (app) =>
+        app.jobId === job.id &&
+        app.applicantEmail.toLowerCase() === currentUser.email.toLowerCase()
+    );
+  }, [applications, currentUser, job.id]);
+
+  const hasQuickApplied = Boolean(existingApplication || quickApplyReceipt);
+
+  const handleQuickApplyOneClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUser) {
+      if (onPromptAuth) onPromptAuth();
+      return;
+    }
+
+    const result = quickApplyToJob(job.id);
+    if (result) {
+      setQuickApplyReceipt({
+        applicationId: result.applicationId,
+        resumeFileName: result.resumeFileName,
+      });
+      setQuickApplyToastVisible(true);
+      if (quickApplyToastTimerRef.current) {
+        clearTimeout(quickApplyToastTimerRef.current);
+      }
+      quickApplyToastTimerRef.current = setTimeout(() => {
+        setQuickApplyToastVisible(false);
+      }, 4500);
+    }
+
+    if (onQuickApply) {
+      onQuickApply(job);
+    }
+  };
+
+  // Swipe to Dismiss handlers for mobile viewports
+  const handleSwipeStart = (clientX: number) => {
+    setSwipeStartX(clientX);
+    setSwipeDeltaX(0);
+  };
+
+  const handleSwipeMove = (clientX: number) => {
+    if (swipeStartX === null) return;
+    const delta = clientX - swipeStartX;
+    setSwipeDeltaX(delta);
+  };
+
+  const handleSwipeEnd = () => {
+    if (swipeStartX === null) return;
+    if (Math.abs(swipeDeltaX) >= 75) {
+      setIsCardDismissed(true);
+      dismissJob(job.id);
+      if (onDismiss) onDismiss(job.id);
+    }
+    setSwipeStartX(null);
+    setSwipeDeltaX(0);
+  };
+
+  const handleUndoDismiss = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsCardDismissed(false);
+    restoreDismissedJob(job.id);
+  };
 
   // Feature: Save Toggle with Heart Icon (persisted to localStorage via JobContext) + Confirmation Toast
   const handleToggleSave = (e: React.MouseEvent) => {
@@ -131,6 +230,8 @@ export const JobCard: React.FC<JobCardProps> = ({
       setShowShareModal(true);
     }
   };
+
+  const shareViaEmailHref = React.useMemo(() => buildShareViaEmailMailto(job), [job]);
 
   // Feature: 'New' badge or subtle pulse animation for jobs posted within the last 24 hours
   const isNewJob = React.useMemo(() => {
@@ -236,8 +337,51 @@ export const JobCard: React.FC<JobCardProps> = ({
 
   const StatusIcon = statusBadge.icon;
 
+  if (isCardDismissed) {
+    return (
+      <div
+        data-testid={`job-card-dismissed-banner-${job.id}`}
+        className="bg-slate-900 text-white rounded-2xl px-4 py-3 flex items-center justify-between gap-3 text-xs shadow-sm"
+      >
+        <span className="text-slate-200 truncate">
+          Dismissed <strong className="text-white">{job.title}</strong> ({job.company})
+        </span>
+        <button
+          type="button"
+          data-testid={`undo-dismiss-job-${job.id}`}
+          onClick={handleUndoDismiss}
+          className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer shrink-0"
+        >
+          Undo
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <article className="job-card-container group relative bg-white rounded-2xl border border-stone-200/90 p-5 sm:p-6 shadow-xs hover:border-emerald-600/70 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out flex flex-col justify-between before:absolute before:left-0 before:top-4 before:bottom-4 before:w-1.5 before:rounded-r-full before:bg-transparent hover:before:bg-emerald-600 before:transition-all before:duration-300">
+    <article
+      data-testid={`job-card-${job.id}`}
+      onTouchStart={(e) => {
+        if (e.touches && e.touches.length > 0) {
+          handleSwipeStart(e.touches[0].clientX);
+        }
+      }}
+      onTouchMove={(e) => {
+        if (e.touches && e.touches.length > 0) {
+          handleSwipeMove(e.touches[0].clientX);
+        }
+      }}
+      onTouchEnd={handleSwipeEnd}
+      style={
+        swipeDeltaX !== 0
+          ? {
+              transform: `translateX(${swipeDeltaX}px)`,
+              opacity: Math.max(0.35, 1 - Math.abs(swipeDeltaX) / 240),
+            }
+          : undefined
+      }
+      className="job-card-container group relative bg-white rounded-2xl border border-stone-200/90 p-5 sm:p-6 shadow-xs hover:border-emerald-600/70 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out flex flex-col justify-between before:absolute before:left-0 before:top-4 before:bottom-4 before:w-1.5 before:rounded-r-full before:bg-transparent hover:before:bg-emerald-600 before:transition-all before:duration-300"
+    >
       
       <div>
         {/* Top Kicker: Badges, Status, Compare, and Heart Save Button */}
@@ -307,6 +451,20 @@ export const JobCard: React.FC<JobCardProps> = ({
                 <span className="text-[11px]">Compare</span>
               </label>
             )}
+
+            <a
+              href={shareViaEmailHref}
+              data-testid={`share-via-email-btn-${job.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-stone-600 hover:text-emerald-800 bg-stone-50 hover:bg-emerald-50/70 border border-stone-200/80 hover:border-emerald-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              title={`Share "${job.title}" via Email`}
+              aria-label="Share via Email"
+            >
+              <Mail className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span className="hidden sm:inline">Share via Email</span>
+            </a>
 
             <button
               type="button"
@@ -582,34 +740,126 @@ export const JobCard: React.FC<JobCardProps> = ({
           >
             Details
           </button>
+
+          {isUserAuthenticated ? (
+            <>
+              <button
+                type="button"
+                data-testid={`apply-modal-btn-${job.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onApply(job);
+                }}
+                className="px-3 py-1.5 text-emerald-900 hover:bg-emerald-50 border border-emerald-200 rounded-lg font-bold transition-colors cursor-pointer text-xs"
+                title="Open full application form with custom cover note"
+              >
+                Full Apply
+              </button>
+              <button
+                type="button"
+                data-testid={`quick-apply-btn-${job.id}`}
+                onClick={handleQuickApplyOneClick}
+                disabled={hasQuickApplied}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all shadow-xs text-xs ${
+                  hasQuickApplied
+                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-default'
+                    : 'bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white cursor-pointer hover:shadow-sm active:scale-95'
+                }`}
+                title={
+                  hasQuickApplied
+                    ? `Already submitted primary resume (${primaryResumeFileName})`
+                    : `1-Click Quick Apply with your primary resume (${primaryResumeFileName})`
+                }
+              >
+                {hasQuickApplied ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Quick Applied</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                    <span>Quick Apply</span>
+                  </>
+                )}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              data-testid={`apply-now-btn-${job.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onApply(job);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-bold transition-all shadow-xs cursor-pointer hover:shadow-sm text-xs active:scale-95"
+              title="Open application form"
+            >
+              <span>Apply Now</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 1-Click Quick Apply Confirmation Banner */}
+      {currentUser && (quickApplyReceipt || existingApplication) && (
+        <div
+          data-testid={`quick-apply-confirmation-${job.id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-3 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200/90 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-950"
+        >
+          <div className="flex items-center gap-1.5 font-semibold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Primary resume submitted:{' '}
+              <strong className="font-bold">
+                {quickApplyReceipt?.resumeFileName ||
+                  existingApplication?.resumeFileName ||
+                  primaryResumeFileName}
+              </strong>
+            </span>
+          </div>
+          <span className="font-mono text-[11px] font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200">
+            Ref: {quickApplyReceipt?.applicationId || existingApplication?.id}
+          </span>
+        </div>
+      )}
+
+      {quickApplyToastVisible && quickApplyReceipt && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="quick-apply-toast"
+          onClick={(e) => e.stopPropagation()}
+          className="fixed bottom-5 right-5 z-50 max-w-sm bg-slate-900 text-white rounded-xl shadow-2xl border border-emerald-500/60 p-3.5 flex items-start gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200"
+        >
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+            <Zap className="w-4 h-4 fill-amber-400 text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-extrabold text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>1-Click Quick Apply Submitted</span>
+            </p>
+            <p className="text-xs text-slate-200 mt-0.5 leading-snug">
+              Submitted <strong className="font-bold text-white">{quickApplyReceipt.resumeFileName}</strong> to{' '}
+              <strong className="font-bold text-white">{job.company}</strong> ({quickApplyReceipt.applicationId}).
+            </p>
+          </div>
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              if (currentUser) {
-                if (onQuickApply) {
-                  onQuickApply(job);
-                } else {
-                  onApply(job);
-                }
-              } else {
-                if (onPromptAuth) {
-                  onPromptAuth();
-                } else if (onQuickApply) {
-                  onQuickApply(job);
-                } else {
-                  onApply(job);
-                }
-              }
+              setQuickApplyToastVisible(false);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-bold transition-all shadow-xs cursor-pointer hover:shadow-sm text-xs active:scale-95"
-            title={currentUser ? "Quick Apply with your saved candidate profile" : "Sign in to Quick Apply"}
+            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            aria-label="Dismiss quick apply notification"
           >
-            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-            <span>Quick Apply</span>
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
+      )}
 
       {/* Abbreviated In-Card Quick View Section */}
       {isQuickViewOpen && (

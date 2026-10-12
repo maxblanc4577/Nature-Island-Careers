@@ -31,7 +31,15 @@ import { ResumeBuilder } from './components/ResumeBuilder';
 import { JobCompareModal } from './components/JobCompareModal';
 import { Footer } from './components/Footer';
 import { EmailAlertToast } from './components/EmailAlertToast';
-import { JobListing, Parish, JobSector, EmploymentType, WorkModel } from './types';
+import { MobilePlatformViews, PlatformViewMode } from './components/MobilePlatformViews';
+import {
+  JobListing,
+  Parish,
+  JobSector,
+  EmploymentType,
+  WorkModel,
+  DatePostedFilter,
+} from './types';
 import {
   Briefcase,
   Search,
@@ -46,6 +54,8 @@ import {
   BellRing,
   Scale,
   X,
+  Smartphone,
+  Columns,
 } from 'lucide-react';
 
 function DominicaJobBoardContent() {
@@ -79,6 +89,22 @@ function DominicaJobBoardContent() {
     | 'career'
   >('jobs');
 
+  // Platform View Mode: 'desktop' | 'ios' | 'android' | 'compare'
+  const [viewMode, setViewMode] = useState<PlatformViewMode>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const v = params.get('view');
+        if (v === 'ios' || v === 'android' || v === 'compare' || v === 'desktop') {
+          return v;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return 'desktop';
+  });
+
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   // Debounced search query to prevent excessive filtering re-renders while typing
@@ -88,6 +114,7 @@ function DominicaJobBoardContent() {
   const [selectedSector, setSelectedSector] = useState<JobSector | 'All'>('All');
   const [selectedType, setSelectedType] = useState<EmploymentType | 'All'>('All');
   const [selectedWorkModel, setSelectedWorkModel] = useState<WorkModel | 'All'>('All');
+  const [selectedDatePosted, setSelectedDatePosted] = useState<DatePostedFilter>('All');
   const [nepOnly, setNepOnly] = useState(false);
   const [minSalary, setMinSalary] = useState(1500);
   const [showSavedOnly, setShowSavedOnly] = useState(false);
@@ -98,7 +125,17 @@ function DominicaJobBoardContent() {
   const [jobToApply, setJobToApply] = useState<JobListing | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState<
+    'jobseeker_register' | 'client_register' | 'login'
+  >('login');
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+
+  const handleOpenAuthModal = (
+    mode: 'jobseeker_register' | 'client_register' | 'login' = 'login'
+  ) => {
+    setAuthInitialMode(mode);
+    setIsAuthOpen(true);
+  };
   const [currentPath, setCurrentPath] = useState<string>(() =>
     typeof window !== 'undefined' ? window.location.pathname : '/'
   );
@@ -204,6 +241,7 @@ function DominicaJobBoardContent() {
       selectedSector,
       selectedType,
       selectedWorkModel,
+      selectedDatePosted,
       nepOnly,
       minSalary,
       sortBy,
@@ -218,6 +256,7 @@ function DominicaJobBoardContent() {
     selectedSector,
     selectedType,
     selectedWorkModel,
+    selectedDatePosted,
     nepOnly,
     minSalary,
     sortBy,
@@ -229,6 +268,7 @@ function DominicaJobBoardContent() {
     setSelectedSector('All');
     setSelectedType('All');
     setSelectedWorkModel('All');
+    setSelectedDatePosted('All');
     setNepOnly(false);
     setMinSalary(1500);
     setShowSavedOnly(false);
@@ -320,7 +360,7 @@ function DominicaJobBoardContent() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={handleOpenAuthModal}
         onOpenAdminLogin={() => navigateToPath('/admin-login')}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
         onOpenAdminPortal={handleOpenAdminMasterPortal}
@@ -329,13 +369,90 @@ function DominicaJobBoardContent() {
           setSearchQuery(query);
           setActiveTab('jobs');
         }}
+        viewMode={viewMode}
+        onChangeViewMode={setViewMode}
         siteSettings={siteSettings}
       />
 
       {/* Main Content Areas */}
       <main className="flex-1">
-        {/* TAB 1: CLASSIFIEDS JOB BOARD */}
-        {activeTab === 'jobs' && (
+        {viewMode !== 'desktop' ? (
+          <MobilePlatformViews
+            viewMode={viewMode}
+            onChangeViewMode={setViewMode}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            jobs={filteredJobs}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            selectedParish={selectedParish}
+            setSelectedParish={setSelectedParish}
+            selectedSector={selectedSector}
+            setSelectedSector={setSelectedSector}
+            nepOnly={nepOnly}
+            setNepOnly={setNepOnly}
+            minSalary={minSalary}
+            setMinSalary={setMinSalary}
+            onResetFilters={handleResetFilters}
+            onSelectJob={(job) => setSelectedJobForDetail(job)}
+            onApplyJob={(job) => setJobToApply(job)}
+            onShareJob={(job) => setJobToShare(job)}
+            onOpenAuth={handleOpenAuthModal}
+            onOpenNotifications={() => setIsNotificationsOpen(true)}
+            onOpenAlertModal={() => setIsSubscribeAlertOpen(true)}
+            onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
+          />
+        ) : (
+          <>
+            {/* Quick Interactive Mobile Views Bar (iOS 18 & Android 15) */}
+            <div
+              data-testid="mobile-views-launch-bar"
+              className="sr-only bg-emerald-900/95 border-b border-emerald-800/80 text-white px-4 py-2"
+            >
+              <div className="sr-only max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-emerald-300 shrink-0" />
+                  <span className="font-bold text-emerald-100">
+                    Experience Nature Island Careers on Mobile:
+                  </span>
+                  <span className="hidden md:inline text-emerald-300/90">
+                    Preview native iOS 18 (Dynamic Island) & Android 15 (Material You) interactive app views
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid="launch-ios-view-btn"
+                    onClick={() => setViewMode('ios')}
+                    className="px-3 py-1 rounded-lg bg-white/95 hover:bg-white text-slate-950 font-extrabold text-[11px] flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Smartphone className="w-3 h-3" />
+                    <span>iOS View</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="launch-android-view-btn"
+                    onClick={() => setViewMode('android')}
+                    className="px-3 py-1 rounded-lg bg-[#C4EED0] hover:bg-[#b0e6bf] text-[#072711] font-extrabold text-[11px] flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Smartphone className="w-3 h-3" />
+                    <span>Android View</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="launch-compare-mobile-btn"
+                    onClick={() => setViewMode('compare')}
+                    className="px-3 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500/50 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                  >
+                    <Columns className="w-3 h-3" />
+                    <span>iOS + Android Side-by-Side</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* TAB 1: CLASSIFIEDS JOB BOARD */}
+            {activeTab === 'jobs' && (
           <div>
             <HeroSection
               searchQuery={searchQuery}
@@ -364,6 +481,8 @@ function DominicaJobBoardContent() {
                     setSelectedType={setSelectedType}
                     selectedWorkModel={selectedWorkModel}
                     setSelectedWorkModel={setSelectedWorkModel}
+                    selectedDatePosted={selectedDatePosted}
+                    setSelectedDatePosted={setSelectedDatePosted}
                     nepOnly={nepOnly}
                     setNepOnly={setNepOnly}
                     minSalaryXCD={minSalary}
@@ -389,6 +508,11 @@ function DominicaJobBoardContent() {
                       {selectedSector !== 'All' && (
                         <span className="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-0.5 rounded-full">
                           {selectedSector}
+                        </span>
+                      )}
+                      {selectedDatePosted !== 'All' && (
+                        <span className="bg-amber-100 text-amber-900 text-xs font-bold px-2 py-0.5 rounded-full">
+                          Posted: {selectedDatePosted}
                         </span>
                       )}
                     </div>
@@ -444,7 +568,6 @@ function DominicaJobBoardContent() {
                           job={job}
                           onSelect={() => setSelectedJobForDetail(job)}
                           onApply={() => setJobToApply(job)}
-                          onQuickApply={() => setJobToApply(job)}
                           onPromptAuth={() => setIsAuthOpen(true)}
                           onShare={(job) => setJobToShare(job)}
                           isCompared={comparedJobIds.includes(job.id)}
@@ -497,7 +620,6 @@ function DominicaJobBoardContent() {
                       job={job}
                       onSelect={() => setSelectedJobForDetail(job)}
                       onApply={() => setJobToApply(job)}
-                      onQuickApply={() => setJobToApply(job)}
                       onPromptAuth={() => setIsAuthOpen(true)}
                       onShare={(job) => setJobToShare(job)}
                       isCompared={comparedJobIds.includes(job.id)}
@@ -525,6 +647,7 @@ function DominicaJobBoardContent() {
               const j = jobs.find((item) => item.id === jobId);
               if (j) setSelectedJobForDetail(j);
             }}
+            onOpenAuth={handleOpenAuthModal}
           />
         )}
 
@@ -532,6 +655,7 @@ function DominicaJobBoardContent() {
         {activeTab === 'recruiter' && (
           <RecruiterPortal
             onOpenSubscription={() => setIsSubscriptionCheckoutOpen(true)}
+            onOpenAuth={handleOpenAuthModal}
             onScheduleInterview={(applicationId, candidateName, jobTitle, notes = '') => {
               setInterviewData({
                 isOpen: true,
@@ -557,6 +681,8 @@ function DominicaJobBoardContent() {
 
         {/* TAB 7: CAREER GUIDANCE ASSISTANT */}
         {activeTab === 'career' && <CareerGuidanceAssistant />}
+          </>
+        )}
       </main>
 
       {/* Global Footer */}
@@ -716,6 +842,14 @@ function DominicaJobBoardContent() {
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
+        initialMode={authInitialMode}
+        onAuthSuccess={(role) => {
+          if (role === 'client') {
+            setActiveTab('recruiter');
+          } else {
+            setActiveTab('profile');
+          }
+        }}
         onRequireSubscription={() => {
           setIsAuthOpen(false);
           setIsSubscriptionCheckoutOpen(true);

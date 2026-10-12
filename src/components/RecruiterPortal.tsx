@@ -33,6 +33,9 @@ import {
   CheckSquare,
   Flame,
   X,
+  LogOut,
+  LogIn,
+  UserPlus,
 } from 'lucide-react';
 
 export interface ScheduledInterviewItem {
@@ -634,6 +637,7 @@ interface RecruiterPortalProps {
     notes?: string
   ) => void;
   onOpenStripe?: () => void;
+  onOpenAuth?: (mode?: 'jobseeker_register' | 'client_register' | 'login') => void;
 }
 
 export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
@@ -641,8 +645,11 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
   onOpenSubscription,
   onScheduleInterview,
   onOpenStripe,
+  onOpenAuth,
 }) => {
   const {
+    currentUser,
+    logoutUser,
     currentRecruiter,
     jobs,
     applications,
@@ -1951,6 +1958,116 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Employer Account Session & Authentication Bar */}
+      <div
+        data-testid="employer-account-session-bar"
+        className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+      >
+        {currentUser && currentUser.role === 'client' ? (
+          <>
+            <div className="flex items-center gap-2.5 text-slate-800">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 font-black flex items-center justify-center shrink-0">
+                <Building className="w-4 h-4 text-amber-700" />
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 flex flex-wrap items-center gap-1.5">
+                  <span>
+                    Employer Signed In: {currentUser.companyName || currentRecruiter.companyName}
+                  </span>
+                  <span className="text-[10px] uppercase font-black bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
+                    Verified Employer Account
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {currentUser.name} ({currentUser.email}) • DSS Reg:{' '}
+                  {currentUser.dssRegistrationNo || currentRecruiter.dssRegistrationNo}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {onOpenAuth && (
+                <button
+                  type="button"
+                  data-testid="employer-portal-switch-account-btn"
+                  onClick={() => onOpenAuth('client_register')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>New / Switch Employer</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                data-testid="employer-portal-logout-btn"
+                onClick={() => logoutUser()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Log Out</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2.5 text-slate-800">
+              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 font-black flex items-center justify-center shrink-0">
+                <Building className="w-4 h-4 text-emerald-700" />
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900">
+                  {currentUser
+                    ? `Currently signed in as Candidate (${currentUser.name}) — Switch or Create an Employer Account`
+                    : 'Sign in or Create an Employer Account to Manage Your Organization'}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Register your company with your Dominica Social Security (DSS) employer number or log into an existing employer account.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {onOpenAuth && (
+                <>
+                  <button
+                    type="button"
+                    data-testid="employer-portal-login-btn"
+                    onClick={() => onOpenAuth('login')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    <LogIn className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Employer Log In</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="employer-portal-register-btn"
+                    onClick={() => onOpenAuth('client_register')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Create Employer Account</span>
+                  </button>
+                </>
+              )}
+
+              {currentUser && (
+                <button
+                  type="button"
+                  data-testid="employer-portal-logout-btn"
+                  onClick={() => logoutUser()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Log Out</span>
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Recruiter Header Bar */}
       <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>

@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { JobCard } from '../components/JobCard';
+import { JobProvider } from '../context/JobContext';
 import {
   doesJobMatchSubscription,
   doesJobMatchAlertPreferences,
@@ -499,6 +503,30 @@ B.Sc. in Electrical Engineering | University of the West Indies (UWI) | 2020`;
     expect(decoded).toContain('Senior Geothermal Operations Engineer');
     expect(decoded).toContain('Dominica Geothermal Development Company');
     expect(decoded).toContain('https://natureislandcareers.com?job=dom-job-101');
+  });
+
+  it('renders a Share via Email action in JobCard with pre-formatted subject line and link to the specific job listing', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        JobProvider,
+        null,
+        React.createElement(JobCard, {
+          job: mockJob,
+          onSelect: () => {},
+          onApply: () => {},
+        })
+      )
+    );
+
+    expect(html).toContain(`data-testid="share-via-email-btn-${mockJob.id}"`);
+    expect(html).toContain('Share via Email');
+    const mailtoMatch = html.match(/href="(mailto:\?subject=[^"]+)"/);
+    expect(mailtoMatch).not.toBeNull();
+    const decodedHref = decodeURIComponent(mailtoMatch![1].replace(/&amp;/g, '&'));
+    expect(decodedHref).toContain(
+      `Job Opportunity: ${mockJob.title} at ${mockJob.company}`
+    );
+    expect(decodedHref).toContain(`?job=${mockJob.id}`);
   });
 
   it('triggers the browser print dialog when Print this Job is invoked', () => {

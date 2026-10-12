@@ -1,6 +1,7 @@
 import React from 'react';
 import { Parish } from '../types';
 import { ShieldCheck, Mail, MapPin, Compass, BookOpen, BarChart3 } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 interface FooterProps {
   onSelectParish?: (p: Parish) => void;
@@ -29,9 +30,7 @@ export const Footer: React.FC<FooterProps> = ({
           
           {/* Col 1: Wordmark & About */}
           <div className="space-y-3 sm:col-span-2 lg:col-span-1">
-            <span className="text-xl font-bold tracking-tight text-white font-display block">
-              Nature Island Careers
-            </span>
+            <BrandLogo variant="footer" />
             <p className="text-stone-400 text-xs leading-relaxed">
               Dominica’s premier job classified board and career portal. Dedicated to sustainable employment, geothermal energy, eco-tourism, and community development across the Commonwealth of Dominica.
             </p>

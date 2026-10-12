@@ -13,7 +13,14 @@ import {
   FileText,
   ChevronDown,
   Bookmark,
+  LogIn,
+  UserPlus,
+  Smartphone,
+  Monitor,
+  Columns,
 } from 'lucide-react';
+import { PlatformViewMode } from './MobilePlatformViews';
+import { BrandLogo } from './BrandLogo';
 
 export { RecentSearches };
 
@@ -39,12 +46,14 @@ interface HeaderProps {
       | 'career'
   ) => void;
   onOpenNotifications: () => void;
-  onOpenAuth: () => void;
+  onOpenAuth: (mode?: 'jobseeker_register' | 'client_register' | 'login') => void;
   onOpenAdminLogin: () => void;
   onOpenRemoteModal: () => void;
   onOpenAdminPortal?: () => void;
   searchQuery?: string;
   onSelectSearchQuery?: (query: string) => void;
+  viewMode?: PlatformViewMode;
+  onChangeViewMode?: (mode: PlatformViewMode) => void;
   siteSettings?: {
     siteName: string;
     contactEmail: string;
@@ -64,6 +73,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdminPortal,
   searchQuery = '',
   onSelectSearchQuery,
+  viewMode = 'desktop',
+  onChangeViewMode,
   siteSettings,
 }) => {
   const {
@@ -115,10 +126,75 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center space-x-4 text-xs font-medium">
+          <div className="flex items-center space-x-3 sm:space-x-4 text-xs font-medium">
+            {/* Platform View Switcher: Web | iOS | Android | Compare */}
+            <div
+              data-testid="platform-view-switcher"
+              role="group"
+              aria-label="Platform View Mode Switcher"
+              className="sr-only inline-flex items-center bg-emerald-900/90 border border-emerald-700/70 rounded-lg p-0.5 gap-0.5"
+            >
+              <button
+                type="button"
+                data-testid="view-mode-desktop"
+                onClick={() => onChangeViewMode?.('desktop')}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                  viewMode === 'desktop'
+                    ? 'bg-emerald-500 text-slate-950 shadow-2xs'
+                    : 'text-emerald-200 hover:text-white'
+                }`}
+                title="Standard Responsive Desktop Web View"
+              >
+                <Monitor className="w-3 h-3" />
+                <span>Web</span>
+              </button>
+              <button
+                type="button"
+                data-testid="view-mode-ios"
+                onClick={() => onChangeViewMode?.('ios')}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                  viewMode === 'ios'
+                    ? 'bg-white text-slate-950 shadow-2xs'
+                    : 'text-emerald-200 hover:text-white'
+                }`}
+                title="Switch to iOS 18 (iPhone 16 Pro) App View"
+              >
+                <Smartphone className="w-3 h-3" />
+                <span>iOS</span>
+              </button>
+              <button
+                type="button"
+                data-testid="view-mode-android"
+                onClick={() => onChangeViewMode?.('android')}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                  viewMode === 'android'
+                    ? 'bg-[#C4EED0] text-[#072711] shadow-2xs'
+                    : 'text-emerald-200 hover:text-white'
+                }`}
+                title="Switch to Android 15 (Material You) App View"
+              >
+                <Smartphone className="w-3 h-3" />
+                <span>Android</span>
+              </button>
+              <button
+                type="button"
+                data-testid="view-mode-compare"
+                onClick={() => onChangeViewMode?.('compare')}
+                className={`hidden sm:flex px-2 py-0.5 rounded-md text-[11px] font-bold items-center gap-1 transition-all cursor-pointer ${
+                  viewMode === 'compare'
+                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                    : 'text-emerald-200 hover:text-white'
+                }`}
+                title="Compare iOS & Android Views Side-by-Side"
+              >
+                <Columns className="w-3 h-3" />
+                <span>iOS + Android</span>
+              </button>
+            </div>
+
             <button
               onClick={onOpenRemoteModal}
-              className="text-teal-300 hover:text-teal-200 flex items-center gap-1 transition-colors cursor-pointer"
+              className="hidden md:flex text-teal-300 hover:text-teal-200 items-center gap-1 transition-colors cursor-pointer"
             >
               <Laptop className="w-3.5 h-3.5" />
               <span>Dominica WIN Extended Visa</span>
@@ -149,20 +225,12 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('jobs')}>
-            <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 flex items-center justify-center shadow-md shadow-emerald-700/20 border border-emerald-500/30 overflow-hidden">
-              <div className="absolute inset-0 opacity-25 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-400 via-rose-500 to-transparent"></div>
-              <Briefcase className="w-5 h-5 text-white relative z-10" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-1.5">
-                <span className="font-extrabold text-[16px] tracking-tight text-slate-900">Nature Island</span>
-                <span className="font-bold text-[16px] text-emerald-600">Careers</span>
-              </div>
-              <p className="text-[10px] font-medium tracking-wide uppercase text-slate-600">
-                Dominica Classified & Career Hub
-              </p>
-            </div>
+          <div
+            className="flex items-center cursor-pointer"
+            onClick={() => setActiveTab('jobs')}
+            data-testid="header-brand-logo"
+          >
+            <BrandLogo variant="header" />
           </div>
 
           {/* Navigation Links */}
@@ -244,166 +312,261 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Singular 'Profile' Entry in Header */}
+            {/* Account Controls & Singular 'Profile' Entry in Header */}
             {currentUser ? (
-              <div className="relative" ref={userMenuRef}>
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    type="button"
+                    data-testid="header-account-menu-button"
+                    onClick={() =>
+                      setActiveTab(currentUser.role === 'client' ? 'recruiter' : 'profile')
+                    }
+                    className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                      activeTab === 'profile' ||
+                      activeTab === 'applications' ||
+                      activeTab === 'resume_builder' ||
+                      (currentUser.role === 'client' && activeTab === 'recruiter')
+                        ? 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold shadow-xs'
+                        : 'bg-slate-100/90 hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 border-slate-200/80'
+                    }`}
+                    title={
+                      currentUser.role === 'client'
+                        ? 'Employer Account Portal'
+                        : 'Candidate Profile Hub'
+                    }
+                  >
+                    <div
+                      className={`w-6 h-6 rounded-full text-white font-bold text-xs flex items-center justify-center overflow-hidden shrink-0 ${
+                        currentUser.role === 'client' ? 'bg-amber-700' : 'bg-emerald-700'
+                      }`}
+                    >
+                      {currentUser.avatarUrl ? (
+                        <img
+                          src={currentUser.avatarUrl}
+                          alt={currentUser.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : currentUser.role === 'client' ? (
+                        <Building className="w-3.5 h-3.5" />
+                      ) : (
+                        currentUser.name.charAt(0)
+                      )}
+                    </div>
+                    <div className="text-left hidden sm:block leading-tight">
+                      <span className="text-xs font-bold text-slate-800 block truncate max-w-[115px]">
+                        {currentUser.role === 'client'
+                          ? currentUser.companyName || currentUser.name
+                          : currentUser.name}
+                      </span>
+                      <span
+                        className={`text-[10px] font-black block uppercase tracking-wider ${
+                          currentUser.role === 'client' ? 'text-amber-800' : 'text-emerald-700'
+                        }`}
+                      >
+                        {currentUser.role === 'client' ? 'Employer' : 'Profile'}
+                      </span>
+                    </div>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsUserMenuOpen((prev) => !prev);
+                      }}
+                      className="p-0.5 hover:bg-slate-200/60 rounded"
+                      title="Open Account Options"
+                    >
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
+                          isUserMenuOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </span>
+                  </button>
+
+                  {isUserMenuOpen && (
+                    <div className="absolute right-0 top-full mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+                      <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/70">
+                        <span className="text-xs font-bold text-slate-900 block truncate">
+                          {currentUser.name}
+                        </span>
+                        {currentUser.companyName && (
+                          <span className="text-[11px] font-semibold text-amber-800 block truncate">
+                            {currentUser.companyName}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-500 block truncate">
+                          {currentUser.email}
+                        </span>
+                        <span
+                          className={`inline-block mt-1 text-[10px] uppercase font-black px-1.5 py-0.5 rounded ${
+                            currentUser.role === 'client'
+                              ? 'bg-amber-100 text-amber-900'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {currentUser.role === 'client'
+                            ? 'Dominica Employer Account'
+                            : 'Dominica Candidate Profile'}
+                        </span>
+                      </div>
+
+                      {currentUser.role === 'client' ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('recruiter');
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer"
+                        >
+                          <Building className="w-4 h-4 text-amber-700" />
+                          <span>Employer Command Center</span>
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('profile');
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                      >
+                        <User className="w-4 h-4 text-emerald-600" />
+                        <span>Personal Details & Photo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('applications');
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center justify-between hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Briefcase className="w-4 h-4 text-emerald-600" />
+                          <span>My Applications</span>
+                        </span>
+                        {userApplicationsCount > 0 && (
+                          <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full font-bold">
+                            {userApplicationsCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('resume_builder');
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                      >
+                        <FileText className="w-4 h-4 text-emerald-600" />
+                        <span>Resume Builder & PDF</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('profile');
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center justify-between hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Bookmark className="w-4 h-4 text-amber-500" />
+                          <span>Saved Vacancies</span>
+                        </span>
+                        {savedJobIds.length > 0 && (
+                          <span className="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-bold">
+                            {savedJobIds.length}
+                          </span>
+                        )}
+                      </button>
+
+                      <div className="border-t border-slate-100 my-1" />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          onOpenAuth('login');
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <LogIn className="w-4 h-4 text-emerald-600" />
+                        <span>Switch / Create Account</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-testid="dropdown-logout-button"
+                        onClick={() => {
+                          logoutUser();
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Log Out</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Direct 1-Click Log Out Button in Header */}
+                <button
+                  type="button"
+                  data-testid="header-logout-button"
+                  onClick={() => {
+                    logoutUser();
+                    setIsUserMenuOpen(false);
+                  }}
+                  title="Log Out of Account"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Log Out</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="header-login-button"
+                  onClick={() => onOpenAuth('login')}
+                  className="inline-flex items-center gap-1.5 border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Log In</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="header-register-button"
+                  onClick={() => onOpenAuth('jobseeker_register')}
+                  className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Create Account</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveTab('profile')}
-                  className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 border px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder'
-                      ? 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold shadow-xs'
-                      : 'bg-slate-100/90 hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 border-slate-200/80'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
+                      : 'border-slate-300 hover:border-emerald-600 text-slate-700 hover:text-emerald-700 bg-white'
                   }`}
-                  title="Candidate Profile Hub"
+                  title="Candidate Profile"
                 >
-                  <div className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold text-xs flex items-center justify-center overflow-hidden shrink-0">
-                    {currentUser.avatarUrl ? (
-                      <img
-                        src={currentUser.avatarUrl}
-                        alt={currentUser.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      currentUser.name.charAt(0)
-                    )}
-                  </div>
-                  <div className="text-left hidden sm:block leading-tight">
-                    <span className="text-xs font-bold text-slate-800 block truncate max-w-[100px]">
-                      {currentUser.name}
-                    </span>
-                    <span className="text-[10px] text-emerald-700 font-black block uppercase tracking-wider">
-                      Profile
-                    </span>
-                  </div>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsUserMenuOpen((prev) => !prev);
-                    }}
-                    className="p-0.5 hover:bg-slate-200/60 rounded"
-                    title="Open Profile Options"
-                  >
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
-                        isUserMenuOpen ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </span>
+                  <User className="w-4 h-4 text-emerald-600" />
+                  <span className="hidden xl:inline">Profile</span>
                 </button>
-
-                {isUserMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
-                    <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/70">
-                      <span className="text-xs font-bold text-slate-900 block truncate">
-                        {currentUser.name}
-                      </span>
-                      <span className="text-[11px] text-slate-500 block truncate">
-                        {currentUser.email}
-                      </span>
-                      <span className="inline-block mt-1 text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                        Dominica Candidate Profile
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('profile');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
-                    >
-                      <User className="w-4 h-4 text-emerald-600" />
-                      <span>Personal Details & Photo</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('applications');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center justify-between hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Briefcase className="w-4 h-4 text-emerald-600" />
-                        <span>My Applications</span>
-                      </span>
-                      {userApplicationsCount > 0 && (
-                        <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full font-bold">
-                          {userApplicationsCount}
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('resume_builder');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
-                    >
-                      <FileText className="w-4 h-4 text-emerald-600" />
-                      <span>Resume Builder & PDF</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('profile');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold flex items-center justify-between hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Bookmark className="w-4 h-4 text-amber-500" />
-                        <span>Saved Vacancies</span>
-                      </span>
-                      {savedJobIds.length > 0 && (
-                        <span className="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-bold">
-                          {savedJobIds.length}
-                        </span>
-                      )}
-                    </button>
-
-                    <div className="border-t border-slate-100 my-1" />
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        logoutUser();
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full px-3.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
-                )}
               </div>
-            ) : currentRecruiter ? (
-              <div className="flex items-center space-x-2 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-                <Building className="w-4 h-4 text-emerald-700" />
-                <span className="text-xs font-bold text-emerald-800 hidden lg:inline truncate max-w-[110px]">
-                  {currentRecruiter.companyName}
-                </span>
-              </div>
-            ) : (
-              <button
-                onClick={() => setActiveTab('profile')}
-                className={`inline-flex items-center gap-1.5 border px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                  activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder'
-                    ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
-                    : 'border-slate-300 hover:border-emerald-600 text-slate-700 hover:text-emerald-700 bg-white'
-                }`}
-                title="Candidate Profile"
-              >
-                <User className="w-4 h-4 text-emerald-600" />
-                <span>Profile</span>
-              </button>
             )}
           </div>
         </div>

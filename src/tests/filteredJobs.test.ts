@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { filterAndSortJobs, FilterJobsOptions } from '../utils/filterJobs';
+import { JobFilters } from '../components/JobFilters';
 import { JobListing } from '../types';
 
 const mockJobs: JobListing[] = [
@@ -243,6 +246,67 @@ describe('filterAndSortJobs logic', () => {
       // Non-featured jobs follow:
       expect(result[2].featured).toBe(false);
       expect(result[3].featured).toBe(false);
+    });
+  });
+
+  describe('Date Posted filter (Last 24 hours, Last 7 days, Last 30 days)', () => {
+    const referenceDate = '2026-09-20T20:00:00Z';
+
+    it('filters listings posted within Last 24 hours', () => {
+      // job-3 was posted at 2026-09-20T08:00:00Z (12 hours before referenceDate)
+      const result = filterAndSortJobs(mockJobs, {
+        selectedDatePosted: 'Last 24 hours',
+        referenceDate,
+      });
+      expect(result.map((j) => j.id)).toEqual(['job-3']);
+    });
+
+    it('filters listings posted within Last 7 days', () => {
+      // job-3 (2026-09-20) and job-2 (2026-09-15) are within 7 days of 2026-09-20T20:00:00Z
+      const result = filterAndSortJobs(mockJobs, {
+        selectedDatePosted: 'Last 7 days',
+        referenceDate,
+      });
+      expect(result.map((j) => j.id)).toEqual(['job-3', 'job-2']);
+    });
+
+    it('filters listings posted within Last 30 days', () => {
+      // job-3 (Sept 20), job-2 (Sept 15), and job-1 (Sept 1) are within 30 days of Sept 20; job-4 (Aug 10) is older
+      const result = filterAndSortJobs(mockJobs, {
+        selectedDatePosted: 'Last 30 days',
+        referenceDate,
+      });
+      expect(result.map((j) => j.id)).toEqual(['job-3', 'job-1', 'job-2']);
+    });
+
+    it('renders Date Posted filter buttons in JobFilters component', () => {
+      const html = renderToStaticMarkup(
+        React.createElement(JobFilters, {
+          selectedParish: 'All',
+          setSelectedParish: () => {},
+          selectedSector: 'All',
+          setSelectedSector: () => {},
+          selectedType: 'All',
+          setSelectedType: () => {},
+          selectedWorkModel: 'All',
+          setSelectedWorkModel: () => {},
+          selectedDatePosted: 'Last 7 days',
+          setSelectedDatePosted: () => {},
+          nepOnly: false,
+          setNepOnly: () => {},
+          minSalaryXCD: 0,
+          setMinSalaryXCD: () => {},
+          onReset: () => {},
+          filteredCount: 4,
+        })
+      );
+      expect(html).toContain('Date Posted');
+      expect(html).toContain('Last 24 hours');
+      expect(html).toContain('Last 7 days');
+      expect(html).toContain('Last 30 days');
+      expect(html).toContain('date-posted-24h');
+      expect(html).toContain('date-posted-7d');
+      expect(html).toContain('date-posted-30d');
     });
   });
 });

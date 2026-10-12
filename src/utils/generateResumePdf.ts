@@ -65,6 +65,10 @@ export const generateResumePdf = async (options: ResumePdfOptions): Promise<stri
 
     if (layoutTemplate === 'classic') {
       pdf?.setFillColor?.(28, 25, 23);
+    } else if (layoutTemplate === 'executive') {
+      pdf?.setFillColor?.(15, 23, 42);
+    } else if (layoutTemplate === 'minimalist') {
+      pdf?.setFillColor?.(39, 39, 42);
     } else if (layoutTemplate === 'creative') {
       pdf?.setFillColor?.(19, 78, 74);
     } else {
