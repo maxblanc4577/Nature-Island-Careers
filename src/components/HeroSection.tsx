@@ -111,41 +111,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </span>
           </div>
 
-          {/* Quick Photo Switcher */}
+          {/* Flag Toggle */}
           <div className="inline-flex items-center bg-black/60 border border-white/20 rounded-full p-0.5 backdrop-blur-md text-[11px] font-semibold text-emerald-200">
             <button
-              onClick={() => setBgMode('photo_scotts')}
-              className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
-                bgMode === 'photo_scotts' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
-              }`}
-              title="Nature Island Scotts Head Coastal Peninsula"
-            >
-              🌴 Scotts Head
-            </button>
-            <button
-              onClick={() => setBgMode('trafalgar_falls')}
-              className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
-                bgMode === 'trafalgar_falls' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
-              }`}
-              title="Dominica Trafalgar Twin Falls Attraction Site"
-            >
-              🏞️ Trafalgar Falls
-            </button>
-            <button
-              onClick={() => setBgMode('emerald_pool')}
-              className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
-                bgMode === 'emerald_pool' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:text-white'
-              }`}
-              title="Dominica Emerald Pool Morne Trois Pitons National Park"
-            >
-              🌿 Emerald Pool
-            </button>
-            <button
-              onClick={() => setBgMode('flag')}
+              onClick={() => setBgMode(bgMode === 'flag' ? 'photo_scotts' : 'flag')}
               className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
                 bgMode === 'flag' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'hover:text-white'
               }`}
-              title="Dominica National Flag"
+              title="Toggle Dominica National Flag"
             >
               🇩🇲 Flag
             </button>

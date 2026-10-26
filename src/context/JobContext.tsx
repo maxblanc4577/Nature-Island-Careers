@@ -23,6 +23,7 @@ import {
   SavedJobFolder,
   AdminActivityCategory,
   AdminActivityLogEntry,
+  SiteSettings,
 } from '../types';
 import {
   INITIAL_JOBS,
@@ -287,9 +288,43 @@ interface JobContextType {
   syncRecords: DatabaseSyncRecord[];
   runSyncSimulation: (targetSystem: 'Dominica Labour Division' | 'National Employment Programme (NEP)' | 'Dominica Social Security (DSS)') => void;
   exportDatabaseCSV: () => void;
+
+  // Site Settings (including competitive / high-range salary threshold)
+  siteSettings: SiteSettings;
+  updateSiteSettings: (newSettings: Partial<SiteSettings>) => void;
+
+  // Automated Job Expiration (>45 Days)
+  isJobExpired: (job: JobListing, referenceTimestamp?: number) => boolean;
+  renewJobListing: (jobId: string) => void;
+  expiredJobIds: string[];
 }
 
 const JobContext = createContext<JobContextType | undefined>(undefined);
+
+export const JOB_EXPIRATION_DAYS = 45;
+
+export const DEFAULT_SITE_SETTINGS: SiteSettings = {
+  siteName: 'Nature Island Careers',
+  contactEmail: 'info@natureislecareers.com',
+  announcement: 'Dominica Work In Nature (WIN) 2026 Extended Visas Active · Certified 18-Month Remote Stay',
+  currencyPeg: 2.70,
+  showEmergencyBanner: false,
+  backgroundImageUrl: '/nature_island_photo.svg',
+  fullPageBackground: false,
+  competitiveSalaryThreshold: 8000,
+};
+
+export function isJobListingExpired(
+  job: Pick<JobListing, 'postedAt' | 'isExpired' | 'status'>,
+  referenceTimestamp: number = Date.now()
+): boolean {
+  if (job.isExpired || job.status === 'expired') return true;
+  if (!job.postedAt) return false;
+  const postedTime = new Date(job.postedAt).getTime();
+  if (isNaN(postedTime)) return false;
+  const diffDays = (referenceTimestamp - postedTime) / (1000 * 60 * 60 * 24);
+  return diffDays > JOB_EXPIRATION_DAYS;
+}
 
 export const SUBSCRIPTION_CRITERIA_STORAGE_KEY = 'dominica_subscription_criteria';
 export const RECENT_SEARCHES_STORAGE_KEY = 'dominica_recent_searches';
@@ -781,6 +816,85 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_STRIPE_SETTINGS;
     }
   });
+
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('natureisland_site_settings') : null;
+      if (saved) {
+        return { ...DEFAULT_SITE_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SITE_SETTINGS;
+  });
+
+  const updateSiteSettings = (newSettings: Partial<SiteSettings>) => {
+    setSiteSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('natureisland_site_settings', JSON.stringify(updated));
+        }
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+  };
+
+  useEffect(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('natureisland_site_settings', JSON.stringify(siteSettings));
+      }
+    } catch {
+      // ignore
+    }
+  }, [siteSettings]);
+
+  // Automated 45-day expiration check on jobs: flags active jobs >45 days old as expired
+  useEffect(() => {
+    const now = Date.now();
+    let hasChanges = false;
+    const updated = jobs.map((job) => {
+      const expired = isJobListingExpired(job, now);
+      if (expired && (!job.isExpired || job.status !== 'expired')) {
+        hasChanges = true;
+        return {
+          ...job,
+          isExpired: true,
+          status: 'expired' as const,
+        };
+      }
+      return job;
+    });
+    if (hasChanges) {
+      setJobs(updated);
+    }
+  }, []);
+
+  const isJobExpired = (job: JobListing, referenceTimestamp: number = Date.now()): boolean => {
+    return isJobListingExpired(job, referenceTimestamp);
+  };
+
+  const renewJobListing = (jobId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId
+          ? {
+              ...job,
+              postedAt: today,
+              isExpired: false,
+              status: 'active' as const,
+            }
+          : job
+      )
+    );
+  };
+
+  const expiredJobIds = jobs.filter((job) => isJobListingExpired(job)).map((job) => job.id);
 
   const [latestDispatchedEmail, setLatestDispatchedEmail] = useState<EmailNotification | null>(null);
 
@@ -3149,6 +3263,11 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         syncRecords,
         runSyncSimulation,
         exportDatabaseCSV,
+        siteSettings,
+        updateSiteSettings,
+        isJobExpired,
+        renewJobListing,
+        expiredJobIds,
       }}
     >
       {children}

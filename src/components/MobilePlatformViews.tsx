@@ -48,7 +48,8 @@ export type AppTabType =
   | 'resume_builder'
   | 'recruiter'
   | 'analytics'
-  | 'career';
+  | 'career'
+  | 'brand';
 
 interface MobilePlatformViewsProps {
   viewMode: PlatformViewMode;

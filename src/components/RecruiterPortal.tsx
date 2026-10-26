@@ -36,6 +36,7 @@ import {
   LogOut,
   LogIn,
   UserPlus,
+  RefreshCw,
 } from 'lucide-react';
 
 export interface ScheduledInterviewItem {
@@ -661,6 +662,8 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
     sendRecruiterReminders,
     invoices,
     stripeSettings,
+    isJobExpired,
+    renewJobListing,
   } = useJobContext();
 
   // Self-contained Post a Vacancy modal state inside RecruiterPortal
@@ -783,6 +786,20 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
           j.company.toLowerCase() === currentRecruiter.companyName.toLowerCase()
       )
     : jobs.slice(0, 5);
+
+  const [classifiedsExpiryFilter, setClassifiedsExpiryFilter] = useState<'all' | 'active' | 'expired'>('all');
+
+  const activeMyJobsCount = useMemo(() => myJobs.filter((j) => !isJobExpired(j)).length, [myJobs, isJobExpired]);
+  const expiredMyJobsCount = useMemo(() => myJobs.filter((j) => isJobExpired(j)).length, [myJobs, isJobExpired]);
+
+  const displayedMyJobs = useMemo(() => {
+    return myJobs.filter((job) => {
+      const expired = isJobExpired(job);
+      if (classifiedsExpiryFilter === 'active') return !expired;
+      if (classifiedsExpiryFilter === 'expired') return expired;
+      return true;
+    });
+  }, [myJobs, classifiedsExpiryFilter, isJobExpired]);
 
   const relevantJobIds = myJobs.map((j) => j.id);
   const relevantApplications = applications.filter((a) =>
@@ -2271,16 +2288,55 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setSelectedJobId('all')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                    selectedJobId === 'all'
-                      ? 'bg-emerald-800 text-white'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  All Classifieds ({myJobs.length})
-                </button>
+                {/* Expiry / Status Filter */}
+                <div className="inline-flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    data-testid="filter-all-jobs"
+                    onClick={() => setClassifiedsExpiryFilter('all')}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      classifiedsExpiryFilter === 'all'
+                        ? 'bg-white text-emerald-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All Classifieds ({myJobs.length})
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="filter-active-jobs"
+                    onClick={() => setClassifiedsExpiryFilter('active')}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      classifiedsExpiryFilter === 'active'
+                        ? 'bg-white text-emerald-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Active ({activeMyJobsCount})
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="filter-expired-jobs"
+                    onClick={() => setClassifiedsExpiryFilter('expired')}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      classifiedsExpiryFilter === 'expired'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-rose-700 hover:text-rose-900'
+                    }`}
+                  >
+                    Expired &gt;45d ({expiredMyJobsCount})
+                  </button>
+                </div>
+
+                {selectedJobId !== 'all' && (
+                  <button
+                    onClick={() => setSelectedJobId('all')}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-800 text-white cursor-pointer"
+                  >
+                    Clear Filter
+                  </button>
+                )}
+
                 <button
                   onClick={handleOpenPostVacancy}
                   data-testid="classifieds-post-vacancy-btn"
@@ -2292,39 +2348,93 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {myJobs.map((job) => (
-                <div
-                  key={job.id}
-                  onClick={() => setSelectedJobId(job.id)}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer ${
-                    selectedJobId === job.id
-                      ? 'border-emerald-600 bg-emerald-50/50 shadow-sm'
-                      : 'border-slate-200 hover:border-emerald-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                      {job.parish}
-                    </span>
-                    <span className="text-xs text-slate-500 font-medium font-mono">
-                      EC${job.minSalary} - ${job.maxSalary}
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-slate-900 text-sm mt-2 line-clamp-1">{job.title}</h4>
-                  <div className="flex items-center justify-between text-xs text-slate-500 mt-4 pt-3 border-t border-slate-100">
-                    <span className="flex items-center gap-1 font-semibold text-slate-700">
-                      <Users className="w-3.5 h-3.5 text-emerald-600" />
-                      {applications.filter((a) => a.jobId === job.id).length} Applicants
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Eye className="w-3.5 h-3.5 text-slate-400" />
-                      {job.viewsCount} views
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {displayedMyJobs.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                No job listings match the selected &quot;{classifiedsExpiryFilter}&quot; filter.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {displayedMyJobs.map((job) => {
+                  const expired = isJobExpired(job);
+                  return (
+                    <div
+                      key={job.id}
+                      data-testid={`recruiter-job-card-${job.id}`}
+                      onClick={() => setSelectedJobId(job.id)}
+                      className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                        selectedJobId === job.id
+                          ? 'border-emerald-600 bg-emerald-50/50 shadow-sm'
+                          : expired
+                          ? 'border-rose-200 bg-rose-50/30 hover:border-rose-300'
+                          : 'border-slate-200 hover:border-emerald-300 bg-white'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-1 mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                            {job.parish}
+                          </span>
+                          <span className="text-xs text-slate-500 font-medium font-mono">
+                            EC${job.minSalary.toLocaleString()} - ${job.maxSalary.toLocaleString()}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-1">
+                          {expired ? (
+                            <span
+                              data-testid={`expired-badge-${job.id}`}
+                              className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                            >
+                              Expired (&gt;45 Days)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              Active
+                            </span>
+                          )}
+                          {job.postedAt && (
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              Posted: {job.postedAt}
+                            </span>
+                          )}
+                        </div>
+
+                        <h4 className="font-bold text-slate-900 text-sm mt-2 line-clamp-1">{job.title}</h4>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100/90">
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span className="flex items-center gap-1 font-semibold text-slate-700">
+                            <Users className="w-3.5 h-3.5 text-emerald-600" />
+                            {applications.filter((a) => a.jobId === job.id).length} Applicants
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Eye className="w-3.5 h-3.5 text-slate-400" />
+                            {job.viewsCount} views
+                          </span>
+                        </div>
+
+                        {expired && (
+                          <button
+                            type="button"
+                            data-testid={`renew-job-btn-${job.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              renewJobListing(job.id);
+                            }}
+                            className="mt-3 w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                            title="Reset 45-day clock and reactivate this job listing"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Renew Vacancy</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Applicant Tracking Pipeline with Checkboxes, Bulk Update Status, Star-Rating & Direct Messaging */}

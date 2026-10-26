@@ -32,6 +32,7 @@ import { JobCompareModal } from './components/JobCompareModal';
 import { Footer } from './components/Footer';
 import { EmailAlertToast } from './components/EmailAlertToast';
 import { MobilePlatformViews, PlatformViewMode } from './components/MobilePlatformViews';
+import { BrandIdentityGenerator } from './components/BrandIdentityGenerator';
 import {
   JobListing,
   Parish,
@@ -87,6 +88,7 @@ function DominicaJobBoardContent() {
     | 'recruiter'
     | 'analytics'
     | 'career'
+    | 'brand'
   >('jobs');
 
   // Platform View Mode: 'desktop' | 'ios' | 'android' | 'compare'
@@ -364,6 +366,10 @@ function DominicaJobBoardContent() {
         onOpenAdminLogin={() => navigateToPath('/admin-login')}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
         onOpenAdminPortal={handleOpenAdminMasterPortal}
+        onOpenBrandStudio={() => {
+          setActiveTab('brand');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
         searchQuery={searchQuery}
         onSelectSearchQuery={(query) => {
           setSearchQuery(query);
@@ -681,6 +687,16 @@ function DominicaJobBoardContent() {
 
         {/* TAB 7: CAREER GUIDANCE ASSISTANT */}
         {activeTab === 'career' && <CareerGuidanceAssistant />}
+
+        {/* TAB 8: BRAND IDENTITY & SOCIAL MOCKUP STUDIO */}
+        {activeTab === 'brand' && (
+          <BrandIdentityGenerator
+            onClose={() => {
+              setActiveTab('jobs');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
           </>
         )}
       </main>
@@ -705,6 +721,10 @@ function DominicaJobBoardContent() {
         }}
         onOpenEmployerPortal={() => {
           setActiveTab('recruiter');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onOpenBrandStudio={() => {
+          setActiveTab('brand');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
       />
@@ -796,6 +816,11 @@ function DominicaJobBoardContent() {
           setIsStripeModalOpen(true);
         }}
         onReauthenticateAdmin={() => navigateToPath('/admin-login')}
+        onOpenBrandStudio={() => {
+          setIsMasterAdminOpen(false);
+          setActiveTab('brand');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
       />
       {selectedJobForDetail && (
         <JobDetailModal

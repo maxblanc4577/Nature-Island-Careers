@@ -1,6 +1,6 @@
 import React from 'react';
 import { Parish } from '../types';
-import { ShieldCheck, Mail, MapPin, Compass, BookOpen, BarChart3 } from 'lucide-react';
+import { ShieldCheck, Mail, MapPin, Compass, BookOpen, BarChart3, Palette } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 
 interface FooterProps {
@@ -11,6 +11,7 @@ interface FooterProps {
   onOpenCareerGuide?: () => void;
   onOpenSalaryTrends?: () => void;
   onOpenEmployerPortal?: () => void;
+  onOpenBrandStudio?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -21,6 +22,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenCareerGuide,
   onOpenSalaryTrends,
   onOpenEmployerPortal,
+  onOpenBrandStudio,
 }) => {
   return (
     <footer className="bg-stone-900 text-stone-300 border-t border-stone-800 text-xs">
@@ -47,6 +49,19 @@ export const Footer: React.FC<FooterProps> = ({
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span>Compliant with Dominica Labour Standards</span>
             </div>
+            {onOpenBrandStudio && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  data-testid="footer-brand-studio-btn"
+                  onClick={onOpenBrandStudio}
+                  className="inline-flex items-center gap-1.5 text-stone-300 hover:text-amber-300 transition-colors cursor-pointer text-xs font-semibold"
+                >
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Brand Kit & Social Mockups</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Col 2: Dominican Programmes */}

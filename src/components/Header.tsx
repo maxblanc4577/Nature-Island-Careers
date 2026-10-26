@@ -18,6 +18,7 @@ import {
   Smartphone,
   Monitor,
   Columns,
+  Palette,
 } from 'lucide-react';
 import { PlatformViewMode } from './MobilePlatformViews';
 import { BrandLogo } from './BrandLogo';
@@ -33,7 +34,8 @@ interface HeaderProps {
     | 'resume_builder'
     | 'recruiter'
     | 'analytics'
-    | 'career';
+    | 'career'
+    | 'brand';
   setActiveTab: (
     tab:
       | 'jobs'
@@ -44,12 +46,14 @@ interface HeaderProps {
       | 'recruiter'
       | 'analytics'
       | 'career'
+      | 'brand'
   ) => void;
   onOpenNotifications: () => void;
   onOpenAuth: (mode?: 'jobseeker_register' | 'client_register' | 'login') => void;
   onOpenAdminLogin: () => void;
   onOpenRemoteModal: () => void;
   onOpenAdminPortal?: () => void;
+  onOpenBrandStudio?: () => void;
   searchQuery?: string;
   onSelectSearchQuery?: (query: string) => void;
   viewMode?: PlatformViewMode;
@@ -71,6 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdminLogin,
   onOpenRemoteModal,
   onOpenAdminPortal,
+  onOpenBrandStudio,
   searchQuery = '',
   onSelectSearchQuery,
   viewMode = 'desktop',
@@ -198,6 +203,17 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Laptop className="w-3.5 h-3.5" />
               <span>Dominica WIN Extended Visa</span>
+            </button>
+            <span className="text-emerald-800 hidden md:inline">|</span>
+            <button
+              type="button"
+              data-testid="header-brand-studio-btn"
+              onClick={() => (onOpenBrandStudio ? onOpenBrandStudio() : setActiveTab('brand'))}
+              className="hidden sm:flex text-amber-300 hover:text-amber-200 items-center gap-1 transition-colors cursor-pointer text-[11px] font-semibold"
+              title="Open Brand Identity & Social Media Profile Mockup Studio"
+            >
+              <Palette className="w-3.5 h-3.5" />
+              <span>Brand Studio & Mockups</span>
             </button>
             {isAdminLoggedIn && (
               <>

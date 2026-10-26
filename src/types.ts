@@ -90,6 +90,19 @@ export interface JobListing {
   employerCountry?: string; // e.g. "United States", "United Kingdom", "Canada", "Worldwide", etc.
   timezoneRequirement?: string;
   currency?: 'XCD' | 'USD' | 'EUR' | 'GBP' | 'CAD';
+  isExpired?: boolean;
+  status?: 'active' | 'expired' | 'closed';
+}
+
+export interface SiteSettings {
+  siteName: string;
+  contactEmail: string;
+  announcement: string;
+  currencyPeg: number;
+  showEmergencyBanner: boolean;
+  backgroundImageUrl?: string;
+  fullPageBackground?: boolean;
+  competitiveSalaryThreshold?: number; // threshold in EC$ above which jobs receive a 'Competitive' / 'High-Range' tag
 }
 
 export type SubscriptionPlan = 'Standard Local Employer' | 'Enterprise Growth Partner' | 'NEP Partner Tier';

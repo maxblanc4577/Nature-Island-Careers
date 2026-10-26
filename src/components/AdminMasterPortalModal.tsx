@@ -95,6 +95,7 @@ interface AdminMasterPortalModalProps {
   }) => void;
   onOpenStripe?: () => void;
   onReauthenticateAdmin?: () => void;
+  onOpenBrandStudio?: () => void;
 }
 
 export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
@@ -104,6 +105,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
   onUpdateSiteSettings,
   onOpenStripe,
   onReauthenticateAdmin,
+  onOpenBrandStudio,
 }) => {
   const {
     jobs,
@@ -1211,6 +1213,36 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                 <span>Auto-saved to localStorage & synchronized across the platform!</span>
               </div>
             )}
+
+            {/* Official Brand Identity & Social Mockups Studio Banner */}
+            <div className="p-4 bg-gradient-to-r from-[#082407] to-slate-900 border border-emerald-600/50 rounded-xl text-white space-y-2.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎨</span>
+                  <h4 className="font-black text-sm text-white">Brand Identity & Social Media Mockup Studio</h4>
+                </div>
+                <span className="text-[10px] bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded font-mono font-bold">
+                  FB · Twitter · Instagram
+                </span>
+              </div>
+              <p className="text-xs text-stone-300 leading-relaxed">
+                Design and inspect mockups for Facebook Cover Photos (820×312), Twitter / X Profile Headers (1500×500), and Instagram circular profile pictures & highlight grids using the official emblem, color palette, and font pairings.
+              </p>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  data-testid="admin-launch-brand-studio-btn"
+                  onClick={() => {
+                    onClose();
+                    if (onOpenBrandStudio) onOpenBrandStudio();
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs cursor-pointer transition-colors shadow-xs flex items-center gap-1.5"
+                >
+                  <span>Launch Brand Identity & Social Mockup Studio</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
             <form onSubmit={handleSaveSettings} className="space-y-4 max-w-xl text-xs">
               <div>

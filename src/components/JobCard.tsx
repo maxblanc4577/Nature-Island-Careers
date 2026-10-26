@@ -71,11 +71,14 @@ export const JobCard: React.FC<JobCardProps> = ({
     quickApplyToJob,
     dismissJob,
     restoreDismissedJob,
+    siteSettings,
   } = useJobContext();
   const saved = isJobSaved(job.id);
   const isUserAuthenticated =
     isAuthenticated !== undefined ? isAuthenticated : Boolean(currentUser);
   const jobFolders = getJobFolders(job.id);
+  const competitiveThreshold = siteSettings?.competitiveSalaryThreshold ?? 8000;
+  const isCompetitiveSalary = typeof job.maxSalary === 'number' && job.maxSalary >= competitiveThreshold;
   const [isPulsing, setIsPulsing] = React.useState(false);
   const [saveToastVisible, setSaveToastVisible] = React.useState(false);
   const [showShareModal, setShowShareModal] = React.useState(false);
@@ -419,6 +422,18 @@ export const JobCard: React.FC<JobCardProps> = ({
               </span>
             )}
 
+            {/* Subtle 'Competitive' or 'High-Range' tag if job maximum salary meets or exceeds siteSettings threshold */}
+            {isCompetitiveSalary && (
+              <span
+                data-testid={`competitive-salary-tag-${job.id}`}
+                className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-2xs"
+                title={`Competitive Salary: Maximum salary (EC$ ${job.maxSalary.toLocaleString()}) meets or exceeds threshold (EC$ ${competitiveThreshold.toLocaleString()})`}
+              >
+                <TrendingUp className="w-2.5 h-2.5 text-amber-600" />
+                <span>Competitive</span>
+              </span>
+            )}
+
             {job.isNepApproved && (
               <>
                 <span aria-hidden="true" className="text-stone-300">·</span>
@@ -476,21 +491,22 @@ export const JobCard: React.FC<JobCardProps> = ({
               <Share2 className="w-4 h-4" />
             </button>
 
-            {/* Feature: 'Save' toggle icon button (Heart icon) persisted to localStorage */}
+            {/* Feature: 'Save Job' heart button toggling saved status and visually updating filled vs outlined */}
             <button
               type="button"
+              data-testid={`save-job-btn-${job.id}`}
               onClick={handleToggleSave}
               className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center border ${
                 saved
                   ? 'text-rose-600 bg-rose-50 border-rose-200 shadow-2xs hover:bg-rose-100'
                   : 'text-stone-400 hover:text-rose-500 hover:bg-rose-50/60 border-stone-200/60'
               } ${isPulsing ? 'scale-125 transition-transform duration-200' : ''}`}
-              title={saved ? 'Remove from saved vacancies' : 'Save vacancy (Heart)'}
-              aria-label={saved ? 'Unsave vacancy' : 'Save vacancy'}
+              title={saved ? 'Saved Job' : 'Save Job'}
+              aria-label={saved ? 'Saved Job' : 'Save Job'}
             >
               <Heart
                 className={`w-4 h-4 transition-colors ${
-                  saved ? 'fill-rose-500 text-rose-500 stroke-rose-600' : 'text-stone-400 hover:text-rose-500'
+                  saved ? 'fill-rose-500 text-rose-500 stroke-rose-600' : 'fill-none text-stone-400 hover:text-rose-500'
                 }`}
               />
             </button>

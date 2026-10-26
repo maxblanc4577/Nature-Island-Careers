@@ -3,6 +3,7 @@ import { useJobContext } from '../context/JobContext';
 import { SECTOR_COMPENSATION_GUIDE } from '../data/salaryData';
 import { AdminSalaryTrendsChart } from './AdminSalaryTrendsChart';
 import { AdminParishSalaryDistribution } from './AdminParishSalaryDistribution';
+import { SalaryRangeDistributionChart } from './SalaryRangeDistributionChart';
 import { Parish } from '../types';
 import {
   BarChart3,
@@ -36,7 +37,9 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
     isAdminLoggedIn,
   } = useJobContext();
 
-  const [activeSubTab, setActiveSubTab] = useState<'trends' | 'parishes' | 'guide' | 'database'>('trends');
+  const [activeSubTab, setActiveSubTab] = useState<
+    'trends' | 'distribution' | 'parishes' | 'guide' | 'database'
+  >('trends');
   const [syncing, setSyncing] = useState(false);
 
   const handleSync = () => {
@@ -151,6 +154,18 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
         </button>
 
         <button
+          data-testid="tab-salary-distribution"
+          onClick={() => setActiveSubTab('distribution')}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+            activeSubTab === 'distribution'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          EC$ Salary Distribution
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('parishes')}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'parishes'
@@ -186,6 +201,8 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
 
       {/* Sub Tab Views */}
       {activeSubTab === 'trends' && <AdminSalaryTrendsChart />}
+
+      {activeSubTab === 'distribution' && <SalaryRangeDistributionChart />}
 
       {activeSubTab === 'parishes' && (
         <AdminParishSalaryDistribution onSelectParishFilter={onSelectParishFilter} />
