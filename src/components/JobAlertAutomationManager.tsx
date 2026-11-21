@@ -47,6 +47,13 @@ export const JobAlertAutomationManager: React.FC = () => {
     userAlert?.frequency || 'instant'
   );
   const [keyword, setKeyword] = useState(userAlert?.keyword || '');
+  const [minSalary, setMinSalary] = useState<string>(
+    userAlert?.minSalary
+      ? String(userAlert.minSalary)
+      : currentUser?.minSalaryRequirement
+      ? String(currentUser.minSalaryRequirement)
+      : ''
+  );
   const [savedNotice, setSavedNotice] = useState(false);
   const [testSent, setTestSent] = useState(false);
 
@@ -89,6 +96,7 @@ export const JobAlertAutomationManager: React.FC = () => {
 
   const handleSavePreferences = (e: React.FormEvent) => {
     e.preventDefault();
+    const numericMinSalary = Number(minSalary);
     subscribeToAlert({
       email: userEmail,
       name: userName,
@@ -96,6 +104,7 @@ export const JobAlertAutomationManager: React.FC = () => {
       sectors: selectedSectors,
       frequency,
       keyword,
+      minSalary: Number.isFinite(numericMinSalary) && numericMinSalary > 0 ? numericMinSalary : undefined,
     });
     setSavedNotice(true);
     setTimeout(() => setSavedNotice(false), 2400);
@@ -155,8 +164,8 @@ export const JobAlertAutomationManager: React.FC = () => {
 
       {/* Preferences Form */}
       <form onSubmit={handleSavePreferences} className="space-y-6">
-        {/* Recipient & Frequency Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+        {/* Recipient, Frequency, Keyword & Minimum Salary Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
           <div>
             <label className="block font-bold text-slate-700 mb-1">
               Recipient Email:
@@ -182,6 +191,22 @@ export const JobAlertAutomationManager: React.FC = () => {
               <option value="daily">📅 Daily Digest (8:00 AM AST)</option>
               <option value="weekly">🗓️ Weekly Summary (Every Monday)</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              Min Salary Requirement (EC$/mo):
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={250}
+              data-testid="alert-min-salary-input"
+              value={minSalary}
+              onChange={(e) => setMinSalary(e.target.value)}
+              placeholder="e.g. 5000"
+              className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+            />
           </div>
 
           <div>

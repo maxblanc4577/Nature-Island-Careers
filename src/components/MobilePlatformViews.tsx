@@ -172,6 +172,40 @@ export const SingleMobileDeviceView: React.FC<SingleDeviceViewProps> = ({
   const [mobileQuickApplyReceipt, setMobileQuickApplyReceipt] = useState<
     Record<string, { applicationId: string; resumeFileName: string }>
   >({});
+  const [pulsingSaveJobId, setPulsingSaveJobId] = useState<string | null>(null);
+  const [mobileSaveToast, setMobileSaveToast] = useState<{
+    jobId: string;
+    title: string;
+    action: 'saved' | 'removed';
+  } | null>(null);
+  const mobileSavePulseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileSaveToastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (mobileSavePulseTimerRef.current) clearTimeout(mobileSavePulseTimerRef.current);
+      if (mobileSaveToastTimerRef.current) clearTimeout(mobileSaveToastTimerRef.current);
+    };
+  }, []);
+
+  const handleMobileToggleSave = (job: JobListing, currentlySaved: boolean) => {
+    toggleSaveJob(job.id);
+    setPulsingSaveJobId(job.id);
+    if (mobileSavePulseTimerRef.current) clearTimeout(mobileSavePulseTimerRef.current);
+    mobileSavePulseTimerRef.current = setTimeout(() => {
+      setPulsingSaveJobId((prev) => (prev === job.id ? null : prev));
+    }, 1000);
+
+    setMobileSaveToast({
+      jobId: job.id,
+      title: job.title,
+      action: currentlySaved ? 'removed' : 'saved',
+    });
+    if (mobileSaveToastTimerRef.current) clearTimeout(mobileSaveToastTimerRef.current);
+    mobileSaveToastTimerRef.current = setTimeout(() => {
+      setMobileSaveToast(null);
+    }, 2800);
+  };
 
   const handleCardSwipeStart = (jobId: string, clientX: number) => {
     setSwipingJobId(jobId);
@@ -627,15 +661,20 @@ export const SingleMobileDeviceView: React.FC<SingleDeviceViewProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => toggleSaveJob(job.id)}
+                                  data-testid={`mobile-ios-save-btn-${job.id}`}
+                                  onClick={() => handleMobileToggleSave(job, isSaved)}
                                   aria-label={isSaved ? 'Remove from Saved' : 'Save Vacancy'}
-                                  className={`min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+                                  className={`min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-all cursor-pointer ${
                                     isSaved
                                       ? 'text-amber-500 bg-amber-50'
                                       : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-                                  }`}
+                                  } ${pulsingSaveJobId === job.id ? 'ring-2 ring-amber-300/80 scale-110' : ''}`}
                                 >
-                                  <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-amber-500' : ''}`} />
+                                  <Bookmark
+                                    className={`w-4 h-4 ${isSaved ? 'fill-amber-500' : ''} ${
+                                      pulsingSaveJobId === job.id ? 'animate-heartbeat-burst' : ''
+                                    }`}
+                                  />
                                 </button>
                               </div>
                             </div>
@@ -1376,13 +1415,18 @@ export const SingleMobileDeviceView: React.FC<SingleDeviceViewProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => toggleSaveJob(job.id)}
+                                data-testid={`mobile-android-save-btn-${job.id}`}
+                                onClick={() => handleMobileToggleSave(job, isSaved)}
                                 aria-label={isSaved ? 'Unsave job' : 'Save job'}
-                                className={`min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                                className={`min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center transition-all cursor-pointer ${
                                   isSaved ? 'text-emerald-800 bg-[#C4EED0]/60' : 'text-slate-400 hover:bg-slate-100'
-                                }`}
+                                } ${pulsingSaveJobId === job.id ? 'ring-2 ring-emerald-400/70 scale-110' : ''}`}
                               >
-                                <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-emerald-800' : ''}`} />
+                                <Bookmark
+                                  className={`w-4 h-4 ${isSaved ? 'fill-emerald-800' : ''} ${
+                                    pulsingSaveJobId === job.id ? 'animate-heartbeat-burst' : ''
+                                  }`}
+                                />
                               </button>
                             </div>
                           </div>
@@ -1688,6 +1732,27 @@ export const SingleMobileDeviceView: React.FC<SingleDeviceViewProps> = ({
           <div className="w-28 h-1 bg-slate-600/70 rounded-full" />
         </div>
       </div>
+      {mobileSaveToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="mobile-save-job-toast"
+          className="mt-3 mx-auto max-w-xs bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 shadow-lg border border-emerald-500/40 flex items-center justify-between gap-2"
+        >
+          <span className="truncate font-semibold">
+            {mobileSaveToast.action === 'saved' ? 'Saved: ' : 'Removed: '}
+            {mobileSaveToast.title}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMobileSaveToast(null)}
+            className="text-slate-400 hover:text-white cursor-pointer"
+            aria-label="Close save toast"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

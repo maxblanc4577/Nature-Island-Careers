@@ -25,6 +25,10 @@
   animation: heartbeat 1.5s cubic-bezier(0.25, 1, 0.5, 1) infinite;
 }
 
+.animate-heartbeat-burst {
+  animation: heartbeat 0.95s cubic-bezier(0.25, 1, 0.5, 1) 1;
+}
+
 /* Job Card Hover & Scale Transitions */
 .job-card-container {
   transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease;

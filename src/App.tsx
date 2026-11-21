@@ -20,7 +20,7 @@ import { RemoteAssignmentModal } from './components/RemoteAssignmentModal';
 import { InterviewSchedulerModal } from './components/InterviewSchedulerModal';
 import { ExportPdfReportModal } from './components/ExportPdfReportModal';
 import { StripePaymentModal } from './components/StripePaymentModal';
-import { AdminMasterPortalModal } from './components/AdminMasterPortalModal';
+import { AdminMasterPortalModal, StandaloneAdminPortalPage } from './components/AdminMasterPortalModal';
 import { ShareJobModal } from './components/ShareJobModal';
 import { CandidateProfileHub } from './components/CandidateProfileHub';
 import { MyApplicationsDashboard } from './components/MyApplicationsDashboard';
@@ -60,7 +60,7 @@ import {
 } from 'lucide-react';
 
 function DominicaJobBoardContent() {
-  const { jobs, savedJobIds, isAdminLoggedIn } = useJobContext();
+  const { jobs, savedJobIds, isAdminLoggedIn, updateSiteSettings } = useJobContext();
 
   // Compared jobs state for side-by-side comparison modal
   const [comparedJobIds, setComparedJobIds] = useState<string[]>([]);
@@ -209,12 +209,14 @@ function DominicaJobBoardContent() {
           showEmergencyBanner: false,
           backgroundImageUrl: '/nature_island_photo.svg',
           fullPageBackground: false,
+          competitiveSalaryThreshold: 8000,
         };
   });
 
   const handleUpdateSiteSettings = (newSettings: typeof siteSettings) => {
     setSiteSettings(newSettings);
     localStorage.setItem('natureisland_site_settings', JSON.stringify(newSettings));
+    updateSiteSettings(newSettings);
   };
 
   // Interview scheduling state for recruiter
@@ -279,11 +281,54 @@ function DominicaJobBoardContent() {
 
   const handleOpenAdminMasterPortal = () => {
     if (isAdminLoggedIn) {
-      setIsMasterAdminOpen(true);
+      navigateToPath('/admin');
     } else {
       navigateToPath('/admin-login');
     }
   };
+
+  // Dedicated Standalone Admin Portal Webpage (/admin or /admin-portal) isolated from public layout
+  if (
+    currentPath === '/admin' ||
+    currentPath.startsWith('/admin/') ||
+    currentPath === '/admin-portal' ||
+    currentPath.startsWith('/admin-portal/')
+  ) {
+    if (!isAdminLoggedIn) {
+      return (
+        <>
+          <Helmet>
+            <title>Admin Console Gateway | Nature Island Careers</title>
+            <meta name="robots" content="noindex, nofollow" />
+          </Helmet>
+          <StandaloneAdminLoginPage
+            onSuccess={() => navigateToPath('/admin')}
+            onReturnPublic={() => navigateToPath('/')}
+          />
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Helmet>
+          <title>Admin Portal | Nature Island Careers</title>
+          <meta name="robots" content="noindex, nofollow" />
+        </Helmet>
+        <StandaloneAdminPortalPage
+          siteSettings={siteSettings}
+          onUpdateSiteSettings={handleUpdateSiteSettings}
+          onReturnPublic={() => navigateToPath('/')}
+          onLogout={() => navigateToPath('/admin-login')}
+          onReauthenticateAdmin={() => navigateToPath('/admin-login')}
+          onOpenBrandStudio={() => {
+            navigateToPath('/');
+            setActiveTab('brand');
+          }}
+        />
+      </>
+    );
+  }
 
   // Dedicated Standalone Admin Login Gateway (/admin-login) completely isolated from public layout
   if (currentPath === '/admin-login' || currentPath.startsWith('/admin-login/')) {
@@ -294,10 +339,7 @@ function DominicaJobBoardContent() {
           <meta name="robots" content="noindex, nofollow" />
         </Helmet>
         <StandaloneAdminLoginPage
-          onSuccess={() => {
-            navigateToPath('/');
-            setIsMasterAdminOpen(true);
-          }}
+          onSuccess={() => navigateToPath('/admin')}
           onReturnPublic={() => navigateToPath('/')}
         />
       </>
@@ -886,7 +928,7 @@ function DominicaJobBoardContent() {
         onClose={() => setIsAdminLoginOpen(false)}
         onSuccess={() => {
           setIsAdminLoginOpen(false);
-          setIsMasterAdminOpen(true);
+          navigateToPath('/admin');
         }}
       />
 

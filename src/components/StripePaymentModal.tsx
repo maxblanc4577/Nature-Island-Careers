@@ -101,7 +101,15 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
   onSuccess,
   initialPlan,
 }) => {
-  const { currentRecruiter, currentUser, subscribeClientPlan, addInvoice, toggleRecruiterAutoRenew } = useJobContext();
+  const {
+    currentRecruiter,
+    currentUser,
+    subscribeClientPlan,
+    addInvoice,
+    toggleRecruiterAutoRenew,
+    stripeSettings,
+  } = useJobContext();
+  const isStripePortalEnabled = stripeSettings?.merchantPortalsEnabled?.stripe !== false;
   const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const [selectedPkgId, setSelectedPkgId] = useState<string>(
@@ -227,6 +235,8 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
       addInvoice({
         recruiterId: currentRecruiter?.id || 'rec_fort_young',
         companyName: cardholderName,
+        recipientEmail: billingEmail,
+        paymentIntentId,
         invoiceNumber: `INV-DOM-2026-${Math.floor(100 + Math.random() * 900)}`,
         date: new Date().toISOString().split('T')[0],
         plan: currentPkg.name,
@@ -347,8 +357,8 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
               </div>
             </div>
 
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              A formal Stripe receipt and invoice has been recorded in your <strong>Billing History</strong> and dispatched to <strong>{billingEmail}</strong>.
+            <p className="text-xs text-slate-600 max-w-sm mx-auto bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5">
+              A formal Stripe receipt and invoice has been recorded in your <strong>Billing History</strong> and an email notification has been automatically dispatched to <strong>{billingEmail}</strong>.
             </p>
 
             <div className="pt-2 flex justify-center gap-3">
@@ -368,6 +378,25 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
                 Return to Employer Portal
               </button>
             </div>
+          </div>
+        ) : !isStripePortalEnabled ? (
+          <div className="p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-black text-slate-900">
+              Stripe Merchant Checkout Temporarily Paused
+            </h3>
+            <p className="text-xs text-slate-600 max-w-md mx-auto">
+              An administrator has paused Stripe card checkout in the Merchant Payment Portals console. Please contact <strong>info@natureislecareers.com</strong> or use another enabled payment portal.
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer"
+            >
+              Close
+            </button>
           </div>
         ) : (
           <form onSubmit={handleStripeSubmit} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto">

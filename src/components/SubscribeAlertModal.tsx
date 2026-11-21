@@ -16,6 +16,7 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [keyword, setKeyword] = useState('');
+  const [minSalary, setMinSalary] = useState('');
   const [selectedParish, setSelectedParish] = useState<Parish | 'All'>('All');
   const [selectedSector, setSelectedSector] = useState<JobSector | 'All'>('All');
   const [frequency, setFrequency] = useState<'instant' | 'daily' | 'weekly'>('instant');
@@ -27,10 +28,12 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
   const liveMatches = jobs.filter((j) => {
     const parishMatch = selectedParish === 'All' || j.parish === selectedParish;
     const sectorMatch = selectedSector === 'All' || j.sector === selectedSector;
+    const salaryNum = Number(minSalary);
+    const salaryMatch = !Number.isFinite(salaryNum) || salaryNum <= 0 || j.maxSalary >= salaryNum;
     const keywordMatch = !keyword.trim() ||
       j.title.toLowerCase().includes(keyword.toLowerCase()) ||
       j.description.toLowerCase().includes(keyword.toLowerCase());
-    return parishMatch && sectorMatch && keywordMatch;
+    return parishMatch && sectorMatch && salaryMatch && keywordMatch;
   }).length;
 
   if (!isOpen) return null;
@@ -75,6 +78,7 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
           ]
         : [selectedSector];
 
+    const numericMinSalary = Number(minSalary);
     subscribeToAlert({
       email,
       name: name.trim() || 'Dominica Resident',
@@ -82,6 +86,7 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
       sectors,
       frequency,
       keyword: keyword.trim() || undefined,
+      minSalary: Number.isFinite(numericMinSalary) && numericMinSalary > 0 ? numericMinSalary : undefined,
     });
 
     setMatchingCount(liveMatches);
@@ -215,6 +220,22 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
                 <option value="Logistics & Marine Services">Logistics & Marine</option>
                 <option value="Public Sector & Cooperatives">Public Sector & Cooperatives</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                Minimum Salary Requirement (EC$/month, Optional)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={250}
+                data-testid="subscribe-min-salary-input"
+                value={minSalary}
+                onChange={(e) => setMinSalary(e.target.value)}
+                placeholder="e.g. 4500"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
             </div>
 
             <div>

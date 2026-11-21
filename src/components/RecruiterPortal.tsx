@@ -365,6 +365,18 @@ export function getApplicationStatusIndicator(status: ApplicationStatus | string
         dotColorClass: 'bg-green-600',
         badgeColorClass: 'bg-green-50 text-green-900 border-green-200',
       };
+    case 'Approved':
+      return {
+        label: 'Approved',
+        dotColorClass: 'bg-emerald-600',
+        badgeColorClass: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+      };
+    case 'Denied':
+      return {
+        label: 'Denied',
+        dotColorClass: 'bg-rose-600',
+        badgeColorClass: 'bg-rose-50 text-rose-900 border-rose-200',
+      };
     case 'Rejected':
     case 'Archived':
       return {
@@ -2480,6 +2492,8 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
                     <option value="Shortlisted">Shortlisted</option>
                     <option value="Interview Scheduled">Interview Scheduled</option>
                     <option value="Offer Extended">Offer Extended</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Denied">Denied</option>
                     <option value="Hired">Hired</option>
                     <option value="Rejected">Rejected</option>
                     <option value="Archived">Archived</option>
@@ -2756,6 +2770,8 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
                                 <option value="Shortlisted">Shortlisted</option>
                                 <option value="Interview Scheduled">Interview Scheduled</option>
                                 <option value="Offer Extended">Offer Extended</option>
+                                <option value="Approved">Approved</option>
+                                <option value="Denied">Denied</option>
                                 <option value="Hired">Hired</option>
                                 <option value="Rejected">Rejected</option>
                                 <option value="Archived">Archived</option>

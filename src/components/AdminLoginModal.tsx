@@ -167,6 +167,8 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
     setLoading(true);
     setErrorMessage(null);
 
+    let serverErrorMsg: string | null = null;
+
     try {
       const res = await fetch('/api/admin/verify', {
         method: 'POST',
@@ -177,50 +179,54 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
           honeypot: honeypotUrl,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.authorized) {
-        if (data.token) {
-          sessionStorage.setItem('natureisland_admin_token', data.token);
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (res.ok && data.authorized) {
+          if (data.token) {
+            sessionStorage.setItem('natureisland_admin_token', data.token);
+          }
+          const resetState = INITIAL_ADMIN_SECURITY_STATE;
+          setSecurityState(resetState);
+          saveAdminSecurityState(resetState);
+          const ok = adminLogin(email.trim(), password, data.token);
+          setLoading(false);
+          if (ok) {
+            onSuccess();
+          } else {
+            setErrorMessage('Single-login access is restricted to info@natureislecareers.com.');
+          }
+          return;
         }
-        const resetState = INITIAL_ADMIN_SECURITY_STATE;
-        setSecurityState(resetState);
-        saveAdminSecurityState(resetState);
-        adminLogin(email.trim(), password);
-        setLoading(false);
-        onSuccess();
-        return;
+        serverErrorMsg = data?.error || 'Authentication failed.';
+      } else {
+        serverErrorMsg = 'Unexpected response from admin verification server.';
       }
     } catch {
-      // Fallback to local verification if API route is unreachable
+      serverErrorMsg = 'Admin verification server is unreachable. Please ensure the server is running.';
     }
 
-    const ok = adminLogin(email.trim(), password);
     setLoading(false);
 
-    if (ok) {
-      const resetState = INITIAL_ADMIN_SECURITY_STATE;
-      setSecurityState(resetState);
-      saveAdminSecurityState(resetState);
-      onSuccess();
-    } else {
-      const updatedState = recordFailedAdminAttempt(securityState, Date.now());
-      setSecurityState(updatedState);
-      saveAdminSecurityState(updatedState);
-      setPassword('');
+    const updatedState = recordFailedAdminAttempt(securityState, Date.now());
+    setSecurityState(updatedState);
+    saveAdminSecurityState(updatedState);
+    setPassword('');
 
-      const nextLock = isAdminLoginLockedOut(updatedState, Date.now());
-      if (nextLock.locked) {
-        setErrorMessage(
-          `Maximum authentication attempts (${ADMIN_MAX_LOGIN_ATTEMPTS}) exceeded. Temporary lockout engaged.`
-        );
-      } else {
-        const remaining = Math.max(0, ADMIN_MAX_LOGIN_ATTEMPTS - updatedState.failedAttempts);
-        setErrorMessage(
-          `Authentication failed. Invalid credentials (${remaining} ${
-            remaining === 1 ? 'attempt' : 'attempts'
-          } remaining before lockout).`
-        );
-      }
+    const nextLock = isAdminLoginLockedOut(updatedState, Date.now());
+    if (nextLock.locked) {
+      setErrorMessage(
+        `Maximum authentication attempts (${ADMIN_MAX_LOGIN_ATTEMPTS}) exceeded. Temporary lockout engaged.`
+      );
+    } else {
+      const remaining = Math.max(0, ADMIN_MAX_LOGIN_ATTEMPTS - updatedState.failedAttempts);
+      setErrorMessage(
+        serverErrorMsg
+          ? `${serverErrorMsg} (${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} remaining).`
+          : `Authentication failed. Authorized email is info@natureislecareers.com (${remaining} ${
+              remaining === 1 ? 'attempt' : 'attempts'
+            } remaining before lockout).`
+      );
     }
   };
 
@@ -229,8 +235,9 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
       <div className="p-3.5 bg-slate-900 text-slate-200 rounded-xl border border-slate-800 text-[11px] flex items-start gap-2.5">
         <Lock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
         <div className="leading-relaxed">
-          <strong className="text-white">Restricted Administrative Gateway:</strong> Authorized
-          personnel only. All authentication attempts are logged and monitored with automated
+          <strong className="text-white">Single-Login Administrative Gateway:</strong> Restricted to{' '}
+          <span className="font-mono text-emerald-300">info@natureislecareers.com</span>. One login
+          unlocks the standalone Admin Portal webpage and all Merchant Payment Portals with automated
           brute-force lockout protection.
         </div>
       </div>
@@ -304,7 +311,7 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
             autoComplete="off"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter administrator email"
+            placeholder="info@natureislecareers.com"
             className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>

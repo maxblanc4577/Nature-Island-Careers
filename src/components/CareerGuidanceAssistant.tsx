@@ -41,6 +41,9 @@ import {
   DollarSign,
   HelpCircle,
   MessageSquare,
+  Upload,
+  Briefcase,
+  RotateCcw,
 } from 'lucide-react';
 
 interface Message {
@@ -118,10 +121,12 @@ const MOCK_INTERVIEW_QUESTIONS: Record<
 };
 
 export const CareerGuidanceAssistant: React.FC = () => {
-  const { jobs } = useJobContext();
+  const { jobs, currentUser, myApplications, applications, getJobById, updateCurrentUser } =
+    useJobContext();
 
   const [activeTab, setActiveTab] = useState<
     | 'chat'
+    | 'interview_coach'
     | 'career_pathing'
     | 'interview_prep'
     | 'flashcards'
@@ -198,6 +203,268 @@ export const CareerGuidanceAssistant: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId) || jobs[0];
+
+  // Real-Time Interview Coach Chatbot State (powered by /api/chat gemini-proxy)
+  const candidateApplications = React.useMemo(
+    () => (myApplications.length > 0 ? myApplications : applications),
+    [myApplications, applications]
+  );
+
+  const [selectedCoachAppId, setSelectedCoachAppId] = useState<string>(
+    candidateApplications[0]?.id || ''
+  );
+
+  React.useEffect(() => {
+    if (
+      candidateApplications.length > 0 &&
+      !candidateApplications.some((app) => app.id === selectedCoachAppId)
+    ) {
+      setSelectedCoachAppId(candidateApplications[0].id);
+    }
+  }, [candidateApplications, selectedCoachAppId]);
+
+  const selectedCoachApp =
+    candidateApplications.find((app) => app.id === selectedCoachAppId) ||
+    candidateApplications[0];
+  const coachLinkedJob = selectedCoachApp ? getJobById(selectedCoachApp.jobId) : selectedJob;
+
+  const [coachResumeFileName, setCoachResumeFileName] = useState<string>(() => {
+    if (currentUser?.resumeFileName) return currentUser.resumeFileName;
+    try {
+      const saved = localStorage.getItem('dominica_candidate_resume');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.resumeFileName) return parsed.resumeFileName;
+      }
+    } catch {
+      // ignore
+    }
+    return selectedCoachApp?.resumeFileName || 'Candidate_Resume.pdf';
+  });
+
+  const [coachResumeText, setCoachResumeText] = useState<string>(() => {
+    if (currentUser?.resumeText) return currentUser.resumeText;
+    try {
+      const saved = localStorage.getItem('dominica_candidate_resume');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.resumeText) return parsed.resumeText;
+        if (parsed?.bio) return parsed.bio;
+      }
+      const parsedProfile = localStorage.getItem('natureisland_candidate_profile');
+      if (parsedProfile) {
+        const parsed = JSON.parse(parsedProfile);
+        if (parsed?.summary) return parsed.summary;
+      }
+    } catch {
+      // ignore
+    }
+    const expSummary = (currentUser?.experience || [])
+      .map((e) => `${e.title} at ${e.company} (${e.startDate}–${e.endDate})`)
+      .join('; ');
+    return [currentUser?.headline, currentUser?.bio, expSummary].filter(Boolean).join('\n');
+  });
+
+  const coachSkills = React.useMemo(() => {
+    if (currentUser?.skills && currentUser.skills.length > 0) return currentUser.skills;
+    if (coachLinkedJob?.requiredSkills && coachLinkedJob.requiredSkills.length > 0) {
+      return coachLinkedJob.requiredSkills;
+    }
+    return ['Communication', 'Problem Solving', 'Dominica Industry Operations'];
+  }, [currentUser?.skills, coachLinkedJob?.requiredSkills]);
+
+  const buildInitialCoachMessages = React.useCallback((): Message[] => {
+    const roleTitle = selectedCoachApp?.jobTitle || coachLinkedJob?.title || 'your target role';
+    const company = selectedCoachApp?.companyName || coachLinkedJob?.company || 'your target employer';
+    return [
+      {
+        id: 'coach-init-1',
+        sender: 'assistant',
+        text: `Welcome to the Real-Time Interview Coach!\n\nI have loaded your resume (${coachResumeFileName}) and your application details for **${roleTitle}** at **${company}**${
+          selectedCoachApp ? ` (Status: ${selectedCoachApp.status})` : ''
+        }.\n\nClick "Start Mock Interview" or type any response below to receive tailored mock interview questions and real-time coaching feedback.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ];
+  }, [selectedCoachApp, coachLinkedJob, coachResumeFileName]);
+
+  const [coachMessages, setCoachMessages] = useState<Message[]>(buildInitialCoachMessages);
+  const [coachInput, setCoachInput] = useState('');
+  const [isCoachTyping, setIsCoachTyping] = useState(false);
+  const [coachError, setCoachError] = useState<string | null>(null);
+  const [coachSourceBadge, setCoachSourceBadge] = useState<string>('gemini-proxy');
+  const [isCoachListening, setIsCoachListening] = useState(false);
+
+  const handleCoachResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fileName = file.name || 'Uploaded_Resume.pdf';
+    setCoachResumeFileName(fileName);
+
+    let extractedText = '';
+    try {
+      if (typeof file.text === 'function') {
+        extractedText = await file.text();
+      } else {
+        extractedText = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+          reader.onerror = () => resolve('');
+          reader.readAsText(file);
+        });
+      }
+    } catch {
+      extractedText = '';
+    }
+
+    const cleanedText = extractedText.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
+    const summaryText =
+      cleanedText.length > 0
+        ? cleanedText.slice(0, 1500)
+        : `Uploaded resume document: ${fileName} (${Math.max(1, Math.round(file.size / 1024))} KB)`;
+
+    setCoachResumeText(summaryText);
+    updateCurrentUser({
+      resumeFileName: fileName,
+      resumeText: summaryText,
+    });
+    try {
+      localStorage.setItem(
+        'dominica_candidate_resume',
+        JSON.stringify({
+          resumeFileName: fileName,
+          resumeText: summaryText,
+          updatedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const sendInterviewCoachMessage = async (customPrompt?: string) => {
+    const query = (customPrompt ?? coachInput).trim();
+    if (!query || isCoachTyping) return;
+
+    setCoachError(null);
+    const userMsg: Message = {
+      id: `coach-usr-${Date.now()}`,
+      sender: 'user',
+      text: query,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const historySnapshot = coachMessages.slice(-6).map((m) => ({
+      role: m.sender === 'assistant' ? ('model' as const) : ('user' as const),
+      text: m.text,
+    }));
+
+    setCoachMessages((prev) => [...prev, userMsg]);
+    if (!customPrompt) setCoachInput('');
+    setIsCoachTyping(true);
+
+    const effectiveResumeSummary = [
+      coachResumeText.trim(),
+      currentUser?.headline ? `Headline: ${currentUser.headline}` : '',
+      currentUser?.experience?.length
+        ? `Experience: ${currentUser.experience
+            .map((e) => `${e.title} at ${e.company} (${e.startDate}-${e.endDate})`)
+            .join('; ')}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 1600);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'interview_coach',
+          message: query,
+          interviewContext: {
+            resumeFileName: coachResumeFileName,
+            resumeSummary: effectiveResumeSummary,
+            skills: coachSkills,
+            jobTitle: selectedCoachApp?.jobTitle || coachLinkedJob?.title || '',
+            companyName: selectedCoachApp?.companyName || coachLinkedJob?.company || '',
+            sector: coachLinkedJob?.sector || currentUser?.preferredSector || currentUser?.careerSector || '',
+            parish: selectedCoachApp?.parish || coachLinkedJob?.parish || currentUser?.parish || '',
+            applicationStatus: selectedCoachApp?.status || 'Applied',
+            coverNote: selectedCoachApp?.coverNote || '',
+            jobRequirements: coachLinkedJob?.requirements || [],
+            jobResponsibilities: coachLinkedJob?.responsibilities || [],
+            conversationHistory: historySnapshot,
+          },
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const errText =
+          typeof json?.error === 'string' && json.error.trim().length > 0
+            ? json.error
+            : `Interview Coach proxy returned HTTP ${res.status}. Please try again.`;
+        setCoachError(errText);
+        setIsCoachTyping(false);
+        return;
+      }
+
+      const replyText = json.reply || json.advice;
+      if (!replyText) {
+        setCoachError('Received an empty response from the Interview Coach service.');
+        setIsCoachTyping(false);
+        return;
+      }
+
+      if (typeof json.source === 'string') {
+        setCoachSourceBadge(json.source);
+      }
+
+      const botMsg: Message = {
+        id: `coach-bot-${Date.now()}`,
+        sender: 'assistant',
+        text: replyText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setCoachMessages((prev) => [...prev, botMsg]);
+    } catch {
+      setCoachError('Unable to reach the secure Interview Coach proxy (/api/chat). Please check your connection and try again.');
+    } finally {
+      setIsCoachTyping(false);
+    }
+  };
+
+  const handleToggleCoachVoiceInput = () => {
+    const SpeechRec =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+    if (!SpeechRec) {
+      setCoachError('Voice dictation is not supported in this browser. You can type your response below.');
+      return;
+    }
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      setIsCoachListening(true);
+      recognition.onresult = (event: any) => {
+        const transcript = event?.results?.[0]?.[0]?.transcript || '';
+        if (transcript) {
+          setCoachInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        }
+        setIsCoachListening(false);
+      };
+      recognition.onerror = () => setIsCoachListening(false);
+      recognition.onend = () => setIsCoachListening(false);
+      recognition.start();
+    } catch {
+      setIsCoachListening(false);
+    }
+  };
 
   // Advisor Chat Logic
   const handleSendMessage = async (textToSend?: string) => {
@@ -385,6 +652,23 @@ export const CareerGuidanceAssistant: React.FC = () => {
         >
           <Bot className="w-4 h-4" />
           <span>Dominica Advisor Chat</span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="tab-interview-coach"
+          onClick={() => setActiveTab('interview_coach')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'interview_coach'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 text-amber-400" />
+          <span>Interview Coach</span>
+          <span className="bg-emerald-500/20 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-black">
+            Gemini Proxy
+          </span>
         </button>
 
         <button
@@ -712,6 +996,339 @@ export const CareerGuidanceAssistant: React.FC = () => {
                 <li>• <strong>Statutory DSS:</strong> 6.75% employer / 6.00% employee contribution.</li>
                 <li>• <strong>WIN Extended Stay:</strong> Legal 18-month remote permit with 0% local income tax on foreign revenues.</li>
               </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 1B: REAL-TIME INTERVIEW COACH CHATBOT */}
+      {activeTab === 'interview_coach' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in" data-testid="interview-coach-panel">
+          {/* Left Column: Resume & Specific Job Application Context (4 cols) */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-emerald-700" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    Application & Resume Context
+                  </h3>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  {coachSourceBadge}
+                </span>
+              </div>
+
+              {/* Specific Job Application Selector */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="coach-app-select"
+                  className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide"
+                >
+                  Target Job Application ({candidateApplications.length})
+                </label>
+                {candidateApplications.length > 0 ? (
+                  <select
+                    id="coach-app-select"
+                    data-testid="coach-application-select"
+                    value={selectedCoachApp?.id || ''}
+                    onChange={(e) => setSelectedCoachAppId(e.target.value)}
+                    className="w-full p-2.5 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                  >
+                    {candidateApplications.map((app) => (
+                      <option key={app.id} value={app.id}>
+                        {app.jobTitle} — {app.companyName} ({app.status})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">
+                    No applications found yet; coaching based on featured vacancy {coachLinkedJob?.title}.
+                  </p>
+                )}
+              </div>
+
+              {/* Selected Application Summary Card */}
+              {(selectedCoachApp || coachLinkedJob) && (
+                <div
+                  data-testid="coach-application-details"
+                  className="p-3.5 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2 text-xs"
+                >
+                  <div>
+                    <p className="font-bold text-emerald-950">
+                      {selectedCoachApp?.jobTitle || coachLinkedJob?.title}
+                    </p>
+                    <p className="text-[11px] text-emerald-800 font-semibold">
+                      {selectedCoachApp?.companyName || coachLinkedJob?.company} •{' '}
+                      {selectedCoachApp?.parish || coachLinkedJob?.parish}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[10px]">
+                    {selectedCoachApp && (
+                      <span className="px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-800 font-bold">
+                        Status: {selectedCoachApp.status}
+                      </span>
+                    )}
+                    {coachLinkedJob?.sector && (
+                      <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700 font-semibold">
+                        {coachLinkedJob.sector}
+                      </span>
+                    )}
+                  </div>
+                  {selectedCoachApp?.coverNote && (
+                    <p className="text-[11px] text-slate-600 line-clamp-2 italic">
+                      Cover note: "{selectedCoachApp.coverNote}"
+                    </p>
+                  )}
+                  {coachLinkedJob?.requirements && coachLinkedJob.requirements.length > 0 && (
+                    <div className="pt-1 border-t border-emerald-200/70">
+                      <p className="text-[10px] font-bold uppercase text-emerald-900 mb-1">
+                        Key Role Requirements:
+                      </p>
+                      <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc list-inside">
+                        {coachLinkedJob.requirements.slice(0, 3).map((req, idx) => (
+                          <li key={idx} className="truncate">
+                            {req}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Uploaded Resume Context */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                    Uploaded Resume
+                  </span>
+                  <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 border border-slate-300 text-[11px] font-bold text-slate-800 cursor-pointer transition-colors">
+                    <Upload className="w-3 h-3 text-emerald-700" />
+                    <span>Upload Resume</span>
+                    <input
+                      type="file"
+                      accept=".txt,.md,.pdf,.doc,.docx"
+                      data-testid="coach-resume-upload"
+                      onChange={handleCoachResumeUpload}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+
+                <div
+                  data-testid="coach-resume-filename"
+                  className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] font-mono text-slate-700 truncate"
+                >
+                  {coachResumeFileName}
+                </div>
+
+                <textarea
+                  rows={4}
+                  data-testid="coach-resume-text-input"
+                  value={coachResumeText}
+                  onChange={(e) => setCoachResumeText(e.target.value)}
+                  placeholder="Paste or upload your resume highlights, qualifications, and recent achievements..."
+                  className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                />
+
+                <div className="flex flex-wrap gap-1">
+                  {coachSkills.slice(0, 6).map((skill) => (
+                    <span
+                      key={skill}
+                      className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Live Interview Coach Chat (8 cols) */}
+          <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col h-[650px] overflow-hidden">
+            {/* Header Bar & Quick Coaching Actions */}
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-emerald-800 text-white flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900">
+                    Real-Time Interview Coach
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Tailored to {coachResumeFileName} & {selectedCoachApp?.jobTitle || coachLinkedJob?.title}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  data-testid="coach-start-btn"
+                  disabled={isCoachTyping}
+                  onClick={() =>
+                    sendInterviewCoachMessage(
+                      `Start a mock interview for ${selectedCoachApp?.jobTitle || coachLinkedJob?.title || 'this position'} based on my uploaded resume and ask me the first question.`
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                >
+                  Start Mock Interview
+                </button>
+                <button
+                  type="button"
+                  disabled={isCoachTyping}
+                  onClick={() =>
+                    sendInterviewCoachMessage(
+                      'Ask me a behavioral STAR mock interview question tailored to my cover note and role requirements.'
+                    )
+                  }
+                  className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-[11px] font-semibold cursor-pointer"
+                >
+                  Behavioral (STAR)
+                </button>
+                <button
+                  type="button"
+                  disabled={isCoachTyping}
+                  onClick={() =>
+                    sendInterviewCoachMessage(
+                      'Ask me a technical or role-specific mock interview question based on my resume skills.'
+                    )
+                  }
+                  className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-[11px] font-semibold cursor-pointer"
+                >
+                  Technical Question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCoachError(null);
+                    setCoachMessages(buildInitialCoachMessages());
+                  }}
+                  title="Reset interview coaching session"
+                  className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-600 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Proxy Error Banner */}
+            {coachError && (
+              <div
+                data-testid="coach-error-banner"
+                role="alert"
+                className="mx-4 mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center justify-between gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{coachError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCoachError(null)}
+                  className="text-rose-600 hover:text-rose-900 font-bold px-1.5 cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+
+            {/* Messages Feed */}
+            <div
+              data-testid="coach-chat-messages"
+              className="flex-1 p-5 overflow-y-auto space-y-4"
+            >
+              {coachMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex items-start gap-3 ${
+                    msg.sender === 'user' ? 'flex-row-reverse' : ''
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      msg.sender === 'user'
+                        ? 'bg-emerald-800 text-white'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    {msg.sender === 'user' ? (
+                      <User className="w-4 h-4" />
+                    ) : (
+                      <Bot className="w-4 h-4" />
+                    )}
+                  </div>
+
+                  <div
+                    className={`max-w-[85%] rounded-2xl p-4 text-xs sm:text-[13px] leading-relaxed shadow-xs ${
+                      msg.sender === 'user'
+                        ? 'bg-emerald-800 text-white rounded-tr-none'
+                        : 'bg-slate-50 border border-slate-200 text-slate-800 rounded-tl-none whitespace-pre-line'
+                    }`}
+                  >
+                    {msg.text}
+                    <span
+                      className={`block text-[10px] mt-1.5 ${
+                        msg.sender === 'user' ? 'text-emerald-200' : 'text-slate-400'
+                      }`}
+                    >
+                      {msg.timestamp}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {isCoachTyping && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 italic p-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  <span>Interview Coach is preparing your tailored question and feedback...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Coach Input Bar */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleToggleCoachVoiceInput}
+                title="Dictate your interview answer"
+                className={`p-3 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                  isCoachListening
+                    ? 'bg-rose-600 text-white border-rose-600 animate-pulse'
+                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+              <input
+                type="text"
+                data-testid="coach-chat-input"
+                value={coachInput}
+                onChange={(e) => setCoachInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendInterviewCoachMessage();
+                  }
+                }}
+                placeholder="Type your interview answer or ask for a mock question..."
+                className="flex-1 text-xs sm:text-sm p-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-700"
+              />
+              <button
+                type="button"
+                data-testid="coach-send-btn"
+                onClick={() => sendInterviewCoachMessage()}
+                disabled={isCoachTyping || !coachInput.trim()}
+                className="px-5 py-3 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Send</span>
+                <Send className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>

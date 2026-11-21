@@ -8,6 +8,7 @@ import { CandidateLinkedInExportTool } from './CandidateLinkedInExportTool';
 import { CandidatePrivacySettingsPanel } from './CandidatePrivacySettingsPanel';
 import {
   Parish,
+  JobSector,
   ResumeExperience,
   ResumeEducation,
   UserAccount,
@@ -1254,6 +1255,20 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
       if (currentUser.avatarUrl !== undefined) {
         setAvatarUrl(currentUser.avatarUrl || '');
       }
+      if (currentUser.minSalaryRequirement !== undefined) {
+        setMinSalaryRequirement(String(currentUser.minSalaryRequirement));
+      }
+      if (currentUser.preferredParish || currentUser.parish) {
+        setPreferredParish(currentUser.preferredParish || currentUser.parish);
+      }
+      if (currentUser.preferredSector || currentUser.careerSector) {
+        setPreferredSector(
+          currentUser.preferredSector || currentUser.careerSector || 'Information Technology & Digital'
+        );
+      }
+      if (currentUser.autoMatchEmailsEnabled !== undefined) {
+        setAutoMatchEmailsEnabled(currentUser.autoMatchEmailsEnabled);
+      }
     }
   }, [currentUser?.id, currentUser?.email]);
 
@@ -1268,6 +1283,18 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   );
   const [residencyStatus, setResidencyStatus] = useState(
     currentUser?.residencyStatus ?? 'Dominican Citizen (Waitukubuli)'
+  );
+  const [minSalaryRequirement, setMinSalaryRequirement] = useState<string>(
+    currentUser?.minSalaryRequirement ? String(currentUser.minSalaryRequirement) : '5000'
+  );
+  const [preferredParish, setPreferredParish] = useState<Parish>(
+    currentUser?.preferredParish ?? currentUser?.parish ?? 'St. George'
+  );
+  const [preferredSector, setPreferredSector] = useState<JobSector>(
+    currentUser?.preferredSector ?? currentUser?.careerSector ?? 'Renewable Energy & Geothermal'
+  );
+  const [autoMatchEmailsEnabled, setAutoMatchEmailsEnabled] = useState<boolean>(
+    currentUser?.autoMatchEmailsEnabled ?? true
   );
   const [bio, setBio] = useState(
     currentUser?.bio ??
@@ -1534,7 +1561,10 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   }, [currentUser?.id]);
 
   // Apply parsed resume data to component state, JobContext currentUser, and localStorage
-  const applyExtractedResumeData = (parsed: ParsedResumeProfileData) => {
+  const applyExtractedResumeData = (
+    parsed: ParsedResumeProfileData,
+    rawResumeText?: string
+  ) => {
     if (parsed.fullName) setName(parsed.fullName);
     if (parsed.email) setEmail(parsed.email);
     if (parsed.phone) setPhone(parsed.phone);
@@ -1582,13 +1612,18 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
       parsed
     );
 
-    updateCurrentUser(updatedUserFields);
+    const cleanRawResumeText = (rawResumeText ?? rawResumeTextInput ?? '').trim();
+    const fieldsWithResumeText = cleanRawResumeText
+      ? { ...updatedUserFields, resumeText: cleanRawResumeText }
+      : updatedUserFields;
+
+    updateCurrentUser(fieldsWithResumeText);
 
     try {
       localStorage.setItem(
         'dominica_candidate_resume',
         JSON.stringify({
-          ...updatedUserFields,
+          ...fieldsWithResumeText,
           parsedAt: new Date().toISOString(),
         })
       );
@@ -1689,7 +1724,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
             fileName,
           };
 
-          applyExtractedResumeData(finalParsed);
+          applyExtractedResumeData(finalParsed, rawText);
           setIsParsingResume(false);
           return;
         }
@@ -1698,7 +1733,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
       // Fallback to localParsed below when offline or in test environment
     }
 
-    applyExtractedResumeData(localParsed);
+    applyExtractedResumeData(localParsed, rawText);
     setIsParsingResume(false);
   };
 
@@ -2335,6 +2370,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   // Handle Save Personal Details
   const handleSaveDetails = (e: React.FormEvent) => {
     e.preventDefault();
+    const parsedMinSalary = Number(minSalaryRequirement);
     updateCurrentUser({
       name: name.trim() || 'Dominica Job Seeker',
       email: email.trim() || 'maxblanc4577@gmail.com',
@@ -2347,6 +2383,12 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
       experience,
       education,
       resumeFileName: uploadedResumeFileName || currentUser?.resumeFileName,
+      minSalaryRequirement:
+        Number.isFinite(parsedMinSalary) && parsedMinSalary > 0 ? parsedMinSalary : undefined,
+      preferredParish,
+      preferredSector,
+      careerSector: preferredSector,
+      autoMatchEmailsEnabled,
     });
     recordCandidateActivity({
       title: `Profile updated — Saved personal details for ${name.trim() || 'Candidate'}`,
@@ -4164,6 +4206,93 @@ END:VCALENDAR`;
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Automated Job Matching Criteria (Salary, Parish, Sector) */}
+              <div className="sm:col-span-2 p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-emerald-700" />
+                      Automated Job Matching Preferences
+                    </h4>
+                    <p className="text-[11px] text-emerald-800/80">
+                      Proactively receive email alerts when new Dominica listings match your saved salary floor, parish, and sector.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      data-testid="profile-automatch-checkbox"
+                      checked={autoMatchEmailsEnabled}
+                      onChange={(e) => setAutoMatchEmailsEnabled(e.target.checked)}
+                      className="rounded border-emerald-400 text-emerald-700 focus:ring-emerald-600"
+                    />
+                    <span>Enable Automated Match Emails</span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-1">
+                      Saved Salary Requirement (EC$/mo)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={250}
+                      data-testid="profile-min-salary-input"
+                      value={minSalaryRequirement}
+                      onChange={(e) => setMinSalaryRequirement(e.target.value)}
+                      placeholder="e.g. 5000"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-1">
+                      Preferred Match Parish
+                    </label>
+                    <select
+                      data-testid="profile-preferred-parish-select"
+                      value={preferredParish}
+                      onChange={(e) => setPreferredParish(e.target.value as Parish)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-medium bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      {DOMINICA_PARISHES.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-1">
+                      Preferred Career Sector
+                    </label>
+                    <select
+                      data-testid="profile-preferred-sector-select"
+                      value={preferredSector}
+                      onChange={(e) => setPreferredSector(e.target.value as JobSector)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-medium bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      {[
+                        'Eco-Tourism & Hospitality',
+                        'Renewable Energy & Geothermal',
+                        'Agriculture & Agro-Processing',
+                        'Healthcare & Medical',
+                        'Banking & Financial Services',
+                        'Information Technology & Digital',
+                        'Education & Training',
+                        'Logistics & Marine Services',
+                        'Public Sector & Cooperatives',
+                      ].map((sec) => (
+                        <option key={sec} value={sec}>
+                          {sec}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div className="sm:col-span-2">

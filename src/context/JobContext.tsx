@@ -23,6 +23,7 @@ import {
   SavedJobFolder,
   AdminActivityCategory,
   AdminActivityLogEntry,
+  AdminEmailAlert,
   SiteSettings,
 } from '../types';
 import {
@@ -59,10 +60,16 @@ interface JobContextType {
   currentRecruiter: RecruiterAccount;
   setCurrentRecruiterId: (id: string) => void;
   recruiters: RecruiterAccount[];
+  updateRecruiter: (id: string, updates: Partial<RecruiterAccount>) => void;
 
   // Invoices & Stripe Billing
   invoices: EmployerInvoice[];
   addInvoice: (invoice: Omit<EmployerInvoice, 'id'>) => EmployerInvoice;
+  notifyEmployerPaymentSuccess: (
+    invoice: EmployerInvoice,
+    recipientEmail?: string,
+    portalUsed?: string
+  ) => EmailNotification;
   stripeSettings: StripeSettings;
   updateStripeSettings: (settings: Partial<StripeSettings>) => void;
   toggleRecruiterAutoRenew: (recruiterId: string, enabled: boolean) => void;
@@ -80,10 +87,15 @@ interface JobContextType {
     careerSector: JobSector;
     skills: string[];
     resumeFileName?: string;
+    resumeText?: string;
     password?: string;
     headline?: string;
     bio?: string;
     residencyStatus?: string;
+    minSalaryRequirement?: number;
+    preferredParish?: Parish;
+    preferredSector?: JobSector;
+    autoMatchEmailsEnabled?: boolean;
   }) => UserAccount;
   registerClient: (data: {
     companyName: string;
@@ -158,9 +170,11 @@ interface JobContextType {
     user?: UserAccount;
   };
 
-  // Admin Portal Login, Activity Log & Idle Session Security
+  // Admin Portal Single Login, Activity Log & Idle Session Security
   isAdminLoggedIn: boolean;
-  adminLogin: (email: string, pass: string) => boolean;
+  adminEmail: string | null;
+  adminSessionToken: string | null;
+  adminLogin: (email: string, pass: string, serverToken?: string) => boolean;
   adminLogout: () => void;
   adminActivityLogs: AdminActivityLogEntry[];
   logAdminActivity: (
@@ -169,6 +183,21 @@ interface JobContextType {
     category?: AdminActivityCategory
   ) => AdminActivityLogEntry;
   clearAdminActivityLogs: () => void;
+  mergeAdminAuditLogs: (serverLogs: AdminActivityLogEntry[]) => void;
+  adminEmailAlerts: AdminEmailAlert[];
+  mergeAdminEmailAlerts: (serverAlerts: AdminEmailAlert[]) => void;
+  sendAdminEmailAlert: (params: {
+    eventType: 'new_job_posting' | 'stripe_payment_finalized';
+    subject: string;
+    summary: string;
+    bodyHtml?: string;
+    relatedJobId?: string;
+    relatedInvoiceId?: string;
+    amountXCD?: number;
+    syncToServer?: boolean;
+    serverPayload?: Record<string, unknown>;
+  }) => AdminEmailAlert;
+  clearAdminEmailAlerts: () => void;
   isAdminSessionExpiredPromptOpen: boolean;
   dismissAdminSessionExpiredPrompt: () => void;
   triggerAdminIdleTimeout: () => void;
@@ -277,6 +306,7 @@ interface JobContextType {
     sectors: JobSector[];
     frequency: 'instant' | 'daily' | 'weekly';
     keyword?: string;
+    minSalary?: number;
   }) => void;
   toggleAlertActive: (id: string) => void;
 
@@ -297,6 +327,10 @@ interface JobContextType {
   isJobExpired: (job: JobListing, referenceTimestamp?: number) => boolean;
   renewJobListing: (jobId: string) => void;
   expiredJobIds: string[];
+
+  // Automated Job Matching (Proactive Jobseeker Emails)
+  automatedJobMatches: AutomatedJobMatchRecord[];
+  runAutomatedJobMatchingForJob: (job: JobListing) => AutomatedJobMatchRecord[];
 }
 
 const JobContext = createContext<JobContextType | undefined>(undefined);
@@ -324,6 +358,120 @@ export function isJobListingExpired(
   if (isNaN(postedTime)) return false;
   const diffDays = (referenceTimestamp - postedTime) / (1000 * 60 * 60 * 24);
   return diffDays > JOB_EXPIRATION_DAYS;
+}
+
+export interface AutomatedJobMatchRecord {
+  id: string;
+  candidateEmail: string;
+  candidateName: string;
+  jobId: string;
+  jobTitle: string;
+  matchedAt: string;
+  reasons: string[];
+}
+
+export const AUTO_JOB_MATCHES_STORAGE_KEY = 'dominica_auto_jobseeker_matches';
+
+export function evaluateJobMatchForJobseeker(
+  job: JobListing,
+  candidate: UserAccount,
+  alerts: JobAlertSubscription[] = []
+): { matched: boolean; reasons: string[] } {
+  if (candidate.role !== 'jobseeker') {
+    return { matched: false, reasons: [] };
+  }
+  if (!candidate.email || !candidate.email.trim()) {
+    return { matched: false, reasons: [] };
+  }
+  if (candidate.autoMatchEmailsEnabled === false) {
+    return { matched: false, reasons: [] };
+  }
+  if (isJobListingExpired(job)) {
+    return { matched: false, reasons: [] };
+  }
+
+  const linkedAlert = alerts.find(
+    (a) => a.active && a.email.toLowerCase() === candidate.email.toLowerCase()
+  );
+
+  // 1. Saved Salary Requirement check (XCD / month)
+  const savedMinSalary = candidate.minSalaryRequirement ?? linkedAlert?.minSalary ?? 0;
+  if (savedMinSalary > 0 && job.maxSalary < savedMinSalary) {
+    return { matched: false, reasons: [] };
+  }
+
+  // 2. Preferred Parish check
+  const prefParish = candidate.preferredParish || candidate.parish;
+  const parishMatches =
+    !prefParish ||
+    prefParish === job.parish ||
+    prefParish === 'Island-wide / Remote' ||
+    job.parish === 'Island-wide / Remote';
+  if (!parishMatches) {
+    return { matched: false, reasons: [] };
+  }
+
+  // 3. Preferred Sector check
+  const prefSector = candidate.preferredSector || candidate.careerSector;
+  const sectorMatches = !prefSector || prefSector === job.sector;
+  if (!sectorMatches) {
+    return { matched: false, reasons: [] };
+  }
+
+  const reasons: string[] = [
+    savedMinSalary > 0
+      ? `Salary EC$${job.minSalary.toLocaleString()}–EC$${job.maxSalary.toLocaleString()} meets saved EC$${savedMinSalary.toLocaleString()} requirement`
+      : `Compensation EC$${job.minSalary.toLocaleString()}–EC$${job.maxSalary.toLocaleString()} / ${job.salaryPeriod}`,
+    `Preferred Parish (${prefParish || job.parish})`,
+    `Preferred Sector (${prefSector || job.sector})`,
+  ];
+
+  return { matched: true, reasons };
+}
+
+export function buildAutomatedJobMatchEmail(
+  job: JobListing,
+  candidate: UserAccount,
+  reasons: string[]
+): EmailNotification {
+  const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+  const salaryDisplay = `EC$${job.minSalary.toLocaleString()} - EC$${job.maxSalary.toLocaleString()} / ${job.salaryPeriod}`;
+  return {
+    id: `notif-automatch-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    recipientEmail: candidate.email,
+    recipientName: candidate.name,
+    subject: `Automated Job Match: ${job.title} in ${job.parish} (${salaryDisplay})`,
+    previewText: `New match at ${job.company} (${job.sector}) aligning with your saved salary, parish (${candidate.preferredParish || candidate.parish}), and sector criteria.`,
+    bodyHtml: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+        <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
+          <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Automated Job Matching</h2>
+          <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Proactive Match for Registered Candidate Profile</p>
+        </div>
+        <p style="font-size: 15px; color: #1e293b;">Hello ${candidate.name},</p>
+        <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+          A newly published Dominica opportunity matches your saved salary requirement, preferred parish, and target sector:
+        </p>
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 16px; margin: 16px 0;">
+          <h3 style="color: #065f46; margin: 0 0 6px 0;">${job.title}</h3>
+          <p style="margin: 0; font-size: 14px; color: #1e293b;"><strong>Employer:</strong> ${job.company}</p>
+          <p style="margin: 0; font-size: 14px; color: #1e293b;"><strong>Parish:</strong> ${job.parish} (${job.locality})</p>
+          <p style="margin: 0; font-size: 14px; color: #1e293b;"><strong>Sector:</strong> ${job.sector}</p>
+          <p style="margin: 6px 0 0 0; font-size: 14px; color: #065f46; font-weight: 600;"><strong>Compensation:</strong> ${salaryDisplay}</p>
+        </div>
+        <ul style="font-size: 13px; color: #334155; padding-left: 18px;">
+          ${reasons.map((r) => `<li>${r}</li>`).join('')}
+        </ul>
+        <p style="font-size: 12px; color: #64748b; margin-top: 16px;">
+          Log into Nature Island Careers to review full requirements or submit a 1-Click Quick Apply.
+        </p>
+      </div>
+    `,
+    type: 'job_alert',
+    timestamp,
+    isRead: false,
+    relatedJobId: job.id,
+  };
 }
 
 export const SUBSCRIPTION_CRITERIA_STORAGE_KEY = 'dominica_subscription_criteria';
@@ -779,9 +927,43 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
+  const [adminEmail, setAdminEmail] = useState<string | null>(() => {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('dominica_admin_logged') === 'true') {
+        return localStorage.getItem('dominica_admin_email') || 'info@natureislecareers.com';
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  const [adminSessionToken, setAdminSessionToken] = useState<string | null>(() => {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        return sessionStorage.getItem('natureisland_admin_token');
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
   const [adminActivityLogs, setAdminActivityLogs] = useState<AdminActivityLogEntry[]>(() =>
     loadAdminActivityLogsFromStorage()
   );
+
+  const [adminEmailAlerts, setAdminEmailAlerts] = useState<AdminEmailAlert[]>(() => {
+    try {
+      const saved =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem('dominica_admin_email_alerts')
+          : null;
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [lastAdminActivityAt, setLastAdminActivityAt] = useState<number>(() => {
     try {
@@ -978,6 +1160,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSubscriptionCriteria(merged);
     saveSubscriptionCriteriaToStorage(merged);
 
+    const updatedMinSalary = updates.minSalary ?? merged.minSalary;
     // Keep primary alert entry in `alerts` synchronized as well
     setAlerts((prev) => {
       const existingIdx = prev.findIndex(
@@ -990,6 +1173,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         parishes: merged.parishes,
         sectors: merged.sectors,
         keyword: merged.keyword,
+        minSalary: updatedMinSalary,
         frequency: merged.frequency,
         active: merged.enabled,
         createdAt: existingIdx >= 0 ? prev[existingIdx].createdAt : merged.updatedAt,
@@ -1001,6 +1185,36 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return [syncedSub, ...prev];
     });
+
+    // Synchronize matching UserAccount salary/parish/sector preferences
+    if (merged.email) {
+      const targetEmail = merged.email.toLowerCase();
+      setUsers((prevUsers) =>
+        prevUsers.map((u) => {
+          if (u.email.toLowerCase() !== targetEmail || u.role !== 'jobseeker') return u;
+          return {
+            ...u,
+            minSalaryRequirement: updatedMinSalary ?? u.minSalaryRequirement,
+            preferredParish: merged.parishes[0] || u.preferredParish,
+            preferredSector: merged.sectors[0] || u.preferredSector,
+            autoMatchEmailsEnabled: merged.enabled,
+          };
+        })
+      );
+      if (currentUser && currentUser.email.toLowerCase() === targetEmail && currentUser.role === 'jobseeker') {
+        setCurrentUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                minSalaryRequirement: updatedMinSalary ?? prev.minSalaryRequirement,
+                preferredParish: merged.parishes[0] || prev.preferredParish,
+                preferredSector: merged.sectors[0] || prev.preferredSector,
+                autoMatchEmailsEnabled: merged.enabled,
+              }
+            : prev
+        );
+      }
+    }
 
     return merged;
   };
@@ -1079,14 +1293,80 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveAdminActivityLogsToStorage(updated);
         return updated;
       });
+
+      try {
+        if (typeof fetch !== 'undefined' && typeof window !== 'undefined') {
+          const token =
+            adminSessionToken ||
+            (typeof sessionStorage !== 'undefined'
+              ? sessionStorage.getItem('natureisland_admin_token')
+              : null);
+          if (token) {
+            fetch('/api/admin/audit-logs', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-admin-token': token,
+              },
+              body: JSON.stringify({ action, details, category }),
+            }).catch(() => {});
+          }
+        }
+      } catch {
+        // ignore non-browser env
+      }
+
       return newEntry;
     },
-    []
+    [adminSessionToken]
   );
 
   const clearAdminActivityLogs = React.useCallback(() => {
     setAdminActivityLogs([]);
     saveAdminActivityLogsToStorage([]);
+  }, []);
+
+  const mergeAdminAuditLogs = React.useCallback((serverLogs: AdminActivityLogEntry[]) => {
+    if (!Array.isArray(serverLogs) || serverLogs.length === 0) return;
+    setAdminActivityLogs((prev) => {
+      const existingIds = new Set(prev.map((item) => item.id));
+      const newOnes = serverLogs.filter((item) => item && item.id && !existingIds.has(item.id));
+      if (newOnes.length === 0) return prev;
+      const merged = [...prev, ...newOnes].slice(0, 120);
+      saveAdminActivityLogsToStorage(merged);
+      return merged;
+    });
+  }, []);
+
+  const mergeAdminEmailAlerts = React.useCallback((serverAlerts: AdminEmailAlert[]) => {
+    if (!Array.isArray(serverAlerts) || serverAlerts.length === 0) return;
+    setAdminEmailAlerts((prev) => {
+      const existingIds = new Set(prev.map((item) => item.id));
+      const newOnes = serverAlerts.filter((item) => item && item.id && !existingIds.has(item.id));
+      if (newOnes.length === 0) return prev;
+      return [...newOnes, ...prev].slice(0, 120);
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('dominica_admin_email_alerts', JSON.stringify(adminEmailAlerts));
+      }
+    } catch {
+      // ignore
+    }
+  }, [adminEmailAlerts]);
+
+  const clearAdminEmailAlerts = React.useCallback(() => {
+    setAdminEmailAlerts([]);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('dominica_admin_email_alerts', JSON.stringify([]));
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   const resetAdminIdleTimer = React.useCallback(() => {
@@ -1101,9 +1381,17 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const triggerAdminIdleTimeout = React.useCallback(() => {
     setIsAdminLoggedIn(false);
+    setAdminEmail(null);
+    setAdminSessionToken(null);
     setActiveRole((prev) => (prev === 'admin' ? 'jobseeker' : prev));
     try {
-      localStorage.setItem('dominica_admin_logged', 'false');
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('dominica_admin_logged', 'false');
+        localStorage.removeItem('dominica_admin_email');
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('natureisland_admin_token');
+      }
     } catch {
       // ignore
     }
@@ -1290,10 +1578,15 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     careerSector: JobSector;
     skills: string[];
     resumeFileName?: string;
+    resumeText?: string;
     password?: string;
     headline?: string;
     bio?: string;
     residencyStatus?: string;
+    minSalaryRequirement?: number;
+    preferredParish?: Parish;
+    preferredSector?: JobSector;
+    autoMatchEmailsEnabled?: boolean;
   }) => {
     const cleanEmail = data.email.trim();
     const existing = users.find(
@@ -1313,6 +1606,11 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       careerSector: data.careerSector,
       skills: data.skills,
       resumeFileName: data.resumeFileName || 'Dominica_Candidate_Resume.pdf',
+      resumeText: data.resumeText ?? existing?.resumeText,
+      minSalaryRequirement: data.minSalaryRequirement ?? existing?.minSalaryRequirement,
+      preferredParish: data.preferredParish ?? data.parish,
+      preferredSector: data.preferredSector ?? data.careerSector,
+      autoMatchEmailsEnabled: data.autoMatchEmailsEnabled ?? true,
       createdAt: existing?.createdAt || new Date().toISOString().split('T')[0],
     };
     setUsers((prev) => {
@@ -1493,6 +1791,22 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRead: false,
     };
     dispatchEmail(emailNotif);
+
+    if (paymentMethod === 'Credit/Debit Card (XCD)') {
+      sendAdminEmailAlert({
+        eventType: 'stripe_payment_finalized',
+        subject: `[Admin Stripe Alert] Client Subscription Paid: ${currentUser?.companyName || currentUser?.name || 'Dominican Employer'} — EC$ ${price.toLocaleString()} (${txRef})`,
+        summary: `Client employer subscription (${plan}) settled via card checkout for EC$ ${price.toLocaleString()} XCD.`,
+        relatedInvoiceId: txRef,
+        amountXCD: price,
+        serverPayload: {
+          employerName: currentUser?.companyName || currentUser?.name || 'Dominican Employer',
+          planName: plan,
+          invoiceId: txRef,
+          amountXCD: price,
+        },
+      });
+    }
   };
 
   const loginUser = (
@@ -1956,41 +2270,112 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const adminLogin = (email: string, pass: string) => {
+  const adminLogin = (email: string, _pass: string, serverToken?: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    const validEmails = [
-      'info@natureislecareers.com',
-      'info@natureislandcareers.com',
-      'info@natureislandcarees.com',
-    ];
-    if (validEmails.includes(cleanEmail) && pass === 'natureislandcareers') {
-      setIsAdminLoggedIn(true);
-      setActiveRole('admin');
-      setIsAdminSessionExpiredPromptOpen(false);
-      resetAdminIdleTimer();
-      logAdminActivity(
-        'Admin Console Authenticated',
-        `Administrator session started for ${cleanEmail} (15m idle guard active).`,
-        'Session & Security'
-      );
-      return true;
+    // Single allowed admin account: info@natureislecareers.com
+    if (cleanEmail !== 'info@natureislecareers.com') {
+      return false;
     }
-    return false;
+
+    const hasServerToken = Boolean(serverToken && serverToken.trim().length > 0);
+    if (!hasServerToken) {
+      return false;
+    }
+
+    const sessionToken = serverToken!.trim();
+
+    setIsAdminLoggedIn(true);
+    setAdminEmail('info@natureislecareers.com');
+    setAdminSessionToken(sessionToken);
+    setActiveRole('admin');
+    setIsAdminSessionExpiredPromptOpen(false);
+    resetAdminIdleTimer();
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('dominica_admin_logged', 'true');
+        localStorage.setItem('dominica_admin_email', 'info@natureislecareers.com');
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('natureisland_admin_token', sessionToken);
+      }
+    } catch {
+      // ignore storage errors
+    }
+
+    logAdminActivity(
+      'Admin Console Authenticated (Single Login)',
+      `Single-session admin login verified for info@natureislecareers.com (15m idle guard active).`,
+      'Session & Security'
+    );
+    return true;
   };
 
   const adminLogout = () => {
+    const tokenToRevoke = adminSessionToken;
     setIsAdminLoggedIn(false);
+    setAdminEmail(null);
+    setAdminSessionToken(null);
     setActiveRole('jobseeker');
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('dominica_admin_logged', 'false');
+        localStorage.removeItem('dominica_admin_email');
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('natureisland_admin_token');
+      }
+      if (typeof fetch !== 'undefined' && typeof window !== 'undefined' && tokenToRevoke) {
+        fetch('/api/admin/logout', {
+          method: 'POST',
+          headers: { 'x-admin-token': tokenToRevoke },
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
     logAdminActivity(
       'Admin Session Signed Out',
-      'Administrator manually signed out and cleared session state.',
+      'Administrator manually signed out and terminated single-login session.',
       'Session & Security'
+    );
+  };
+
+  const updateRecruiter = (id: string, updates: Partial<RecruiterAccount>) => {
+    let targetName = id;
+    setRecruiters((prev) =>
+      prev.map((rec) => {
+        if (rec.id === id) {
+          targetName = rec.companyName;
+          return { ...rec, ...updates };
+        }
+        return rec;
+      })
+    );
+
+    const isApprovalChange =
+      typeof updates.verified === 'boolean' || typeof updates.nepPartner === 'boolean';
+    const actionLabel =
+      updates.verified === true
+        ? 'Employer Account Approved'
+        : updates.verified === false
+        ? 'Employer Verification Revoked'
+        : updates.nepPartner === true
+        ? 'NEP Partner Account Approved'
+        : updates.nepPartner === false
+        ? 'NEP Partner Status Removed'
+        : 'Employer Account Updated';
+
+    logAdminActivity(
+      actionLabel,
+      `${actionLabel} for ${targetName} (${Object.keys(updates).join(', ')}).`,
+      isApprovalChange ? 'Account Approval' : 'Site Settings'
     );
   };
 
   const getSiteContactEmail = (): string => {
     try {
-      const saved = localStorage.getItem('natureisland_site_settings');
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('natureisland_site_settings') : null;
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.contactEmail) return parsed.contactEmail;
@@ -2001,16 +2386,118 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return 'info@natureislecareers.com';
   };
 
+  const notifyEmployerPaymentSuccess = (
+    invoice: EmployerInvoice,
+    recipientEmail?: string,
+    portalUsed: string = 'Stripe Card Checkout'
+  ): EmailNotification => {
+    const matchedRecruiter = recruiters.find(
+      (r) =>
+        r.id === invoice.recruiterId ||
+        r.companyName.toLowerCase() === invoice.companyName.toLowerCase()
+    );
+    const targetEmail =
+      recipientEmail?.trim() ||
+      invoice.recipientEmail?.trim() ||
+      matchedRecruiter?.email ||
+      getSiteContactEmail();
+    const sentAtIso = new Date().toISOString();
+    const formattedTime = sentAtIso.replace('T', ' ').substring(0, 16);
+
+    const paymentReceiptNotif: EmailNotification = {
+      id: `notif-stripe-emp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      recipientEmail: targetEmail,
+      recipientName: matchedRecruiter?.contactPerson || invoice.companyName,
+      subject: `Stripe Payment Confirmed: ${invoice.plan} — EC$ ${invoice.amountXCD.toLocaleString()} (${invoice.invoiceNumber})`,
+      previewText: `Payment receipt for ${invoice.companyName}: EC$ ${invoice.amountXCD.toLocaleString()} (~$${invoice.amountUSD.toLocaleString()} USD) processed via Stripe.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 10px;">
+          <div style="border-bottom: 2px solid #635BFF; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: #065f46; margin: 0;">Stripe Payment Receipt · Nature Island Careers</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Verified Employer Transaction Notification (${portalUsed})</p>
+          </div>
+          <p style="font-size: 14px; color: #1e293b;">Dear ${matchedRecruiter?.contactPerson || invoice.companyName},</p>
+          <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+            Your Stripe payment for <strong>${invoice.companyName}</strong> has been authorized and settled successfully.
+          </p>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #635BFF; border-radius: 6px; padding: 14px 16px; margin: 16px 0; font-size: 13px;">
+            <p style="margin: 0; color: #0f172a;"><strong>Invoice #:</strong> ${invoice.invoiceNumber}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Package:</strong> ${invoice.plan} (${invoice.billingInterval})</p>
+            <p style="margin: 4px 0 0 0; color: #065f46;"><strong>Amount Settled:</strong> EC$ ${invoice.amountXCD.toLocaleString()} (~$${invoice.amountUSD.toLocaleString()} USD)</p>
+            <p style="margin: 4px 0 0 0; color: #334155;"><strong>Payment Intent:</strong> ${invoice.paymentIntentId || 'Verified'}</p>
+            <p style="margin: 4px 0 0 0; color: #334155;"><strong>Method:</strong> ${invoice.paymentMethod}</p>
+          </div>
+          <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+            Dispatched automatically via Nature Island Careers Employer Billing · info@natureislecareers.com
+          </p>
+        </div>
+      `,
+      type: 'status_update',
+      timestamp: formattedTime,
+      isRead: false,
+    };
+
+    dispatchEmail(paymentReceiptNotif);
+
+    setInvoices((prev) =>
+      prev.map((inv) =>
+        inv.id === invoice.id
+          ? { ...inv, recipientEmail: targetEmail, notifiedAt: sentAtIso }
+          : inv
+      )
+    );
+
+    logAdminActivity(
+      'Employer Stripe Notification Sent',
+      `Dispatched Stripe payment receipt to ${targetEmail} (${invoice.companyName}) for ${invoice.invoiceNumber} — EC$${invoice.amountXCD}.`,
+      'Payment Update'
+    );
+
+    try {
+      if (typeof fetch !== 'undefined' && typeof window !== 'undefined') {
+        fetch('/api/stripe/notify-employer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employerName: invoice.companyName,
+            recipientEmail: targetEmail,
+            planName: invoice.plan,
+            amountXCD: invoice.amountXCD,
+            amountUSD: invoice.amountUSD,
+            invoiceId: invoice.invoiceNumber,
+            paymentIntentId: invoice.paymentIntentId,
+            portalUsed,
+          }),
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore non-browser test environments
+    }
+
+    return paymentReceiptNotif;
+  };
+
   const addInvoice = (invoiceData: Omit<EmployerInvoice, 'id'>) => {
+    const matchedRecruiter = recruiters.find(
+      (r) =>
+        r.id === invoiceData.recruiterId ||
+        r.companyName.toLowerCase() === invoiceData.companyName.toLowerCase()
+    );
+    const resolvedRecipient =
+      invoiceData.recipientEmail || matchedRecruiter?.email || getSiteContactEmail();
+    const nowIso = new Date().toISOString();
+
     const newInvoice: EmployerInvoice = {
       ...invoiceData,
       id: `inv-${Date.now()}`,
+      recipientEmail: resolvedRecipient,
+      notifiedAt: invoiceData.status === 'Paid' ? nowIso : undefined,
       paymentIntentId:
         invoiceData.paymentIntentId ||
         `pi_live_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}XCD`,
       timestamp:
         invoiceData.timestamp ||
-        new Date().toISOString().replace('T', ' ').substring(0, 19) + ' AST',
+        nowIso.replace('T', ' ').substring(0, 19) + ' AST',
       currency: invoiceData.currency || 'XCD',
       stripeFeeXCD:
         invoiceData.stripeFeeXCD ||
@@ -2022,6 +2509,32 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Billed ${newInvoice.companyName} EC$${newInvoice.amountXCD} (${newInvoice.plan} · ${newInvoice.invoiceNumber}).`,
       'Payment Update'
     );
+
+    if (newInvoice.status === 'Paid') {
+      notifyEmployerPaymentSuccess(
+        newInvoice,
+        resolvedRecipient,
+        newInvoice.paymentMethod || 'Stripe Card Checkout'
+      );
+
+      // Alert info@natureislecareers.com whenever a payment is finalized via Stripe
+      const isStripeTransaction =
+        (newInvoice.paymentMethod || '').toLowerCase().includes('stripe') ||
+        (newInvoice.paymentMethod || '').toLowerCase().includes('card') ||
+        (newInvoice.paymentIntentId || '').startsWith('pi_');
+
+      if (isStripeTransaction) {
+        sendAdminEmailAlert({
+          eventType: 'stripe_payment_finalized',
+          subject: `[Admin Stripe Alert] Payment Finalized: ${newInvoice.companyName} — EC$ ${newInvoice.amountXCD.toLocaleString()} (${newInvoice.invoiceNumber})`,
+          summary: `Stripe payment finalized for ${newInvoice.companyName} (${newInvoice.plan} · ${newInvoice.billingInterval}): EC$ ${newInvoice.amountXCD.toLocaleString()} (~$${newInvoice.amountUSD.toLocaleString()} USD).`,
+          relatedInvoiceId: newInvoice.invoiceNumber,
+          amountXCD: newInvoice.amountXCD,
+          syncToServer: false,
+        });
+      }
+    }
+
     return newInvoice;
   };
 
@@ -2242,6 +2755,223 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLatestDispatchedEmail(null);
   }, []);
 
+  const sendAdminEmailAlert = React.useCallback(
+    (params: {
+      eventType: 'new_job_posting' | 'stripe_payment_finalized';
+      subject: string;
+      summary: string;
+      bodyHtml?: string;
+      relatedJobId?: string;
+      relatedInvoiceId?: string;
+      amountXCD?: number;
+      syncToServer?: boolean;
+      serverPayload?: Record<string, unknown>;
+    }): AdminEmailAlert => {
+      const adminRecipient = 'info@natureislecareers.com' as const;
+      const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+      const emailRecord: EmailNotification = {
+        id: `notif-adm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        recipientEmail: adminRecipient,
+        recipientName: 'Nature Island Careers Admin',
+        subject: params.subject,
+        previewText: params.summary,
+        bodyHtml:
+          params.bodyHtml ||
+          `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+            <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
+              <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Admin Portal Alert</h2>
+              <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automated Alert Delivered to ${adminRecipient}</p>
+            </div>
+            <p style="font-size: 14px; font-weight: bold; color: #0f172a;">${params.subject}</p>
+            <p style="font-size: 14px; color: #334155; line-height: 1.5;">${params.summary}</p>
+            <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 16px;">
+              Event Type: ${params.eventType} · Timestamp: ${nowTimestamp} AST
+            </p>
+          </div>
+        `,
+        type: 'status_update',
+        timestamp: nowTimestamp,
+        isRead: false,
+        relatedJobId: params.relatedJobId,
+      };
+
+      dispatchEmail(emailRecord);
+
+      const alertEntry: AdminEmailAlert = {
+        id: `adm-email-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        eventType: params.eventType,
+        recipientEmail: adminRecipient,
+        subject: params.subject,
+        summary: params.summary,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19) + ' AST',
+        status: 'sent',
+        relatedJobId: params.relatedJobId,
+        relatedInvoiceId: params.relatedInvoiceId,
+        amountXCD: params.amountXCD,
+      };
+
+      setAdminEmailAlerts((prev) => [alertEntry, ...prev].slice(0, 100));
+
+      logAdminActivity(
+        params.eventType === 'stripe_payment_finalized'
+          ? 'Admin Email Alert Sent (Stripe Finalized)'
+          : 'Admin Email Alert Sent (New Job Posting)',
+        `Dispatched automated alert to ${adminRecipient}: ${params.subject}`,
+        'Admin Alerts'
+      );
+
+      if (params.syncToServer !== false) {
+        try {
+          if (typeof fetch !== 'undefined' && typeof window !== 'undefined') {
+            const endpoint =
+              params.eventType === 'stripe_payment_finalized'
+                ? '/api/admin/notify-stripe-payment'
+                : '/api/admin/notify-new-job';
+            fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(params.serverPayload || { title: params.subject, summary: params.summary }),
+            }).catch(() => {});
+          }
+        } catch {
+          // ignore non-browser env
+        }
+      }
+
+      return alertEntry;
+    },
+    [dispatchEmail, logAdminActivity]
+  );
+
+  // Automated Job Matching Engine (Proactive email to registered jobseekers)
+  const [automatedJobMatches, setAutomatedJobMatches] = useState<AutomatedJobMatchRecord[]>([]);
+  const usersRef = React.useRef<UserAccount[]>(users);
+  usersRef.current = users;
+  const alertsRef = React.useRef<JobAlertSubscription[]>(alerts);
+  alertsRef.current = alerts;
+  const currentUserRef = React.useRef<UserAccount | null>(currentUser);
+  currentUserRef.current = currentUser;
+  const knownJobIdsRef = React.useRef<Set<string>>(new Set(jobs.map((j) => j.id)));
+  const notifiedJobseekerMatchesRef = React.useRef<Set<string>>(
+    (() => {
+      try {
+        const raw =
+          typeof localStorage !== 'undefined'
+            ? localStorage.getItem(AUTO_JOB_MATCHES_STORAGE_KEY)
+            : null;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return new Set<string>(parsed.filter((item): item is string => typeof item === 'string'));
+          }
+        }
+      } catch {
+        // ignore
+      }
+      return new Set<string>();
+    })()
+  );
+
+  const runAutomatedJobMatchingForJob = React.useCallback(
+    (newJob: JobListing): AutomatedJobMatchRecord[] => {
+      const newlyMatchedRecords: AutomatedJobMatchRecord[] = [];
+      const currentUsers = usersRef.current;
+      const currentAlerts = alertsRef.current;
+
+      currentUsers.forEach((candidate) => {
+        if (candidate.role !== 'jobseeker') return;
+        const dedupKey = `${candidate.email.toLowerCase()}:${newJob.id}`;
+        if (notifiedJobseekerMatchesRef.current.has(dedupKey)) return;
+
+        const evaluation = evaluateJobMatchForJobseeker(newJob, candidate, currentAlerts);
+        if (!evaluation.matched) return;
+
+        notifiedJobseekerMatchesRef.current.add(dedupKey);
+        const emailNotif = buildAutomatedJobMatchEmail(newJob, candidate, evaluation.reasons);
+        dispatchEmail(emailNotif);
+
+        if (
+          currentUserRef.current &&
+          currentUserRef.current.email.toLowerCase() === candidate.email.toLowerCase()
+        ) {
+          notifyNewJobMatch(
+            newJob.title,
+            newJob.company,
+            newJob.parish,
+            candidate.preferredSector || candidate.careerSector || newJob.sector
+          );
+        }
+
+        newlyMatchedRecords.push({
+          id: `automatch-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          candidateEmail: candidate.email,
+          candidateName: candidate.name,
+          jobId: newJob.id,
+          jobTitle: newJob.title,
+          matchedAt: new Date().toISOString(),
+          reasons: evaluation.reasons,
+        });
+      });
+
+      if (newlyMatchedRecords.length > 0) {
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(
+              AUTO_JOB_MATCHES_STORAGE_KEY,
+              JSON.stringify(Array.from(notifiedJobseekerMatchesRef.current).slice(-300))
+            );
+          }
+        } catch {
+          // ignore
+        }
+        setAutomatedJobMatches((prev) => [...newlyMatchedRecords, ...prev].slice(0, 100));
+      }
+
+      // Sync with backend alert check-matches endpoint
+      try {
+        if (typeof fetch !== 'undefined' && typeof window !== 'undefined') {
+          const registeredJobseekers = currentUsers
+            .filter((u) => u.role === 'jobseeker' && u.autoMatchEmailsEnabled !== false)
+            .map((u) => ({
+              id: u.id,
+              email: u.email,
+              name: u.name,
+              minSalaryRequirement: u.minSalaryRequirement,
+              preferredParish: u.preferredParish || u.parish,
+              preferredSector: u.preferredSector || u.careerSector,
+              autoMatchEmailsEnabled: u.autoMatchEmailsEnabled ?? true,
+            }));
+          fetch('/api/alerts/check-matches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job: newJob, registeredJobseekers }),
+          }).catch((err) => console.warn('Backend alert check notice:', err));
+        }
+      } catch {
+        // ignore non-browser test env
+      }
+
+      return newlyMatchedRecords;
+    },
+    [dispatchEmail]
+  );
+
+  // Automatically trigger jobseeker matching whenever new jobs appear in `jobs`
+  useEffect(() => {
+    const newJobsToMatch: JobListing[] = [];
+    jobs.forEach((job) => {
+      if (!knownJobIdsRef.current.has(job.id)) {
+        knownJobIdsRef.current.add(job.id);
+        newJobsToMatch.push(job);
+      }
+    });
+    newJobsToMatch.forEach((job) => {
+      runAutomatedJobMatchingForJob(job);
+    });
+  }, [jobs, runAutomatedJobMatchingForJob]);
+
   // Create Job
   const createJob = (jobData: Omit<JobListing, 'id' | 'postedAt' | 'viewsCount' | 'applicantsCount'>) => {
     const newJob: JobListing = {
@@ -2252,24 +2982,27 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       applicantsCount: 0,
     };
 
+    knownJobIdsRef.current.add(newJob.id);
     setJobs((prev) => [newJob, ...prev]);
 
-    // Notify backend alert service to trigger automated matching candidate notifications
-    fetch('/api/alerts/check-matches', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job: newJob }),
-    }).catch((err) => console.warn('Backend alert check notice:', err));
+    // Proactively email matching registered jobseekers (salary requirement + parish + sector)
+    const autoMatchedRecords = runAutomatedJobMatchingForJob(newJob);
+    const alreadyEmailedSet = new Set(
+      autoMatchedRecords.map((rec) => rec.candidateEmail.toLowerCase())
+    );
 
     // Check alerts and notify matching subscribers in real-time
     const matchingAlerts = alerts.filter((a) => {
       if (!a.active) return false;
+      if (alreadyEmailedSet.has(a.email.toLowerCase())) return false;
       const parishMatch =
         a.parishes.length === 0 ||
         a.parishes.includes(newJob.parish) ||
         newJob.parish === 'Island-wide / Remote';
       const sectorMatch =
         a.sectors.length === 0 || a.sectors.includes(newJob.sector);
+      const salaryMatch =
+        !a.minSalary || a.minSalary <= 0 || newJob.maxSalary >= a.minSalary;
       const kw = a.keyword?.trim().toLowerCase();
       const keywordMatch =
         !kw ||
@@ -2278,24 +3011,22 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         newJob.company.toLowerCase().includes(kw) ||
         newJob.locality.toLowerCase().includes(kw) ||
         (newJob.requiredSkills?.some((s) => s.toLowerCase().includes(kw)) ?? false);
-      return parishMatch && sectorMatch && keywordMatch;
+      return parishMatch && sectorMatch && salaryMatch && keywordMatch;
     });
 
-    // Background service: automatically trigger email notification to the site contact email
-    const siteContactEmail = getSiteContactEmail();
-    const siteAdminJobNotice: EmailNotification = {
-      id: `notif-site-newjob-${Date.now()}`,
-      recipientEmail: siteContactEmail,
-      recipientName: 'Nature Island Careers Operations Team',
+    // Always alert admin (info@natureislecareers.com) when a new job posting is submitted
+    sendAdminEmailAlert({
+      eventType: 'new_job_posting',
       subject: `[New Job Created] ${newJob.title} by ${newJob.company} (${newJob.parish})`,
-      previewText: `New classified vacancy published: ${newJob.title} at ${newJob.company}. Salary: EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()}.`,
+      summary: `New classified vacancy published: ${newJob.title} at ${newJob.company}. Salary: EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()} / ${newJob.salaryPeriod}.`,
+      relatedJobId: newJob.id,
       bodyHtml: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
           <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
             <h2 style="color: #006b4d; margin: 0;">Nature Island Careers · Platform Administrator Alert</h2>
-            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automatic Notification to Site Contact (${siteContactEmail})</p>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automatic Notification to info@natureislecareers.com</p>
           </div>
-          <p style="font-size: 14px; color: #1e293b;">A new job posting has just been published on Nature Island Careers:</p>
+          <p style="font-size: 14px; color: #1e293b;">A new job posting has just been submitted on Nature Island Careers:</p>
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
             <p style="margin: 0; color: #0f172a;"><strong>Position:</strong> ${newJob.title}</p>
             <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Employer:</strong> ${newJob.company}</p>
@@ -2306,16 +3037,35 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Application Deadline:</strong> ${newJob.applicationDeadline}</p>
           </div>
           <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-            Delivered automatically to site contact email (${siteContactEmail}) via Background Service.
+            Delivered automatically to info@natureislecareers.com via Admin Notification Service.
           </p>
         </div>
       `,
-      type: 'status_update',
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      isRead: false,
-      relatedJobId: newJob.id,
-    };
-    dispatchEmail(siteAdminJobNotice);
+      serverPayload: {
+        jobId: newJob.id,
+        title: newJob.title,
+        company: newJob.company,
+        parish: newJob.parish,
+        minSalary: newJob.minSalary,
+        maxSalary: newJob.maxSalary,
+      },
+    });
+
+    const siteContactEmail = getSiteContactEmail();
+    if (siteContactEmail.toLowerCase() !== 'info@natureislecareers.com') {
+      dispatchEmail({
+        id: `notif-site-newjob-${Date.now()}`,
+        recipientEmail: siteContactEmail,
+        recipientName: 'Nature Island Careers Operations Team',
+        subject: `[New Job Created] ${newJob.title} by ${newJob.company} (${newJob.parish})`,
+        previewText: `New classified vacancy published: ${newJob.title} at ${newJob.company}. Salary: EC$${newJob.minSalary.toLocaleString()} - EC$${newJob.maxSalary.toLocaleString()}.`,
+        bodyHtml: `<p>New vacancy published: <strong>${newJob.title}</strong> at ${newJob.company} (${newJob.parish}).</p>`,
+        type: 'status_update',
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        isRead: false,
+        relatedJobId: newJob.id,
+      });
+    }
 
     matchingAlerts.forEach((alert) => {
       const emailNotif: EmailNotification = {
@@ -2636,12 +3386,19 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!app) return;
 
     const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const defaultNote =
+      newStatus === 'Approved'
+        ? 'Application reviewed and approved by administration.'
+        : newStatus === 'Denied'
+        ? 'Application reviewed and denied at this stage.'
+        : 'Status updated by recruiter.';
+
     const updatedTimeline = [
       ...app.timeline,
       {
         date: nowTimestamp,
         action: `Status Changed to ${newStatus}`,
-        note: customEmailMessage || `Status updated by recruiter.`,
+        note: customEmailMessage || defaultNote,
       },
     ];
 
@@ -2654,20 +3411,25 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `notif-stat-${Date.now()}`,
       recipientEmail: app.applicantEmail,
       recipientName: app.applicantName,
-      subject: `Status Update: ${app.jobTitle} at ${app.companyName} (${newStatus})`,
+      subject:
+        newStatus === 'Approved'
+          ? `Application Approved: ${app.jobTitle} at ${app.companyName}`
+          : newStatus === 'Denied'
+          ? `Application Decision: ${app.jobTitle} at ${app.companyName} (Denied)`
+          : `Status Update: ${app.jobTitle} at ${app.companyName} (${newStatus})`,
       previewText: `Your application status for ${app.jobTitle} has been updated to "${newStatus}".`,
       bodyHtml: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
-          <div style="border-bottom: 2px solid #006b4d; padding-bottom: 12px; margin-bottom: 16px;">
-            <h2 style="color: #006b4d; margin: 0;">${app.companyName}</h2>
+          <div style="border-bottom: 2px solid ${newStatus === 'Denied' ? '#be123c' : '#006b4d'}; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: ${newStatus === 'Denied' ? '#be123c' : '#006b4d'}; margin: 0;">${app.companyName}</h2>
             <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Application Status Update · Ref ${app.id}</p>
           </div>
           <p style="font-size: 15px; color: #1e293b;">Dear ${app.applicantName},</p>
           <p style="font-size: 14px; color: #334155; line-height: 1.5;">
             We are writing to inform you that your application for <strong>${app.jobTitle}</strong> has transitioned to:
           </p>
-          <div style="background: #f0fdf4; border-left: 4px solid #006b4d; padding: 14px 18px; margin: 16px 0;">
-            <strong style="color: #065f46; font-size: 16px;">${newStatus}</strong>
+          <div style="background: ${newStatus === 'Denied' ? '#fff1f2' : '#f0fdf4'}; border-left: 4px solid ${newStatus === 'Denied' ? '#be123c' : '#006b4d'}; padding: 14px 18px; margin: 16px 0;">
+            <strong style="color: ${newStatus === 'Denied' ? '#9f1239' : '#065f46'}; font-size: 16px;">${newStatus}</strong>
             ${customEmailMessage ? `<p style="margin: 8px 0 0 0; font-size: 14px; color: #1e293b;">${customEmailMessage}</p>` : ''}
           </div>
           <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
@@ -2682,6 +3444,14 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     dispatchEmail(statusEmail);
+
+    if (newStatus === 'Approved' || newStatus === 'Denied') {
+      logAdminActivity(
+        `Application ${newStatus}`,
+        `${app.applicantName} (${app.applicantEmail}) for "${app.jobTitle}" at ${app.companyName} marked ${newStatus}.`,
+        'Account Approval'
+      );
+    }
 
     // Browser notification: notify applicant / saved job status change
     const isSaved = savedJobIds.includes(app.jobId);
@@ -2959,6 +3729,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     sectors: JobSector[];
     frequency: 'instant' | 'daily' | 'weekly';
     keyword?: string;
+    minSalary?: number;
   }) => {
     const newAlert: JobAlertSubscription = {
       ...data,
@@ -2995,6 +3766,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       parishes: data.parishes,
       sectors: data.sectors,
       keyword: data.keyword || '',
+      minSalary: data.minSalary,
       frequency: data.frequency,
       enabled: true,
       alertPreferences: derivedRules,
@@ -3002,6 +3774,34 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setSubscriptionCriteria(updatedCriteria);
     saveSubscriptionCriteriaToStorage(updatedCriteria);
+
+    // Keep matching jobseeker account salary/parish/sector preferences synchronized
+    const cleanEmail = data.email.trim().toLowerCase();
+    setUsers((prevUsers) =>
+      prevUsers.map((u) => {
+        if (u.email.toLowerCase() !== cleanEmail || u.role !== 'jobseeker') return u;
+        return {
+          ...u,
+          minSalaryRequirement: data.minSalary ?? u.minSalaryRequirement,
+          preferredParish: data.parishes[0] || u.preferredParish,
+          preferredSector: data.sectors[0] || u.preferredSector,
+          autoMatchEmailsEnabled: true,
+        };
+      })
+    );
+    if (currentUser && currentUser.email.toLowerCase() === cleanEmail && currentUser.role === 'jobseeker') {
+      setCurrentUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              minSalaryRequirement: data.minSalary ?? prev.minSalaryRequirement,
+              preferredParish: data.parishes[0] || prev.preferredParish,
+              preferredSector: data.sectors[0] || prev.preferredSector,
+              autoMatchEmailsEnabled: true,
+            }
+          : prev
+      );
+    }
 
     // Sync subscription criteria with backend service
     fetch('/api/alerts/subscribe', {
@@ -3026,6 +3826,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           <ul style="font-size: 14px; color: #1e293b; line-height: 1.6;">
             <li><strong>Parishes:</strong> ${data.parishes.length > 0 ? data.parishes.join(', ') : 'Island-wide (All 10 Parishes)'}</li>
             <li><strong>Sectors:</strong> ${data.sectors.length > 0 ? data.sectors.join(', ') : 'All Industries'}</li>
+            ${data.minSalary ? `<li><strong>Minimum Salary:</strong> EC$${data.minSalary.toLocaleString()}/month</li>` : ''}
             <li><strong>Notification Frequency:</strong> ${data.frequency.toUpperCase()}</li>
           </ul>
           <p style="font-size: 13px; color: #64748b;">
@@ -3168,9 +3969,11 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentRecruiter,
         setCurrentRecruiterId,
         recruiters,
+        updateRecruiter,
         // Invoices & Stripe Billing
         invoices,
         addInvoice,
+        notifyEmployerPaymentSuccess,
         stripeSettings,
         updateStripeSettings,
         toggleRecruiterAutoRenew,
@@ -3191,11 +3994,18 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         requestPasswordReset,
         confirmPasswordReset,
         isAdminLoggedIn,
+        adminEmail,
+        adminSessionToken,
         adminLogin,
         adminLogout,
         adminActivityLogs,
         logAdminActivity,
         clearAdminActivityLogs,
+        mergeAdminAuditLogs,
+        adminEmailAlerts,
+        mergeAdminEmailAlerts,
+        sendAdminEmailAlert,
+        clearAdminEmailAlerts,
         isAdminSessionExpiredPromptOpen,
         dismissAdminSessionExpiredPrompt,
         triggerAdminIdleTimeout,
@@ -3268,6 +4078,8 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isJobExpired,
         renewJobListing,
         expiredJobIds,
+        automatedJobMatches,
+        runAutomatedJobMatchingForJob,
       }}
     >
       {children}

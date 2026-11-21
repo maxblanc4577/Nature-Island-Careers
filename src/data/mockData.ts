@@ -783,6 +783,10 @@ export const INITIAL_USERS: any[] = [
     phone: '+1 (767) 275-9921',
     resumeFileName: 'Max_Blanc_Professional_CV.pdf',
     careerSector: 'Renewable Energy & Geothermal',
+    preferredParish: 'St. George',
+    preferredSector: 'Renewable Energy & Geothermal',
+    minSalaryRequirement: 5000,
+    autoMatchEmailsEnabled: true,
     skills: ['Project Leadership', 'SCADA Networks', 'Eco-Tourism Management', 'Technical Compliance'],
     createdAt: '2026-09-24',
   },
@@ -1351,11 +1355,16 @@ export const INITIAL_INVOICES: EmployerInvoice[] = [
 
 export const INITIAL_STRIPE_SETTINGS: StripeSettings = {
   mode: 'test',
-  publishableKey: 'pk_test_51PzDominicaNatureCareersLiveKey9900XCD',
-  secretKey: 'sk_test_51PzDominicaNatureCareersSecretKey9900Sec',
-  webhookSecret: 'whsec_dom_careers_webhook_sig_live_094',
+  publishableKey: 'pk_test_DominicaNatureIslandCareersSandbox',
+  secretKey: '',
+  webhookSecret: '',
   currencyPeg: 2.70,
   monthlyDiscountPercent: 15,
   autoRenewEnabled: true,
   lastWebhookPing: '2026-09-29 08:30 AST',
+  merchantPortalsEnabled: {
+    stripe: true,
+    nbd: true,
+    republicBank: true,
+  },
 };

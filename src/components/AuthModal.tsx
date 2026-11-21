@@ -267,6 +267,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [jsPhone, setJsPhone] = useState('+1 (767) 275-');
   const [jsParish, setJsParish] = useState<Parish>('St. George');
   const [jsSector, setJsSector] = useState<JobSector>('Renewable Energy & Geothermal');
+  const [jsMinSalary, setJsMinSalary] = useState('4500');
   const [jsSkills, setJsSkills] = useState('Project Management, SCADA Systems, Eco-Tourism');
 
   // Employer (Client) registration fields
@@ -320,6 +321,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const parsedMinSalary = Number(jsMinSalary);
     registerJobseeker({
       name: jsName.trim(),
       email: jsEmail.trim(),
@@ -328,6 +330,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       careerSector: jsSector,
       skills: skillsArray.length > 0 ? skillsArray : ['Professional Operations'],
       password: jsPassword || undefined,
+      minSalaryRequirement:
+        Number.isFinite(parsedMinSalary) && parsedMinSalary > 0 ? parsedMinSalary : undefined,
+      preferredParish: jsParish,
+      preferredSector: jsSector,
+      autoMatchEmailsEnabled: true,
     });
     onAuthSuccess?.('jobseeker');
     onClose();
@@ -887,19 +894,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="js-skills" className="block font-semibold text-stone-900 mb-1">
-                  Key Skills & Certifications (Comma separated)
-                </label>
-                <input
-                  id="js-skills"
-                  data-testid="candidate-register-skills"
-                  type="text"
-                  value={jsSkills}
-                  onChange={(e) => setJsSkills(e.target.value)}
-                  placeholder="e.g. Electrical SCADA, PADI Divemaster, Culinary Arts, React"
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="js-skills" className="block font-semibold text-stone-900 mb-1">
+                    Key Skills & Certifications (Comma separated)
+                  </label>
+                  <input
+                    id="js-skills"
+                    data-testid="candidate-register-skills"
+                    type="text"
+                    value={jsSkills}
+                    onChange={(e) => setJsSkills(e.target.value)}
+                    placeholder="e.g. Electrical SCADA, PADI Divemaster, Culinary Arts, React"
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="js-min-salary" className="block font-semibold text-stone-900 mb-1">
+                    Saved Minimum Salary (EC$/mo)
+                  </label>
+                  <input
+                    id="js-min-salary"
+                    data-testid="candidate-register-min-salary"
+                    type="number"
+                    min={0}
+                    step={250}
+                    value={jsMinSalary}
+                    onChange={(e) => setJsMinSalary(e.target.value)}
+                    placeholder="e.g. 4500"
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
+                  />
+                </div>
               </div>
 
               <div className="pt-2 space-y-2.5">

@@ -39,6 +39,8 @@ export type ApplicationStatus =
   | 'Interview Scheduled'
   | 'Offer Extended'
   | 'Hired'
+  | 'Approved'
+  | 'Denied'
   | 'Rejected'
   | 'Archived';
 
@@ -111,6 +113,7 @@ export interface EmployerInvoice {
   id: string;
   recruiterId: string;
   companyName: string;
+  recipientEmail?: string;
   invoiceNumber: string;
   date: string;
   plan: string;
@@ -125,6 +128,13 @@ export interface EmployerInvoice {
   timestamp?: string;
   stripeFeeXCD?: number;
   currency?: string;
+  notifiedAt?: string;
+}
+
+export interface MerchantPortalsEnabled {
+  stripe: boolean;
+  nbd: boolean;
+  republicBank: boolean;
 }
 
 export interface StripeSettings {
@@ -136,6 +146,7 @@ export interface StripeSettings {
   monthlyDiscountPercent: number;
   autoRenewEnabled: boolean;
   lastWebhookPing?: string;
+  merchantPortalsEnabled?: MerchantPortalsEnabled;
 }
 
 export interface ClientSubscription {
@@ -173,10 +184,15 @@ export interface UserAccount {
   privacySettings?: CandidatePrivacySettings;
   // Jobseeker fields
   resumeFileName?: string;
+  resumeText?: string;
   skills?: string[];
   experience?: ResumeExperience[];
   education?: ResumeEducation[];
   careerSector?: JobSector;
+  minSalaryRequirement?: number;
+  preferredParish?: Parish;
+  preferredSector?: JobSector;
+  autoMatchEmailsEnabled?: boolean;
   // Client fields
   companyName?: string;
   dssRegistrationNo?: string;
@@ -301,6 +317,7 @@ export interface JobAlertSubscription {
   name: string;
   parishes: Parish[];
   sectors: JobSector[];
+  minSalary?: number;
   keyword?: string;
   frequency: 'instant' | 'daily' | 'weekly';
   active: boolean;
@@ -311,6 +328,7 @@ export interface AlertPreferenceRule {
   id: string;
   sector: JobSector | 'All Sectors';
   parish: Parish | 'All Parishes';
+  minSalary?: number;
   keyword?: string;
   active: boolean;
 }
@@ -320,6 +338,7 @@ export interface SubscriptionCriteria {
   name: string;
   parishes: Parish[];
   sectors: JobSector[];
+  minSalary?: number;
   keyword?: string;
   frequency: 'instant' | 'daily' | 'weekly';
   enabled: boolean;
@@ -470,8 +489,10 @@ export interface ResumeLibraryDocument {
 
 export type AdminActivityCategory =
   | 'Site Settings'
+  | 'Account Approval'
   | 'Payment Update'
   | 'Vacancy Management'
+  | 'Admin Alerts'
   | 'Session & Security'
   | 'System & Sync';
 
@@ -482,6 +503,19 @@ export interface AdminActivityLogEntry {
   category: AdminActivityCategory;
   timestamp: string;
   actor?: string;
+}
+
+export interface AdminEmailAlert {
+  id: string;
+  eventType: 'new_job_posting' | 'stripe_payment_finalized';
+  recipientEmail: 'info@natureislecareers.com';
+  subject: string;
+  summary: string;
+  timestamp: string;
+  status: 'sent' | 'queued';
+  relatedJobId?: string;
+  relatedInvoiceId?: string;
+  amountXCD?: number;
 }
 
 export type DatePostedFilter =

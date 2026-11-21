@@ -81,6 +81,7 @@ export const JobCard: React.FC<JobCardProps> = ({
   const isCompetitiveSalary = typeof job.maxSalary === 'number' && job.maxSalary >= competitiveThreshold;
   const [isPulsing, setIsPulsing] = React.useState(false);
   const [saveToastVisible, setSaveToastVisible] = React.useState(false);
+  const [saveToastAction, setSaveToastAction] = React.useState<'saved' | 'removed'>('saved');
   const [showShareModal, setShowShareModal] = React.useState(false);
   const [isQuickViewOpen, setIsQuickViewOpen] = React.useState(false);
   const [isFolderMenuOpen, setIsFolderMenuOpen] = React.useState(false);
@@ -183,28 +184,25 @@ export const JobCard: React.FC<JobCardProps> = ({
     restoreDismissedJob(job.id);
   };
 
-  // Feature: Save Toggle with Heart Icon (persisted to localStorage via JobContext) + Confirmation Toast
+  // Feature: Save Toggle with Heart Icon + Heartbeat animation & brief Confirmation Toast
   const handleToggleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
     const willBeSaved = !saved;
     setIsPulsing(true);
+    setSaveToastAction(willBeSaved ? 'saved' : 'removed');
     toggleSaveJob(job.id);
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
-    pulseTimerRef.current = setTimeout(() => setIsPulsing(false), 550);
+    pulseTimerRef.current = setTimeout(() => setIsPulsing(false), 1000);
 
     if (saveToastTimerRef.current) {
       clearTimeout(saveToastTimerRef.current);
       saveToastTimerRef.current = null;
     }
 
-    if (willBeSaved) {
-      setSaveToastVisible(true);
-      saveToastTimerRef.current = setTimeout(() => {
-        setSaveToastVisible(false);
-      }, 3500);
-    } else {
+    setSaveToastVisible(true);
+    saveToastTimerRef.current = setTimeout(() => {
       setSaveToastVisible(false);
-    }
+    }, 2800);
   };
 
   const handleToggleFolderMembership = (e: React.MouseEvent, folderId: string, folderName: string, isInFolder: boolean) => {
@@ -491,23 +489,24 @@ export const JobCard: React.FC<JobCardProps> = ({
               <Share2 className="w-4 h-4" />
             </button>
 
-            {/* Feature: 'Save Job' heart button toggling saved status and visually updating filled vs outlined */}
+            {/* Feature: 'Save Job' heart button toggling saved status with heartbeat animation */}
             <button
               type="button"
               data-testid={`save-job-btn-${job.id}`}
+              data-heartbeat={isPulsing ? 'true' : 'false'}
               onClick={handleToggleSave}
               className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center border ${
                 saved
                   ? 'text-rose-600 bg-rose-50 border-rose-200 shadow-2xs hover:bg-rose-100'
                   : 'text-stone-400 hover:text-rose-500 hover:bg-rose-50/60 border-stone-200/60'
-              } ${isPulsing ? 'scale-125 transition-transform duration-200' : ''}`}
+              } ${isPulsing ? 'ring-2 ring-rose-300/70 scale-110' : ''}`}
               title={saved ? 'Saved Job' : 'Save Job'}
               aria-label={saved ? 'Saved Job' : 'Save Job'}
             >
               <Heart
                 className={`w-4 h-4 transition-colors ${
                   saved ? 'fill-rose-500 text-rose-500 stroke-rose-600' : 'fill-none text-stone-400 hover:text-rose-500'
-                }`}
+                } ${isPulsing ? 'animate-heartbeat-burst' : ''}`}
               />
             </button>
 
@@ -983,16 +982,41 @@ export const JobCard: React.FC<JobCardProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="fixed bottom-5 right-5 z-50 max-w-sm bg-slate-900 text-white rounded-xl shadow-2xl border border-emerald-500/50 p-3.5 flex items-start gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200"
         >
-          <div className="w-8 h-8 rounded-lg bg-rose-500/20 border border-rose-400/30 flex items-center justify-center shrink-0 mt-0.5">
-            <Heart className="w-4 h-4 fill-rose-500 text-rose-500" />
+          <div
+            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border ${
+              saveToastAction === 'saved'
+                ? 'bg-rose-500/20 border-rose-400/30'
+                : 'bg-slate-800 border-slate-700'
+            }`}
+          >
+            <Heart
+              className={`w-4 h-4 ${
+                saveToastAction === 'saved'
+                  ? 'fill-rose-500 text-rose-500 animate-heartbeat-burst'
+                  : 'fill-none text-slate-300'
+              }`}
+            />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-extrabold text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Added to Saved List</span>
+            <p
+              className={`text-xs font-extrabold flex items-center gap-1 ${
+                saveToastAction === 'saved' ? 'text-emerald-400' : 'text-amber-300'
+              }`}
+            >
+              <CheckCircle2
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  saveToastAction === 'saved' ? 'text-emerald-400' : 'text-amber-300'
+                }`}
+              />
+              <span>
+                {saveToastAction === 'saved' ? 'Added to Saved List' : 'Removed from Saved List'}
+              </span>
             </p>
             <p className="text-xs text-slate-200 mt-0.5 leading-snug">
-              <strong className="font-bold text-white">{job.title}</strong> at {job.company} has been added to your saved list.
+              <strong className="font-bold text-white">{job.title}</strong> at {job.company}{' '}
+              {saveToastAction === 'saved'
+                ? 'has been added to your saved list.'
+                : 'has been removed from your saved list.'}
             </p>
           </div>
           <button
