@@ -84,6 +84,7 @@ export const Footer: React.FC<FooterProps> = ({
             </p>
             <div className="space-y-2 pt-1">
               <button
+                type="button"
                 onClick={onOpenAlert}
                 className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg font-medium cursor-pointer transition-colors"
               >
@@ -92,6 +93,7 @@ export const Footer: React.FC<FooterProps> = ({
               </button>
 
               <button
+                type="button"
                 onClick={onOpenFeedback}
                 className="w-full text-center py-1.5 text-stone-400 hover:text-white transition-colors cursor-pointer"
               >

@@ -2,6 +2,8 @@ import React from 'react';
 import { Parish, JobSector } from '../types';
 import { useJobContext } from '../context/JobContext';
 import { BrandLogoMark } from './BrandLogo';
+import trafalgarFallsImg from '../assets/images/dominica_trafalgar_falls_1790716659754.jpg';
+import emeraldPoolImg from '../assets/images/dominica_emerald_pool_1790716670674.jpg';
 import {
   Search,
   MapPin,
@@ -73,9 +75,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     bgMode === 'photo_scotts'
       ? (backgroundImageUrl && !backgroundImageUrl.endsWith('.svg') ? backgroundImageUrl : '/nature_island_photo.jpg')
       : bgMode === 'trafalgar_falls'
-      ? '/src/assets/images/dominica_trafalgar_falls_1790716659754.jpg'
+      ? trafalgarFallsImg
       : bgMode === 'emerald_pool'
-      ? '/src/assets/images/dominica_emerald_pool_1790716670674.jpg'
+      ? emeraldPoolImg
       : '/dominica_flag.svg';
 
   const isPhoto = bgMode !== 'flag';
@@ -114,6 +116,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           {/* Flag Toggle */}
           <div className="inline-flex items-center bg-black/60 border border-white/20 rounded-full p-0.5 backdrop-blur-md text-[11px] font-semibold text-emerald-200">
             <button
+              type="button"
               onClick={() => setBgMode(bgMode === 'flag' ? 'photo_scotts' : 'flag')}
               className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
                 bgMode === 'flag' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'hover:text-white'
@@ -204,6 +207,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <div className="sm:col-span-4 relative">
               <MapPin className="w-4 h-4 text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <select
+                aria-label="Filter by Dominica Parish"
                 value={selectedParish}
                 onChange={(e) => setSelectedParish(e.target.value as Parish | 'All')}
                 className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-white text-slate-800 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs cursor-pointer appearance-none"
@@ -293,6 +297,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-emerald-200/80 font-medium">Quick Searches:</span>
             <button
+              type="button"
               onClick={() => {
                 setSearchQuery('Eco-Resort');
                 saveRecentSearch('Eco-Resort');
@@ -303,6 +308,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               🌿 Eco-Resort & Spa
             </button>
             <button
+              type="button"
               onClick={() => {
                 setSearchQuery('Remote');
                 saveRecentSearch('Remote');
@@ -313,6 +319,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               💻 Dominica WIN Remote
             </button>
             <button
+              type="button"
               onClick={() => {
                 setSelectedParish('St. George');
                 setSearchQuery('');
@@ -322,6 +329,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               🏛️ Roseau Commercial
             </button>
             <button
+              type="button"
               onClick={() => {
                 setSelectedSector('Renewable Energy & Geothermal');
                 setSearchQuery('');
@@ -331,6 +339,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               ⚡ Geothermal & Climate Resilience
             </button>
             <button
+              type="button"
               onClick={() => {
                 setSearchQuery('');
                 setSelectedParish('All');
@@ -366,6 +375,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* Subscribe & Remote Callouts */}
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <button
+            type="button"
             onClick={onOpenAlertModal}
             className="inline-flex items-center gap-2 bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 text-xs font-semibold px-4 py-2 rounded-full border border-emerald-600/40 transition-all cursor-pointer shadow-xs"
           >
@@ -374,6 +384,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={onOpenRemoteModal}
             className="inline-flex items-center gap-2 bg-teal-800/80 hover:bg-teal-700 text-teal-100 text-xs font-semibold px-4 py-2 rounded-full border border-teal-500/40 transition-all cursor-pointer shadow-xs"
           >

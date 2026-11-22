@@ -474,10 +474,16 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
   const [inspectedInvoice, setInspectedInvoice] = useState<EmployerInvoice | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const handleCopyPaymentIntent = (id: string) => {
-    navigator.clipboard.writeText(id);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyPaymentIntent = async (id: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(id);
+      }
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Clipboard unavailable in restricted context
+    }
   };
 
   // Job editing modal state
@@ -571,10 +577,16 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
   const [cliTestStatus, setCliTestStatus] = useState<string | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
 
-  const handleCopyCmd = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedCmd(text);
-    setTimeout(() => setCopiedCmd(null), 2000);
+  const handleCopyCmd = async (text: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopiedCmd(text);
+      setTimeout(() => setCopiedCmd(null), 2000);
+    } catch {
+      // ignore clipboard restrictions
+    }
   };
 
   const handleTriggerTestWebhook = async () => {
@@ -584,12 +596,16 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventType: 'payment_intent.succeeded' }),
       });
-      const data = await res.json();
-      setCliTestStatus(data.message || 'Test event dispatched successfully!');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCliTestStatus(data.error || `Failed to dispatch test webhook (HTTP ${res.status})`);
+      } else {
+        setCliTestStatus(data.message || 'Test event dispatched successfully!');
+      }
       setTimeout(() => setCliTestStatus(null), 4000);
     } catch {
-      setCliTestStatus('Test event dispatched to /api/stripe/webhook');
-      setTimeout(() => setCliTestStatus(null), 3000);
+      setCliTestStatus('Network error: Unable to reach /api/stripe/trigger-test');
+      setTimeout(() => setCliTestStatus(null), 4000);
     }
   };
 
@@ -1115,6 +1131,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                       <td className="p-3">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <button
+                            type="button"
                             onClick={() => updateJob(job.id, { featured: !job.featured })}
                             className={`text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer ${
                               job.featured
@@ -1158,18 +1175,22 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                           {isJobExpired(job) ? 'Renew' : 'Expire'}
                         </button>
                         <button
+                          type="button"
                           onClick={() => setEditingJob(job)}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors mr-1 cursor-pointer"
                           title="Edit Job"
+                          aria-label={`Edit ${job.title}`}
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => {
                             deleteJob(job.id);
                           }}
                           className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
                           title="Delete Job"
+                          aria-label={`Delete ${job.title}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1186,7 +1207,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                 <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
                   <div className="flex justify-between items-center border-b pb-3">
                     <h4 className="font-bold text-slate-900">Edit Vacancy: {editingJob.title}</h4>
-                    <button onClick={() => setEditingJob(null)} className="text-slate-400 hover:text-slate-600">
+                    <button type="button" onClick={() => setEditingJob(null)} aria-label="Close job editor" className="text-slate-400 hover:text-slate-600 cursor-pointer">
                       <X className="w-5 h-5" />
                     </button>
                   </div>
@@ -2092,7 +2113,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                       Stripe Webhook Signing Secret
                     </label>
                     <input
-                      type="text"
+                      type="password"
                       value={stripeWebhookSecret}
                       onChange={(e) => setStripeWebhookSecret(e.target.value)}
                       placeholder="whsec_..."
@@ -2279,18 +2300,23 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
 
                 <button
                   type="button"
+                  disabled={recruiters.length === 0}
                   data-testid="admin-bill-employer-stripe-btn"
                   onClick={() => {
                     const rec = recruiters.find((r) => r.id === selectedBilledRecruiterId) || recruiters[0];
+                    if (!rec) return;
+                    const intentPrefix = stripeMode === 'live' ? 'pi_live_' : 'pi_test_';
+                    const peg = stripePeg || 2.7;
                     addInvoice({
                       recruiterId: rec.id,
                       companyName: rec.companyName,
                       recipientEmail: rec.email,
+                      paymentIntentId: `${intentPrefix}admin_${Date.now().toString(36)}`,
                       invoiceNumber: `INV-DOM-2026-${Math.floor(100 + Math.random() * 900)}`,
                       date: new Date().toISOString().split('T')[0],
                       plan: billingPlanName,
                       amountXCD: billingAmountXCD,
-                      amountUSD: Math.round(billingAmountXCD / 2.7),
+                      amountUSD: Math.round((billingAmountXCD / peg) * 100) / 100,
                       billingInterval: billingCadenceChoice,
                       status: 'Paid',
                       paymentMethod: 'Stripe •••• 4242 (Visa)',
@@ -2300,7 +2326,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                     setBillingSuccessAlert(`Billed ${rec.companyName} EC$${billingAmountXCD} via Stripe & notified ${rec.email}!`);
                     setTimeout(() => setBillingSuccessAlert(null), 4000);
                   }}
-                  className="px-5 py-2.5 bg-[#635BFF] hover:bg-[#5249e6] text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="px-5 py-2.5 bg-[#635BFF] hover:bg-[#5249e6] disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <CreditCard className="w-4 h-4" />
                   <span>Execute Stripe Charge & Notify Employer</span>
@@ -2387,7 +2413,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                       <tr key={inv.id} className="hover:bg-slate-50/80">
                         <td className="p-2.5 font-mono font-bold text-slate-900">{inv.invoiceNumber}</td>
                         <td className="p-2.5 font-mono text-[11px] text-slate-600">
-                          {inv.paymentIntentId || `pi_live_${inv.id.replace('inv-', '')}XCD`}
+                          {inv.paymentIntentId || `${stripeMode === 'live' ? 'pi_live_' : 'pi_test_'}${inv.id.replace('inv-', '')}XCD`}
                         </td>
                         <td className="p-2.5 font-semibold text-slate-800">{inv.companyName}</td>
                         <td className="p-2.5">{inv.plan}</td>
@@ -2470,7 +2496,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                   <span className="font-bold text-slate-800 block">Stripe Gateway Endpoints & Webhooks:</span>
                   <div className="font-mono text-[11px] text-slate-600 space-y-1">
                     <div>Live Endpoint: <span className="text-slate-900 font-bold">https://api.stripe.com/v1/charges</span></div>
-                    <div>Webhook Listener: <span className="text-slate-900 font-bold">https://natureislandcareers.com/api/stripe-webhooks</span></div>
+                    <div>Webhook Listener: <span className="text-slate-900 font-bold">https://natureislandcareers.com/api/stripe/webhook</span></div>
                     <div>Events Monitored: <span className="text-emerald-700">invoice.payment_succeeded, customer.subscription.updated</span></div>
                   </div>
                 </div>
@@ -2651,15 +2677,15 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                           <td className="py-3 px-3.5 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono text-[11px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/80">
-                                {inv.paymentIntentId || `pi_live_${inv.id.replace('inv-', '')}XCD`}
+                                {inv.paymentIntentId || `${stripeMode === 'live' ? 'pi_live_' : 'pi_test_'}${inv.id.replace('inv-', '')}XCD`}
                               </span>
                               <button
                                 type="button"
-                                onClick={() => handleCopyPaymentIntent(inv.paymentIntentId || `pi_live_${inv.id.replace('inv-', '')}XCD`)}
+                                onClick={() => handleCopyPaymentIntent(inv.paymentIntentId || `${stripeMode === 'live' ? 'pi_live_' : 'pi_test_'}${inv.id.replace('inv-', '')}XCD`)}
                                 className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
                                 title="Copy Payment Intent ID"
                               >
-                                {copiedId === (inv.paymentIntentId || `pi_live_${inv.id.replace('inv-', '')}XCD`) ? (
+                                {copiedId === (inv.paymentIntentId || `${stripeMode === 'live' ? 'pi_live_' : 'pi_test_'}${inv.id.replace('inv-', '')}XCD`) ? (
                                   <Check className="w-3.5 h-3.5 text-emerald-600" />
                                 ) : (
                                   <Copy className="w-3.5 h-3.5" />
@@ -2790,12 +2816,12 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                     <pre className="text-[11px] leading-relaxed text-emerald-300 overflow-x-auto whitespace-pre">
 {JSON.stringify(
   {
-    id: inspectedInvoice.paymentIntentId || `pi_live_${inspectedInvoice.id}XCD`,
+    id: inspectedInvoice.paymentIntentId || `${stripeMode === 'live' ? 'pi_live_' : 'pi_test_'}${inspectedInvoice.id}XCD`,
     object: 'payment_intent',
     amount: inspectedInvoice.amountXCD * 100,
     amount_received: inspectedInvoice.status === 'Paid' ? inspectedInvoice.amountXCD * 100 : 0,
     currency: 'xcd',
-    status: inspectedInvoice.status === 'Paid' ? 'succeeded' : 'processing',
+    status: inspectedInvoice.status === 'Paid' ? 'succeeded' : inspectedInvoice.status.toLowerCase(),
     customer: {
       name: inspectedInvoice.companyName,
       recruiter_id: inspectedInvoice.recruiterId,
@@ -2804,7 +2830,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
       invoice_number: inspectedInvoice.invoiceNumber,
       plan: inspectedInvoice.plan,
       billing_interval: inspectedInvoice.billingInterval,
-      fixed_peg_rate: '2.70 XCD/USD',
+      fixed_peg_rate: `${(stripePeg || 2.7).toFixed(2)} XCD/USD`,
       usd_equivalent: inspectedInvoice.amountUSD,
       platform: 'Nature Island Careers Commonwealth of Dominica',
     },
@@ -2832,7 +2858,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
       ],
     },
     created: Math.floor(new Date(inspectedInvoice.date).getTime() / 1000),
-    livemode: !inspectedInvoice.paymentIntentId?.includes('Test'),
+    livemode: stripeMode === 'live' && !inspectedInvoice.paymentIntentId?.includes('test') && !inspectedInvoice.paymentIntentId?.includes('sandbox'),
   },
   null,
   2
@@ -3680,6 +3706,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
           </span>
           {isStandalonePage && onReturnPublic ? (
             <button
+              type="button"
               onClick={onReturnPublic}
               className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors cursor-pointer"
             >
@@ -3687,6 +3714,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
             </button>
           ) : (
             <button
+              type="button"
               onClick={onClose}
               className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors cursor-pointer"
             >

@@ -33,8 +33,9 @@ export const AdminSalaryTrendsChart: React.FC = () => {
             {TIMEFRAME_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
+                type="button"
                 onClick={() => setTimeframe(opt.id)}
-                className={`px-2.5 py-1 rounded-md transition-all ${
+                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                   timeframe === opt.id
                     ? 'bg-white text-emerald-800 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -46,6 +47,7 @@ export const AdminSalaryTrendsChart: React.FC = () => {
           </div>
 
           <select
+            aria-label="Filter salary trends by sector"
             value={selectedSector}
             onChange={(e) => setSelectedSector(e.target.value)}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 bg-white"
@@ -71,8 +73,17 @@ export const AdminSalaryTrendsChart: React.FC = () => {
           return (
             <div
               key={trend.sector}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectedSector === trend.sector}
               onClick={() => setSelectedSector(trend.sector === selectedSector ? 'all' : trend.sector)}
-              className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedSector(trend.sector === selectedSector ? 'all' : trend.sector);
+                }
+              }}
+              className={`p-3.5 rounded-xl border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-600 ${
                 selectedSector === trend.sector
                   ? 'border-teal-600 bg-teal-50/60 ring-2 ring-teal-500/20'
                   : 'border-slate-100 hover:border-slate-200 bg-slate-50/50'

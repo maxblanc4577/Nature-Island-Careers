@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { Parish, JobSector } from '../types';
 import {
@@ -56,6 +56,16 @@ export const JobAlertAutomationManager: React.FC = () => {
   );
   const [savedNotice, setSavedNotice] = useState(false);
   const [testSent, setTestSent] = useState(false);
+  const [salaryError, setSalaryError] = useState<string | null>(null);
+  const savedTimerRef = useRef<number | null>(null);
+  const testTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+      if (testTimerRef.current) window.clearTimeout(testTimerRef.current);
+    };
+  }, []);
 
   const parishesList: Parish[] = [
     'St. George',
@@ -96,7 +106,14 @@ export const JobAlertAutomationManager: React.FC = () => {
 
   const handleSavePreferences = (e: React.FormEvent) => {
     e.preventDefault();
-    const numericMinSalary = Number(minSalary);
+    const trimmedMin = minSalary.trim();
+    const numericMinSalary = Number(trimmedMin);
+    if (trimmedMin !== '' && (!Number.isFinite(numericMinSalary) || numericMinSalary < 0)) {
+      setSalaryError('Minimum salary must be 0 or higher in EC$.');
+      return;
+    }
+    setSalaryError(null);
+
     subscribeToAlert({
       email: userEmail,
       name: userName,
@@ -107,13 +124,15 @@ export const JobAlertAutomationManager: React.FC = () => {
       minSalary: Number.isFinite(numericMinSalary) && numericMinSalary > 0 ? numericMinSalary : undefined,
     });
     setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 2400);
+    if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = window.setTimeout(() => setSavedNotice(false), 2400);
   };
 
   const handleTriggerTestAlert = () => {
     sendManualTestAlert(userEmail);
     setTestSent(true);
-    setTimeout(() => setTestSent(false), 2500);
+    if (testTimerRef.current) window.clearTimeout(testTimerRef.current);
+    testTimerRef.current = window.setTimeout(() => setTestSent(false), 2500);
   };
 
   // Filter alert-specific notifications from history
@@ -159,6 +178,13 @@ export const JobAlertAutomationManager: React.FC = () => {
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 font-bold animate-in fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           <span>Automated alert preferences updated successfully!</span>
+        </div>
+      )}
+
+      {salaryError && (
+        <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center gap-2 font-bold">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{salaryError}</span>
         </div>
       )}
 

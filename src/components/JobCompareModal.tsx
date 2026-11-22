@@ -71,6 +71,7 @@ export const JobCompareModal: React.FC<JobCompareModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-emerald-200 hover:text-white p-1.5 rounded-xl transition-colors cursor-pointer hover:bg-white/10"
             aria-label="Close comparison modal"
@@ -278,6 +279,7 @@ export const JobCompareModal: React.FC<JobCompareModalProps> = ({
             Compare up to 4 roles simultaneously across Dominican parishes.
           </span>
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2 bg-stone-800 hover:bg-stone-700 text-white font-bold rounded-xl transition-colors cursor-pointer"
           >

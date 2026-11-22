@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
+import { isValidEmail } from '../utils/paymentValidation';
 import { Parish, JobSector } from '../types';
 import { X, BellRing, Mail, MapPin, CheckCircle2, ShieldCheck, Sparkles, User } from 'lucide-react';
 
@@ -23,6 +24,15 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
   const [isSuccess, setIsSuccess] = useState(false);
   const [matchingCount, setMatchingCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
 
   // Compute live matching jobs count
   const liveMatches = jobs.filter((j) => {
@@ -40,11 +50,22 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    if (isSubmittingRef.current) return;
+
+    if (!isValidEmail(email)) {
       setErrorMessage('Please provide a valid email address.');
       return;
     }
+    if (minSalary.trim() !== '') {
+      const parsedMin = Number(minSalary);
+      if (!Number.isFinite(parsedMin) || parsedMin < 0) {
+        setErrorMessage('Minimum salary requirement must be 0 or greater.');
+        return;
+      }
+    }
     setErrorMessage('');
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     const parishes: Parish[] =
       selectedParish === 'All'
@@ -80,7 +101,7 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
 
     const numericMinSalary = Number(minSalary);
     subscribeToAlert({
-      email,
+      email: email.trim(),
       name: name.trim() || 'Dominica Resident',
       parishes,
       sectors,
@@ -91,8 +112,10 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
 
     setMatchingCount(liveMatches);
     setIsSuccess(true);
-    setTimeout(() => {
+    timerRef.current = window.setTimeout(() => {
       setIsSuccess(false);
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
       onClose();
     }, 2200);
   };
@@ -118,7 +141,12 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
               <p className="text-xs text-emerald-200">Delivered from info@natureislecareers.com</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close job alerts modal"
+            className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -262,9 +290,10 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
 
             <button
               type="submit"
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer mt-2"
+              disabled={isSubmitting}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer mt-2"
             >
-              Subscribe to Dominica Alerts
+              {isSubmitting ? 'Subscribing...' : 'Subscribe to Dominica Alerts'}
             </button>
           </form>
         )}

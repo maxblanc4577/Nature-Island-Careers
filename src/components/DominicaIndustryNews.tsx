@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Newspaper,
   Sparkles,
@@ -39,8 +39,17 @@ export const DominicaIndustryNews: React.FC<DominicaIndustryNewsProps> = ({ onSe
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>('Just now');
+  const requestIdRef = useRef(0);
+  const fallbackTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+    };
+  }, []);
 
   const fetchNews = async (sectorName: string = 'All', category: string = 'All', customQuery: string = '') => {
+    const reqId = ++requestIdRef.current;
     setIsLoading(true);
     try {
       const res = await fetch('/api/career/dominica-news', {
@@ -51,6 +60,7 @@ export const DominicaIndustryNews: React.FC<DominicaIndustryNewsProps> = ({ onSe
 
       if (res.ok) {
         const json = await res.json();
+        if (reqId !== requestIdRef.current) return;
         if (json.news && Array.isArray(json.news)) {
           setArticles(json.news);
           setLastRefreshed(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -58,12 +68,16 @@ export const DominicaIndustryNews: React.FC<DominicaIndustryNewsProps> = ({ onSe
           return;
         }
       }
-    } catch (err) {
-      console.error('Error fetching Dominica news:', err);
+    } catch {
+      // Fall back to curated headlines below
     }
 
+    if (reqId !== requestIdRef.current) return;
+
     // Curated high-fidelity fallback news
-    setTimeout(() => {
+    if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+    fallbackTimerRef.current = window.setTimeout(() => {
+      if (reqId !== requestIdRef.current) return;
       setArticles([
         {
           id: 'news-1',

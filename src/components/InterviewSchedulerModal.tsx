@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import {
@@ -175,6 +175,9 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
   const [postScheduleNote, setPostScheduleNote] = useState('');
   const [postNoteSaved, setPostNoteSaved] = useState(false);
   const [scheduled, setScheduled] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const evalTimerRef = useRef<number | null>(null);
+  const postNoteTimerRef = useRef<number | null>(null);
 
   // Live Interview Call Timer State (Elapsed or Countdown)
   const [timerMode, setTimerMode] = useState<InterviewTimerMode>('elapsed');
@@ -224,6 +227,30 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
       setNotes(propNotes);
     }
   }, [propNotes]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setDate(existingApp?.interviewDetails?.date || '2026-10-05');
+    setTime(existingApp?.interviewDetails?.time || '10:00 AM AST');
+    setMode(existingApp?.interviewDetails?.mode || 'Virtual Video Call');
+    setLocation(
+      existingApp?.interviewDetails?.location || 'Google Meet link will be shared 15 mins prior'
+    );
+    setInstructions(
+      existingApp?.interviewDetails?.instructions ||
+        'Please have your portfolio and relevant certifications ready.'
+    );
+    setNotes(propNotes || existingApp?.interviewDetails?.notes || '');
+    setScheduled(false);
+    setValidationError(null);
+  }, [applicationId, isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (evalTimerRef.current !== null) window.clearTimeout(evalTimerRef.current);
+      if (postNoteTimerRef.current !== null) window.clearTimeout(postNoteTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isTimerRunning) return;
@@ -307,18 +334,24 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
     handleNotesChange(mergedNotes);
 
     setEvaluationSaved(true);
-    setTimeout(() => setEvaluationSaved(false), 3000);
+    if (evalTimerRef.current !== null) window.clearTimeout(evalTimerRef.current);
+    evalTimerRef.current = window.setTimeout(() => setEvaluationSaved(false), 3000);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!date.trim() || !time.trim()) {
+      setValidationError('Please enter both a valid interview date and time.');
+      return;
+    }
+    setValidationError(null);
 
     const details: InterviewDetails = {
-      date,
-      time,
-      location,
+      date: date.trim(),
+      time: time.trim(),
+      location: location.trim(),
       mode,
-      instructions,
+      instructions: instructions.trim(),
       notes: notes.trim() || undefined,
       evaluation: savedEvaluationRecord || undefined,
     };
@@ -335,7 +368,8 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
     handleNotesChange(mergedNotes);
     setPostScheduleNote('');
     setPostNoteSaved(true);
-    setTimeout(() => setPostNoteSaved(false), 2000);
+    if (postNoteTimerRef.current !== null) window.clearTimeout(postNoteTimerRef.current);
+    postNoteTimerRef.current = window.setTimeout(() => setPostNoteSaved(false), 2000);
   };
 
   const renderLiveInterviewTimerWidget = () => (
@@ -678,7 +712,9 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close interview scheduler"
             className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -753,6 +789,11 @@ export const InterviewSchedulerModal: React.FC<InterviewSchedulerModalProps> = (
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-5 space-y-3.5 max-h-[82vh] overflow-y-auto">
+            {validationError && (
+              <div role="alert" className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+                {validationError}
+              </div>
+            )}
             {/* Live Interview Countdown / Elapsed Call Timer */}
             {renderLiveInterviewTimerWidget()}
 

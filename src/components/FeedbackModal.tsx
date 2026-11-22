@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
+import { isValidEmail } from '../utils/paymentValidation';
 import { X, MessageSquare, Star, CheckCircle2, Send } from 'lucide-react';
 
 interface FeedbackModalProps {
@@ -20,16 +21,33 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
+
+    if (email.trim() && !isValidEmail(email)) {
+      setErrorMessage('Please provide a valid email address or leave the email field blank.');
+      return;
+    }
     if (!message.trim()) {
       setErrorMessage('Please enter your feedback message.');
       return;
     }
     setErrorMessage('');
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     submitFeedback({
       role,
@@ -41,8 +59,11 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
     });
 
     setSubmitted(true);
-    setTimeout(() => {
+    timerRef.current = window.setTimeout(() => {
       setSubmitted(false);
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
+      setMessage('');
       onClose();
     }, 1600);
   };
@@ -68,7 +89,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
               <p className="text-xs text-emerald-200">Direct inquiries: info@natureislecareers.com</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close community feedback modal"
+            className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -126,6 +152,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                   <button
                     key={star}
                     type="button"
+                    aria-label={`Rate ${star} out of 5 stars`}
                     onClick={() => setRating(star)}
                     className="p-1 text-amber-400 hover:scale-110 transition-transform cursor-pointer"
                   >
@@ -181,10 +208,11 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
 
             <button
               type="submit"
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
             >
               <Send className="w-4 h-4" />
-              <span>Submit Community Feedback</span>
+              <span>{isSubmitting ? 'Submitting...' : 'Submit Community Feedback'}</span>
             </button>
           </form>
         )}

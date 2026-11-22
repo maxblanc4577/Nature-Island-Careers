@@ -2119,6 +2119,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
         <div className="flex flex-wrap items-center gap-3">
           {onOpenStripe && (
             <button
+              type="button"
               onClick={onOpenStripe}
               className="inline-flex items-center gap-1.5 bg-[#635BFF] hover:bg-[#5249e6] text-white font-extrabold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition-all cursor-pointer"
             >
@@ -2128,6 +2129,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
           )}
 
           <button
+            type="button"
             onClick={() => setActivePortalTab('billing')}
             className={`inline-flex items-center gap-2 font-extrabold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition-all cursor-pointer ${
               activePortalTab === 'billing'
@@ -2140,6 +2142,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={handleOpenPostVacancy}
             data-testid="employer-portal-post-vacancy-btn"
             className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition-all cursor-pointer"
@@ -2168,6 +2171,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
         </div>
 
         <button
+          type="button"
           onClick={handleTriggerReminders}
           className="bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-1 shadow-2xs"
         >
@@ -2179,6 +2183,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
       {/* Navigation Tabs */}
       <div className="flex flex-wrap border-b border-slate-200 gap-2">
         <button
+          type="button"
           onClick={() => setActivePortalTab('candidates')}
           className={`py-3 px-5 text-sm font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             activePortalTab === 'candidates'
@@ -2191,6 +2196,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
         </button>
 
         <button
+          type="button"
           data-testid="interview-schedule-tab"
           onClick={() => setActivePortalTab('schedule')}
           className={`py-3 px-5 text-sm font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
@@ -2204,6 +2210,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
         </button>
 
         <button
+          type="button"
           onClick={() => setActivePortalTab('billing')}
           className={`py-3 px-5 text-sm font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             activePortalTab === 'billing'
@@ -2233,6 +2240,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
           {recruiters.map((r) => (
             <button
               key={r.id}
+              type="button"
               onClick={() => setCurrentRecruiterId(r.id)}
               className={`px-3 py-1 rounded-lg border text-xs font-bold transition-colors cursor-pointer ${
                 r.id === currentRecruiter.id
@@ -2342,6 +2350,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
 
                 {selectedJobId !== 'all' && (
                   <button
+                    type="button"
                     onClick={() => setSelectedJobId('all')}
                     className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-800 text-white cursor-pointer"
                   >
@@ -2350,6 +2359,7 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
                 )}
 
                 <button
+                  type="button"
                   onClick={handleOpenPostVacancy}
                   data-testid="classifieds-post-vacancy-btn"
                   className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-xs transition-all cursor-pointer"

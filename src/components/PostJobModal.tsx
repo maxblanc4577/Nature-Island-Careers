@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
+import { isValidEmail } from '../utils/paymentValidation';
 import { Parish, JobSector, EmploymentType, WorkModel, JobListing } from '../types';
 import {
   X,
@@ -49,6 +50,15 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
   const [isNepApproved, setIsNepApproved] = useState(false);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -74,12 +84,27 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
 
     if (!title.trim() || !companyName.trim() || !description.trim()) {
       setErrorMessage('Please fill in the job title, company name, and job description.');
       return;
     }
+    if (isGlobalRemote && employerCountry === 'Other' && !customCountry.trim()) {
+      setErrorMessage('Please specify the employer country for a global remote listing.');
+      return;
+    }
+    if (!Number.isFinite(rawSalaryMin) || rawSalaryMin <= 0 || !Number.isFinite(rawSalaryMax) || rawSalaryMax < rawSalaryMin) {
+      setErrorMessage('Maximum salary must be greater than or equal to minimum salary (and greater than 0).');
+      return;
+    }
+    if (!isValidEmail(contactEmail)) {
+      setErrorMessage('Please provide a valid application receiving email address.');
+      return;
+    }
     setErrorMessage('');
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     const requirements = requirementsText
       .split('\n')
@@ -102,22 +127,22 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
         : 'Dominica';
 
     const newJob: Omit<JobListing, 'id' | 'postedAt' | 'viewsCount' | 'applicantsCount'> = {
-      title,
-      company: companyName,
+      title: title.trim(),
+      company: companyName.trim(),
       parish: isGlobalRemote ? 'Island-wide / Remote' : parish,
-      locality: locality || (isGlobalRemote ? `Global Remote (${effectiveCountry}) • Dominica WIN Certified` : `${parish}, Dominica`),
+      locality: locality.trim() || (isGlobalRemote ? `Global Remote (${effectiveCountry}) • Dominica WIN Certified` : `${parish}, Dominica`),
       sector,
       employmentType,
       workModel: isGlobalRemote ? 'Remote' : workModel,
       minSalary: calculatedMinXCD,
       maxSalary: calculatedMaxXCD,
       salaryPeriod,
-      description,
+      description: description.trim(),
       responsibilities: responsibilities.length > 0 ? responsibilities : ['Execute remote responsibilities in alignment with team goals'],
       requirements: requirements.length > 0 ? requirements : ['Reliable high-speed broadband connection and proven remote autonomy'],
       benefits: benefits.length > 0 ? benefits : ['Competitive international compensation', 'Flexible remote schedule'],
       screeningQuestions: [],
-      contactEmail: contactEmail || 'info@natureislecareers.com',
+      contactEmail: contactEmail.trim(),
       applicationDeadline: '2026-11-30',
       isNepApproved: isGlobalRemote ? false : isNepApproved,
       featured: isFeatured,
@@ -131,8 +156,12 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
     createJob(newJob);
     setSubmittedSuccess(true);
 
-    setTimeout(() => {
+    timerRef.current = window.setTimeout(() => {
       setSubmittedSuccess(false);
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
+      setTitle('');
+      setDescription('');
       onClose();
     }, 1800);
   };
@@ -159,7 +188,9 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close Post Job Modal"
             className="text-emerald-200 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -597,9 +628,10 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose }) =
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer"
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer"
               >
-                Publish Job Listing
+                {isSubmitting ? 'Publishing...' : 'Publish Job Listing'}
               </button>
             </div>
           </form>

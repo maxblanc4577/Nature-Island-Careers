@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ResumeData } from '../types';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import {
@@ -27,6 +27,14 @@ export const LinkedInQuickApplyExportModal: React.FC<LinkedInQuickApplyExportMod
 }) => {
   const modalRef = useModalKeyboard({ isOpen, onClose });
   const [copied, setCopied] = useState(false);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -105,13 +113,33 @@ export const LinkedInQuickApplyExportModal: React.FC<LinkedInQuickApplyExportMod
   const jsonString = JSON.stringify(linkedInPayload, null, 2);
 
   const handleCopy = async () => {
+    setClipboardError(null);
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(jsonString);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2400);
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(jsonString);
+        ok = true;
+      } else if (typeof document !== 'undefined') {
+        const ta = document.createElement('textarea');
+        ta.value = jsonString;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
     } catch {
+      ok = false;
+    }
+
+    if (ok) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2400);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2400);
+    } else {
+      setCopied(false);
+      setClipboardError('Clipboard access blocked. Please select the JSON text and press Ctrl+C / Cmd+C.');
     }
   };
 
@@ -127,7 +155,7 @@ export const LinkedInQuickApplyExportModal: React.FC<LinkedInQuickApplyExportMod
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -162,6 +190,7 @@ export const LinkedInQuickApplyExportModal: React.FC<LinkedInQuickApplyExportMod
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 text-blue-200 hover:text-white rounded-lg transition-colors cursor-pointer"
             aria-label="Close dialog"
@@ -197,6 +226,11 @@ export const LinkedInQuickApplyExportModal: React.FC<LinkedInQuickApplyExportMod
         </div>
 
         {/* Footer Actions */}
+        {clipboardError && (
+          <div role="alert" className="mx-4 mb-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+            {clipboardError}
+          </div>
+        )}
         <div className="p-4 bg-stone-50 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
           <span className="text-stone-500">
             Exported from active version: <strong className="text-stone-800">{versionTitle}</strong>

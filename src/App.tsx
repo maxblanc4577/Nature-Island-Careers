@@ -13,7 +13,7 @@ import { ApplyModal } from './components/ApplyModal';
 import { SubscribeAlertModal } from './components/SubscribeAlertModal';
 import { FeedbackModal } from './components/FeedbackModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
-import { AuthModal } from './components/AuthModal';
+import { AuthModal, AuthModalMode } from './components/AuthModal';
 import { AdminLoginModal, StandaloneAdminLoginPage } from './components/AdminLoginModal';
 import { SubscriptionCheckoutModal } from './components/SubscriptionCheckoutModal';
 import { RemoteAssignmentModal } from './components/RemoteAssignmentModal';
@@ -127,14 +127,10 @@ function DominicaJobBoardContent() {
   const [jobToApply, setJobToApply] = useState<JobListing | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authInitialMode, setAuthInitialMode] = useState<
-    'jobseeker_register' | 'client_register' | 'login'
-  >('login');
+  const [authInitialMode, setAuthInitialMode] = useState<AuthModalMode>('login');
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
-  const handleOpenAuthModal = (
-    mode: 'jobseeker_register' | 'client_register' | 'login' = 'login'
-  ) => {
+  const handleOpenAuthModal = (mode: AuthModalMode = 'login') => {
     setAuthInitialMode(mode);
     setIsAuthOpen(true);
   };
@@ -198,19 +194,24 @@ function DominicaJobBoardContent() {
 
   // Dynamic Site Settings state
   const [siteSettings, setSiteSettings] = useState(() => {
-    const saved = localStorage.getItem('natureisland_site_settings');
-    return saved
-      ? JSON.parse(saved)
-      : {
-          siteName: 'Nature Island Careers',
-          contactEmail: 'info@natureislecareers.com',
-          announcement: 'Dominica Work In Nature (WIN) 2026 Extended Visas Active · Certified 18-Month Remote Stay',
-          currencyPeg: 2.70,
-          showEmergencyBanner: false,
-          backgroundImageUrl: '/nature_island_photo.svg',
-          fullPageBackground: false,
-          competitiveSalaryThreshold: 8000,
-        };
+    const defaults = {
+      siteName: 'Nature Island Careers',
+      contactEmail: 'info@natureislecareers.com',
+      announcement: 'Dominica Work In Nature (WIN) 2026 Extended Visas Active · Certified 18-Month Remote Stay',
+      currencyPeg: 2.70,
+      showEmergencyBanner: false,
+      backgroundImageUrl: '/nature_island_photo.svg',
+      fullPageBackground: false,
+      competitiveSalaryThreshold: 8000,
+    };
+    try {
+      const saved = localStorage.getItem('natureisland_site_settings');
+      if (!saved) return defaults;
+      const parsed = JSON.parse(saved);
+      return parsed && typeof parsed === 'object' ? { ...defaults, ...parsed } : defaults;
+    } catch {
+      return defaults;
+    }
   });
 
   const handleUpdateSiteSettings = (newSettings: typeof siteSettings) => {
@@ -424,7 +425,29 @@ function DominicaJobBoardContent() {
 
       {/* Main Content Areas */}
       <main className="flex-1">
-        {viewMode !== 'desktop' ? (
+        {currentPath && currentPath !== '/' ? (
+          <div
+            data-testid="not-found-view"
+            className="max-w-2xl mx-auto px-4 py-20 text-center space-y-5"
+          >
+            <div className="inline-flex items-center px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold">
+              404 · Page Not Found
+            </div>
+            <h1 className="text-3xl font-black text-slate-900">
+              We couldn&apos;t find that page on Nature Island Careers
+            </h1>
+            <p className="text-sm text-slate-600">
+              The route <code className="px-1.5 py-0.5 bg-slate-200 rounded text-xs">{currentPath}</code> does not exist. Return to the main Dominica classifieds board to browse active vacancies.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigateToPath('/')}
+              className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
+            >
+              Return to Job Board
+            </button>
+          </div>
+        ) : viewMode !== 'desktop' ? (
           <MobilePlatformViews
             viewMode={viewMode}
             onChangeViewMode={setViewMode}
@@ -579,6 +602,7 @@ function DominicaJobBoardContent() {
                       <div className="flex items-center space-x-1.5">
                         <span className="text-slate-600">Sort:</span>
                         <select
+                          aria-label="Sort job listings"
                           value={sortBy}
                           onChange={(e) => setSortBy(e.target.value as any)}
                           className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
@@ -602,6 +626,7 @@ function DominicaJobBoardContent() {
                         Try clearing or relaxing your filters, or broaden your parish search across Dominica.
                       </p>
                       <button
+                        type="button"
                         onClick={handleResetFilters}
                         className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
                       >
@@ -647,6 +672,7 @@ function DominicaJobBoardContent() {
                 </p>
                 <div className="pt-2 flex justify-center gap-3">
                   <button
+                    type="button"
                     onClick={() => setIsRemoteModalOpen(true)}
                     className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-md transition-all cursor-pointer"
                   >

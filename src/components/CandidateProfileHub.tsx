@@ -6,6 +6,7 @@ import { JobAlertAutomationManager } from './JobAlertAutomationManager';
 import { CandidateCoverLetterGenerator } from './CandidateCoverLetterGenerator';
 import { CandidateLinkedInExportTool } from './CandidateLinkedInExportTool';
 import { CandidatePrivacySettingsPanel } from './CandidatePrivacySettingsPanel';
+import { isValidEmail, isValidPhone } from '../utils/paymentValidation';
 import {
   Parish,
   JobSector,
@@ -54,6 +55,7 @@ import {
   LogOut,
   LogIn,
   UserPlus,
+  AlertCircle,
 } from 'lucide-react';
 
 export type CandidateHubSubTab =
@@ -1427,7 +1429,16 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
 
   const [openResumeModalOnSwitch, setOpenResumeModalOnSwitch] = useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [pdfDownloadError, setPdfDownloadError] = useState<string | null>(null);
   const [photoUploadError, setPhotoUploadError] = useState<string | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, []);
   const [activityFilter, setActivityFilter] = useState<
     'all' | 'profile_updated' | 'application_sent' | 'interview_scheduled' | 'badge_unlocked'
   >('all');
@@ -1515,6 +1526,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   );
 
   const handleOverviewDownloadPdf = async () => {
+    setPdfDownloadError(null);
     setIsDownloadingOverviewPdf(true);
     try {
       await generateResumePdf({
@@ -1525,7 +1537,10 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
         layoutTemplate: 'modern',
       });
       setSaveSuccessNotice(true);
-      setTimeout(() => setSaveSuccessNotice(false), 2500);
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = window.setTimeout(() => setSaveSuccessNotice(false), 2500);
+    } catch {
+      setPdfDownloadError('Unable to generate PDF summary right now. Please try again.');
     } finally {
       setIsDownloadingOverviewPdf(false);
     }
@@ -2370,11 +2385,36 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   // Handle Save Personal Details
   const handleSaveDetails = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanedName = name.trim();
+    const cleanedEmail = email.trim();
+    const cleanedPhone = phone.trim();
     const parsedMinSalary = Number(minSalaryRequirement);
+
+    if (!cleanedName) {
+      setDetailsError('Please enter your full name.');
+      return;
+    }
+    if (!isValidEmail(cleanedEmail)) {
+      setDetailsError('Please enter a valid email address (e.g. name@domain.com).');
+      return;
+    }
+    if (cleanedPhone && !isValidPhone(cleanedPhone)) {
+      setDetailsError('Please enter a valid phone or WhatsApp number (at least 7 digits).');
+      return;
+    }
+    if (
+      String(minSalaryRequirement || '').trim() !== '' &&
+      (!Number.isFinite(parsedMinSalary) || parsedMinSalary < 0)
+    ) {
+      setDetailsError('Minimum salary requirement must be 0 or higher in EC$.');
+      return;
+    }
+    setDetailsError(null);
+
     updateCurrentUser({
-      name: name.trim() || 'Dominica Job Seeker',
-      email: email.trim() || 'maxblanc4577@gmail.com',
-      phone: phone.trim(),
+      name: cleanedName,
+      email: cleanedEmail,
+      phone: cleanedPhone,
       parish,
       headline: headline.trim(),
       residencyStatus,
@@ -2391,7 +2431,7 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
       autoMatchEmailsEnabled,
     });
     recordCandidateActivity({
-      title: `Profile updated — Saved personal details for ${name.trim() || 'Candidate'}`,
+      title: `Profile updated — Saved personal details for ${cleanedName}`,
       subtitle: `${parish} • ${skills.length} skills • ${experience.length} experience role(s)`,
       icon: 'profile',
       category: 'Profile Updated',
@@ -2399,7 +2439,8 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
       targetTab: 'details',
     });
     setSaveSuccessNotice(true);
-    setTimeout(() => setSaveSuccessNotice(false), 3000);
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => setSaveSuccessNotice(false), 3000);
   };
 
   // Generate iCal ICS download for interview
@@ -3101,6 +3142,23 @@ END:VCALENDAR`;
             type="button"
             onClick={() => setSaveSuccessNotice(false)}
             className="text-emerald-700 hover:text-emerald-900 font-bold ml-2 text-base leading-none cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {pdfDownloadError && (
+        <div role="alert" className="p-3.5 bg-rose-50 border border-rose-300 text-rose-900 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-between shadow-xs">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            {pdfDownloadError}
+          </span>
+          <button
+            type="button"
+            aria-label="Dismiss PDF error"
+            onClick={() => setPdfDownloadError(null)}
+            className="text-rose-700 hover:text-rose-900 font-bold ml-2 text-base leading-none cursor-pointer"
           >
             ×
           </button>
@@ -4118,6 +4176,13 @@ END:VCALENDAR`;
                 Keep your candidate record up to date. Fields below are automatically populated when you upload a resume above.
               </p>
             </div>
+
+            {detailsError && (
+              <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{detailsError}</span>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

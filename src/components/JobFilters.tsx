@@ -119,6 +119,7 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
           </p>
         </div>
         <button
+          type="button"
           onClick={handleFullReset}
           className="flex items-center gap-1 text-xs text-stone-500 hover:text-emerald-900 transition-colors cursor-pointer"
           title="Reset all filters"
@@ -180,10 +181,11 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
 
       {/* Parish Selector */}
       <div>
-        <label className="block text-xs font-semibold text-stone-900 mb-2">
+        <label htmlFor="filter-parish-select" className="block text-xs font-semibold text-stone-900 mb-2">
           Parish of Dominica
         </label>
         <select
+          id="filter-parish-select"
           value={selectedParish}
           onChange={(e) => setSelectedParish(e.target.value as Parish | 'All')}
           className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-lg text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer"
@@ -198,10 +200,11 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
 
       {/* Industry Sector */}
       <div>
-        <label className="block text-xs font-semibold text-stone-900 mb-2">
+        <label htmlFor="filter-sector-select" className="block text-xs font-semibold text-stone-900 mb-2">
           Industry Sector
         </label>
         <select
+          id="filter-sector-select"
           value={selectedSector}
           onChange={(e) => setSelectedSector(e.target.value as JobSector | 'All')}
           className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-lg text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer"
@@ -216,13 +219,14 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
 
       {/* Employment Type */}
       <div>
-        <label className="block text-xs font-semibold text-stone-900 mb-2">
+        <span className="block text-xs font-semibold text-stone-900 mb-2">
           Employment Type
-        </label>
+        </span>
         <div className="flex flex-wrap gap-1.5">
           {TYPES.map((type) => (
             <button
               key={type}
+              type="button"
               onClick={() => setSelectedType(type)}
               className={`px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer ${
                 selectedType === type
@@ -238,13 +242,14 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
 
       {/* Work Model (On-site, Hybrid, Remote) */}
       <div>
-        <label className="block text-xs font-semibold text-stone-900 mb-2">
+        <span className="block text-xs font-semibold text-stone-900 mb-2">
           Work Arrangement
-        </label>
+        </span>
         <div className="grid grid-cols-2 gap-1.5">
           {WORK_MODELS.map((model) => (
             <button
               key={model}
+              type="button"
               onClick={() => setSelectedWorkModel(model)}
               className={`px-2 py-1.5 text-xs rounded-lg transition-colors text-center cursor-pointer ${
                 selectedWorkModel === model
@@ -261,18 +266,20 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
       {/* Minimum Salary Slider in XCD */}
       <div className="pt-2 border-t border-stone-100">
         <div className="flex items-center justify-between text-xs mb-1.5">
-          <span className="font-semibold text-stone-900">Minimum Salary</span>
+          <label htmlFor="filter-min-salary-range" className="font-semibold text-stone-900">Minimum Salary</label>
           <span className="font-mono tabular-nums text-emerald-800 font-semibold">
             {minSalaryXCD === 0 ? 'Any' : `EC$${minSalaryXCD.toLocaleString()}/mo`}
           </span>
         </div>
         <input
+          id="filter-min-salary-range"
           type="range"
           min={0}
           max={8000}
           step={500}
           value={minSalaryXCD}
           onChange={(e) => setMinSalaryXCD(Number(e.target.value))}
+          aria-label="Minimum monthly salary in XCD"
           className="w-full accent-emerald-800 cursor-pointer"
         />
         <div className="flex justify-between text-[10px] text-stone-400 mt-1 font-mono">

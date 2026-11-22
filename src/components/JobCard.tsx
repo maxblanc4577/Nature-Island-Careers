@@ -609,8 +609,16 @@ export const JobCard: React.FC<JobCardProps> = ({
 
         {/* Primary Job Title with High Visual Hierarchy */}
         <h3
+          role="button"
+          tabIndex={0}
           onClick={() => onSelect(job)}
-          className="text-xl sm:text-2xl font-black text-slate-950 group-hover:text-emerald-700 transition-colors duration-200 cursor-pointer leading-tight tracking-tight font-display mb-3 flex flex-wrap items-baseline gap-2.5"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelect(job);
+            }
+          }}
+          className="text-xl sm:text-2xl font-black text-slate-950 group-hover:text-emerald-700 transition-colors duration-200 cursor-pointer leading-tight tracking-tight font-display mb-3 flex flex-wrap items-baseline gap-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-600 rounded"
         >
           <span>{job.title}</span>
           {job.featured && (
@@ -711,6 +719,7 @@ export const JobCard: React.FC<JobCardProps> = ({
           <span>Deadline: <span className="text-stone-700 font-medium font-mono tabular-nums">{job.applicationDeadline}</span></span>
           {onOpenAiGuidance && (
             <button
+              type="button"
               onClick={() => onOpenAiGuidance(job.sector)}
               className="hidden sm:inline-flex items-center gap-1 text-amber-800 hover:text-amber-950 font-medium hover:underline cursor-pointer"
             >

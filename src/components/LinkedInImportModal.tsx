@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ResumeData } from '../types';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { LINKEDIN_PROFILE_PRESETS } from '../data/resumeDefaults';
@@ -30,6 +30,14 @@ export const LinkedInImportModal: React.FC<LinkedInImportModalProps> = ({
   const [rawText, setRawText] = useState('');
   const [parsedPreview, setParsedPreview] = useState<Partial<ResumeData> | null>(null);
   const [successNotice, setSuccessNotice] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -164,13 +172,18 @@ export const LinkedInImportModal: React.FC<LinkedInImportModalProps> = ({
   };
 
   const handleSelectPreset = (presetText: string) => {
+    setParseError(null);
     setRawText(presetText);
     const result = parseLinkedInData(presetText);
     setParsedPreview(result);
   };
 
   const handleManualParse = () => {
-    if (!rawText.trim()) return;
+    if (!rawText.trim()) {
+      setParseError('Please paste profile text or JSON before parsing.');
+      return;
+    }
+    setParseError(null);
     const result = parseLinkedInData(rawText);
     setParsedPreview(result);
   };
@@ -179,7 +192,8 @@ export const LinkedInImportModal: React.FC<LinkedInImportModalProps> = ({
     if (!parsedPreview) return;
     onApplyParsedData(parsedPreview);
     setSuccessNotice(true);
-    setTimeout(() => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
       setSuccessNotice(false);
       onClose();
     }, 1200);
@@ -211,6 +225,7 @@ export const LinkedInImportModal: React.FC<LinkedInImportModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-white/80 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
             aria-label="Close LinkedIn import"
@@ -224,6 +239,7 @@ export const LinkedInImportModal: React.FC<LinkedInImportModalProps> = ({
           {/* Tab Selector */}
           <div className="flex border-b border-slate-200">
             <button
+              type="button"
               onClick={() => setActiveTab('presets')}
               className={`pb-3 px-4 text-xs font-bold transition-colors border-b-2 cursor-pointer ${
                 activeTab === 'presets'
@@ -234,6 +250,7 @@ export const LinkedInImportModal: React.FC<LinkedInImportModalProps> = ({
               1-Click Dominica Profile Presets
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('paste')}
               className={`pb-3 px-4 text-xs font-bold transition-colors border-b-2 cursor-pointer ${
                 activeTab === 'paste'
@@ -296,6 +313,12 @@ export const LinkedInImportModal: React.FC<LinkedInImportModalProps> = ({
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Parse Profile Content</span>
               </button>
+              {parseError && (
+                <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{parseError}</span>
+                </div>
+              )}
             </div>
           )}
 

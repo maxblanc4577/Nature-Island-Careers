@@ -1,19 +1,15 @@
 import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
+import { convertXcdToUsd } from '../utils/paymentValidation';
 import { EmployerInvoice } from '../types';
 import {
   CreditCard,
   FileText,
   CheckCircle2,
-  Calendar,
-  DollarSign,
   Download,
-  ExternalLink,
   ShieldCheck,
   RefreshCw,
-  Clock,
-  Sparkles,
-  ArrowUpRight,
   Receipt,
   X,
 } from 'lucide-react';
@@ -31,30 +27,63 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
   } = useJobContext();
 
   const [selectedInvoice, setSelectedInvoice] = useState<EmployerInvoice | null>(null);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'Paid' | 'Processing'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | EmployerInvoice['status']>('all');
 
-  // Filter invoices for current employer
+  const receiptModalRef = useModalKeyboard({
+    isOpen: Boolean(selectedInvoice),
+    onClose: () => setSelectedInvoice(null),
+  });
+
   const employerInvoices = invoices.filter(
     (inv) =>
-      inv.recruiterId === currentRecruiter?.id ||
-      inv.companyName.toLowerCase() === currentRecruiter?.companyName.toLowerCase()
+      (currentRecruiter?.id && inv.recruiterId === currentRecruiter.id) ||
+      (currentRecruiter?.companyName &&
+        inv.companyName.toLowerCase() === currentRecruiter.companyName.toLowerCase())
   );
 
   const displayedInvoices = employerInvoices.filter((inv) =>
     filterStatus === 'all' ? true : inv.status === filterStatus
   );
 
+  const currencyPeg = stripeSettings?.currencyPeg || 2.7;
   const totalSpentXCD = employerInvoices
     .filter((inv) => inv.status === 'Paid')
     .reduce((sum, inv) => sum + inv.amountXCD, 0);
 
-  const totalSpentUSD = Math.round(totalSpentXCD / 2.7);
-
+  const totalSpentUSD = convertXcdToUsd(totalSpentXCD, currencyPeg);
   const isAutoRenewActive = stripeSettings.autoRenewEnabled;
+
+  // Compute next billing date dynamically (+30 days from most recent monthly invoice or today)
+  const latestMonthlyInvoice = employerInvoices.find(
+    (inv) => inv.billingInterval === 'monthly' && inv.status === 'Paid'
+  );
+  const baseDate = latestMonthlyInvoice ? new Date(latestMonthlyInvoice.date) : new Date();
+  const nextBillingDate = new Date(
+    Number.isNaN(baseDate.getTime()) ? Date.now() + 30 * 86400000 : baseDate.getTime() + 30 * 86400000
+  )
+    .toISOString()
+    .split('T')[0];
+
+  const getStatusBadgeClass = (status: EmployerInvoice['status']) => {
+    switch (status) {
+      case 'Paid':
+        return 'bg-emerald-100 text-emerald-800';
+      case 'Processing':
+      case 'Renewal Pending':
+        return 'bg-amber-100 text-amber-800';
+      case 'Refunded':
+        return 'bg-sky-100 text-sky-800';
+      case 'Failed':
+      case 'Canceled':
+        return 'bg-rose-100 text-rose-800';
+      default:
+        return 'bg-slate-100 text-slate-800';
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner: Recurring Billing Automation & Status */}
+      {/* Top Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-emerald-950 text-white p-6 rounded-2xl shadow-lg border border-emerald-900/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
@@ -76,6 +105,7 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <button
+              type="button"
               onClick={onOpenStripe}
               className="bg-[#635BFF] hover:bg-[#5249e6] text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
             >
@@ -96,8 +126,10 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
               </span>
             </div>
             <button
-              onClick={() => toggleRecruiterAutoRenew(currentRecruiter.id, !isAutoRenewActive)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              type="button"
+              disabled={!currentRecruiter}
+              onClick={() => currentRecruiter && toggleRecruiterAutoRenew(currentRecruiter.id, !isAutoRenewActive)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer disabled:opacity-50 ${
                 isAutoRenewActive
                   ? 'bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40'
                   : 'bg-amber-600/40 hover:bg-amber-600/60 text-amber-200 border border-amber-500/40'
@@ -114,7 +146,7 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
                 EC${totalSpentXCD.toLocaleString()}
               </span>
               <span className="text-xs text-emerald-200 font-mono">
-                (~${totalSpentUSD.toLocaleString()} USD)
+                (~${totalSpentUSD.toFixed(2)} USD)
               </span>
             </div>
           </div>
@@ -123,11 +155,11 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
             <div>
               <span className="text-emerald-300 font-bold block text-[11px]">Next Scheduled Billing</span>
               <span className="text-xs font-mono font-bold text-white block mt-0.5">
-                2026-10-20 (Stripe Auto)
+                {isAutoRenewActive ? `${nextBillingDate} (Stripe Auto)` : 'Manual Renewal'}
               </span>
             </div>
             <span className="bg-emerald-500/20 text-emerald-300 font-bold px-2 py-1 rounded text-[10px]">
-              Sync Active
+              {isAutoRenewActive ? 'Sync Active' : 'Paused'}
             </span>
           </div>
         </div>
@@ -146,27 +178,21 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setFilterStatus('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                filterStatus === 'all'
-                  ? 'bg-emerald-800 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All Invoices ({employerInvoices.length})
-            </button>
-            <button
-              onClick={() => setFilterStatus('Paid')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                filterStatus === 'Paid'
-                  ? 'bg-emerald-800 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Paid
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {(['all', 'Paid', 'Processing', 'Failed', 'Refunded'] as const).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setFilterStatus(status)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  filterStatus === status
+                    ? 'bg-emerald-800 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {status === 'all' ? `All Invoices (${employerInvoices.length})` : status}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -176,11 +202,12 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
             <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
               <FileText className="w-6 h-6" />
             </div>
-            <p className="text-sm font-semibold text-slate-700">No invoices recorded yet</p>
+            <p className="text-sm font-semibold text-slate-700">No invoices match the selected filter</p>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
               Invoices will appear here once you post a job vacancy or subscribe to a monthly recruitment plan.
             </p>
             <button
+              type="button"
               onClick={onOpenStripe}
               className="mt-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs"
             >
@@ -205,15 +232,9 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
               <tbody className="divide-y divide-slate-100 font-medium">
                 {displayedInvoices.map((inv) => (
                   <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                      {inv.invoiceNumber}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-600 font-mono">
-                      {inv.date}
-                    </td>
-                    <td className="py-3.5 px-4 font-semibold text-slate-900">
-                      {inv.plan}
-                    </td>
+                    <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{inv.invoiceNumber}</td>
+                    <td className="py-3.5 px-4 text-slate-600 font-mono">{inv.date}</td>
+                    <td className="py-3.5 px-4 font-semibold text-slate-900">{inv.plan}</td>
                     <td className="py-3.5 px-4">
                       <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold">
                         <RefreshCw className="w-3 h-3 text-emerald-600" />
@@ -221,24 +242,21 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
                       </span>
                     </td>
                     <td className="py-3.5 px-4 font-mono tabular-nums">
-                      <div className="font-extrabold text-emerald-900">
-                        EC${inv.amountXCD.toLocaleString()}
-                      </div>
-                      <div className="text-[10px] text-slate-400">
-                        (~${inv.amountUSD} USD)
-                      </div>
+                      <div className="font-extrabold text-emerald-900">EC${inv.amountXCD.toLocaleString()}</div>
+                      <div className="text-[10px] text-slate-400">(~${inv.amountUSD.toFixed(2)} USD)</div>
                     </td>
                     <td className="py-3.5 px-4 text-slate-600">
                       <span className="font-mono text-xs">{inv.paymentMethod}</span>
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className="bg-emerald-100 text-emerald-800 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span className={`${getStatusBadgeClass(inv.status)} text-[11px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1`}>
+                        {inv.status === 'Paid' && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
                         {inv.status}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <button
+                        type="button"
                         onClick={() => setSelectedInvoice(inv)}
                         className="text-emerald-800 hover:text-emerald-950 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
                       >
@@ -257,7 +275,14 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
       {/* Tax Receipt Modal */}
       {selectedInvoice && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div
+            ref={receiptModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Official Dominica Employer Receipt ${selectedInvoice.invoiceNumber}`}
+            tabIndex={-1}
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+          >
             {/* Modal Top */}
             <div className="p-4 bg-emerald-950 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -265,7 +290,9 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
                 <span className="font-bold text-sm">Official Dominica Employer Receipt</span>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedInvoice(null)}
+                aria-label="Close receipt modal"
                 className="text-emerald-300 hover:text-white p-1 rounded cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -300,7 +327,7 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
                 </div>
                 <div className="flex justify-between items-center text-[11px] text-slate-500">
                   <span>Billing Cadence: {selectedInvoice.billingInterval === 'monthly' ? 'Monthly Recurring Subscription' : 'One-Time Listing'}</span>
-                  <span className="font-mono">USD Approx: ${selectedInvoice.amountUSD}</span>
+                  <span className="font-mono">USD Approx: ${selectedInvoice.amountUSD.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center text-[11px] text-slate-500">
                   <span>Payment Gateway: Stripe Verified</span>
@@ -309,13 +336,13 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
               </div>
 
               <div className="flex justify-between items-center text-sm font-black text-emerald-950 pt-1">
-                <span>Total Paid:</span>
+                <span>Total {selectedInvoice.status}:</span>
                 <span className="font-mono text-base">EC${selectedInvoice.amountXCD.toLocaleString()} XCD</span>
               </div>
 
               <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-xl text-[11px] flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Payment completed successfully via Stripe. Eligible for Dominica corporate tax deduction.</span>
+                <span>Payment status: {selectedInvoice.status}. Eligible for Dominica corporate tax deduction.</span>
               </div>
 
               <div className="pt-2 flex justify-end gap-2">

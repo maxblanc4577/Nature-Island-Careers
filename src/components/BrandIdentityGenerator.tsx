@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState, useId, useEffect, useRef } from 'react';
 import {
   BrandLogo,
   BrandLogoMark,
@@ -181,7 +181,17 @@ export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
   const [showSafeZones, setShowSafeZones] = useState(true);
   const [copiedHex, setCopiedHex] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
   const [previewTheme, setPreviewTheme] = useState<'dark' | 'light'>('dark');
+  const copyHexTimerRef = useRef<number | null>(null);
+  const copyLinkTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyHexTimerRef.current) window.clearTimeout(copyHexTimerRef.current);
+      if (copyLinkTimerRef.current) window.clearTimeout(copyLinkTimerRef.current);
+    };
+  }, []);
 
   // Load selected fonts dynamically via Google Fonts loader
   React.useEffect(() => {
@@ -189,24 +199,45 @@ export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
     loadGoogleFont(selectedFontPairing.bodyFont);
   }, [selectedFontPairing]);
 
-  const handleCopyHex = (hex: string) => {
-    try {
-      navigator.clipboard.writeText(hex);
-      setCopiedHex(hex);
-      setTimeout(() => setCopiedHex(null), 2500);
-    } catch {
-      // fallback
+  const copyTextSafe = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (!ok) throw new Error('Clipboard copy unsupported');
     }
   };
 
-  const handleCopyShareLink = () => {
+  const handleCopyHex = async (hex: string) => {
+    setClipboardError(null);
+    try {
+      await copyTextSafe(hex);
+      setCopiedHex(hex);
+      if (copyHexTimerRef.current) window.clearTimeout(copyHexTimerRef.current);
+      copyHexTimerRef.current = window.setTimeout(() => setCopiedHex(null), 2500);
+    } catch {
+      setClipboardError(`Unable to copy color ${hex} automatically.`);
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    setClipboardError(null);
     try {
       const url = typeof window !== 'undefined' ? window.location.href : 'https://natureislandcareers.com';
-      navigator.clipboard.writeText(url);
+      await copyTextSafe(url);
       setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
+      if (copyLinkTimerRef.current) window.clearTimeout(copyLinkTimerRef.current);
+      copyLinkTimerRef.current = window.setTimeout(() => setCopiedLink(false), 2500);
     } catch {
-      // fallback
+      setClipboardError('Unable to copy share link automatically.');
     }
   };
 
@@ -902,14 +933,14 @@ export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
                     🎓 NEP Apprenticeships & CARICOM CSME Certified<br />
                     📍 Waitukubuli / Roseau, Dominica
                   </p>
-                  <a
-                    href="#link"
-                    onClick={(e) => e.preventDefault()}
-                    className="text-emerald-800 font-bold hover:underline flex items-center gap-1 text-xs"
+                  <button
+                    type="button"
+                    onClick={handleCopyShareLink}
+                    className="text-emerald-800 font-bold hover:underline flex items-center gap-1 text-xs cursor-pointer"
                   >
                     <LinkIcon className="w-3 h-3" />
-                    <span>linkin.bio/natureislandcareers</span>
-                  </a>
+                    <span>{copiedLink ? 'Copied linkin.bio/natureislandcareers' : 'linkin.bio/natureislandcareers'}</span>
+                  </button>
                 </div>
 
                 {/* Action Buttons */}
@@ -1086,6 +1117,12 @@ export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
               </div>
             </div>
 
+            {clipboardError && (
+              <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-medium">
+                {clipboardError}
+              </div>
+            )}
+
             {/* Swatches Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {OFFICIAL_BRAND_PALETTE.map((swatch) => {
@@ -1099,9 +1136,18 @@ export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
                 return (
                   <div
                     key={swatch.hex}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Copy hex code ${swatch.hex} for ${swatch.name}`}
                     data-testid={`color-swatch-${swatch.hex.replace('#', '')}`}
                     onClick={() => handleCopyHex(swatch.hex)}
-                    className="group bg-stone-50 hover:bg-stone-100/80 rounded-xl border border-stone-200/90 overflow-hidden transition-all duration-200 cursor-pointer shadow-xs hover:border-emerald-500 flex flex-col justify-between"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleCopyHex(swatch.hex);
+                      }
+                    }}
+                    className="group bg-stone-50 hover:bg-stone-100/80 rounded-xl border border-stone-200/90 overflow-hidden transition-all duration-200 cursor-pointer shadow-xs hover:border-emerald-500 flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-emerald-600"
                   >
                     <div>
                       {/* Color Preview Block */}

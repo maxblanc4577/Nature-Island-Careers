@@ -18,8 +18,15 @@ const port = 3000;
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
-// Body parsing with safe size limit
-app.use(express.json({ limit: '5mb' }));
+// Body parsing with safe size limit & rawBody capture for Stripe webhook signature verification
+app.use(
+  express.json({
+    limit: '5mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // 1. CORS Allowlist & Security Headers Middleware
 const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
@@ -52,7 +59,7 @@ app.use((req, res, next) => {
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-token, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-token, X-Requested-With, Idempotency-Key');
 
   // Security Headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -2729,6 +2736,32 @@ interface StripeWebhookLog {
 }
 
 const stripeWebhookLogs: StripeWebhookLog[] = [];
+const processedWebhookEventIds = new Set<string>();
+
+interface ServerPaymentOrder {
+  id: string;
+  invoiceId: string;
+  planName: string;
+  employerName: string;
+  customerEmail?: string;
+  amountXCD: number;
+  amountUSD: number;
+  currencyPeg: number;
+  billingInterval: 'monthly' | 'one_time';
+  status: 'requires_payment_method' | 'processing' | 'Paid' | 'Failed' | 'Canceled' | 'Refunded';
+  failureReason?: string;
+  idempotencyKey?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const serverPaymentOrders = new Map<string, ServerPaymentOrder>();
+const idempotencyResponses = new Map<string, { status: number; body: any; createdAt: number }>();
+
+const computePeggedUSD = (amountXCD: number, peg: number): number => {
+  const safePeg = Number.isFinite(peg) && peg > 0 ? peg : 2.7;
+  return Math.round((amountXCD / safePeg) * 100) / 100;
+};
 
 // Return public non-sensitive Stripe configuration to client
 app.get('/api/stripe/config', (_req, res) => {
@@ -2820,39 +2853,92 @@ app.get('/api/stripe/cli-status', (_req, res) => {
 });
 
 // Stripe webhook receiver (supports Stripe CLI --forward-to localhost:3000/api/stripe/webhook)
-app.post('/api/stripe/webhook', (req, res) => {
-  const event = req.body || {};
-  const eventType = event.type || 'payment_intent.succeeded';
-  const eventId = event.id || `evt_stripe_${Date.now()}`;
+app.post('/api/stripe/webhook', (req: any, res) => {
+  const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+  const signatureHeader = req.headers['stripe-signature'];
+  const stripe = getStripe();
+
+  let event: any = req.body || {};
+
+  if (webhookSecret && stripe) {
+    if (!signatureHeader || typeof signatureHeader !== 'string') {
+      return res.status(400).json({ error: 'Missing Stripe-Signature header for webhook verification.' });
+    }
+    try {
+      const payload = req.rawBody || Buffer.from(JSON.stringify(req.body || {}));
+      event = stripe.webhooks.constructEvent(payload, signatureHeader, webhookSecret);
+    } catch (err: any) {
+      backendAuditLogs.push({
+        id: `log_wh_sig_err_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        service: 'Stripe Webhook',
+        message: `Rejected webhook with invalid signature: ${err?.message || 'signature verification failed'}`,
+      });
+      return res.status(400).json({ error: `Webhook signature verification failed: ${err?.message || 'Invalid signature'}` });
+    }
+  } else if (!event || typeof event !== 'object' || !event.type) {
+    return res.status(400).json({ error: 'Invalid webhook payload: missing event type.' });
+  }
+
+  const eventType = sanitizeString(event.type, 100) || 'payment_intent.succeeded';
+  const eventId = sanitizeString(event.id, 120) || `evt_stripe_${Date.now()}`;
   const livemode = Boolean(event.livemode);
+
+  // Deduplicate repeated webhook deliveries safely
+  if (processedWebhookEventIds.has(eventId)) {
+    return res.json({ received: true, duplicate: true, eventId, eventType });
+  }
+  processedWebhookEventIds.add(eventId);
+  if (processedWebhookEventIds.size > 500) {
+    const oldest = processedWebhookEventIds.values().next().value;
+    if (oldest) processedWebhookEventIds.delete(oldest);
+  }
+
+  const obj = event.data?.object || {};
+  const targetObjectId = sanitizeString(obj.payment_intent || obj.id, 120);
+  const existingOrder = targetObjectId ? serverPaymentOrders.get(targetObjectId) : undefined;
 
   const logEntry: StripeWebhookLog = {
     id: eventId,
     type: eventType,
     receivedAt: new Date().toISOString(),
-    dataSummary: event.data?.object?.id
-      ? `Object: ${event.data.object.id} (${event.data.object.object || 'stripe_entity'})`
-      : `Stripe CLI Event: ${eventType}`,
+    dataSummary: obj?.id
+      ? `Object: ${obj.id} (${obj.object || 'stripe_entity'})`
+      : `Stripe Event: ${eventType}`,
     livemode,
-    status: 'processed',
+    status:
+      eventType === 'payment_intent.payment_failed'
+        ? 'error'
+        : 'processed',
   };
 
   stripeWebhookLogs.unshift(logEntry);
   if (stripeWebhookLogs.length > 50) stripeWebhookLogs.pop();
 
-  // Auto-log employer and admin notifications for finalized Stripe payment events
-  const obj = event.data?.object || {};
   const receiptEmail = obj.receipt_email || obj.customer_email || obj.metadata?.employerEmail;
+
   if (
     eventType === 'payment_intent.succeeded' ||
     eventType === 'invoice.payment_succeeded' ||
     eventType === 'checkout.session.completed'
   ) {
-    const amountUSD = typeof obj.amount === 'number' ? obj.amount / 100 : Number(obj.amount_paid || 0) / 100;
+    const amountUSD =
+      typeof obj.amount === 'number'
+        ? obj.amount / 100
+        : typeof obj.amount_total === 'number'
+        ? obj.amount_total / 100
+        : Number(obj.amount_paid || 0) / 100;
     const amountXCD = Math.round(amountUSD * merchantPortalConfig.currencyPeg);
     const employerName = sanitizeString(obj.metadata?.employerName || 'Stripe Verified Employer', 120);
     const planName = sanitizeString(obj.description || obj.metadata?.planName || 'Stripe Checkout Payment', 140);
     const invoiceId = sanitizeString(obj.invoice || obj.id || eventId, 100);
+
+    if (existingOrder) {
+      existingOrder.status = 'Paid';
+      existingOrder.failureReason = undefined;
+      existingOrder.updatedAt = new Date().toISOString();
+    }
 
     queueAdminEmailAlert(
       'stripe_payment_finalized',
@@ -2884,17 +2970,69 @@ app.post('/api/stripe/webhook', (req, res) => {
         message: `Webhook ${eventType} triggered employer receipt notification to ${notif.recipientEmail}.`,
       });
     }
+  } else if (eventType === 'payment_intent.payment_failed') {
+    const failReason = sanitizeString(
+      obj.last_payment_error?.message || 'Card declined by issuing bank.',
+      200
+    );
+    if (existingOrder) {
+      existingOrder.status = 'Failed';
+      existingOrder.failureReason = failReason;
+      existingOrder.updatedAt = new Date().toISOString();
+    }
+    backendAuditLogs.push({
+      id: `log_wh_fail_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      level: 'warning',
+      service: 'Stripe Webhook',
+      message: `Webhook payment_intent.payment_failed for ${targetObjectId || eventId}: ${failReason}`,
+    });
+  } else if (eventType === 'payment_intent.canceled' || eventType === 'checkout.session.expired') {
+    if (existingOrder) {
+      existingOrder.status = 'Canceled';
+      existingOrder.failureReason =
+        eventType === 'checkout.session.expired'
+          ? 'Checkout session expired prior to completion.'
+          : 'Payment was canceled before capture.';
+      existingOrder.updatedAt = new Date().toISOString();
+    }
+    backendAuditLogs.push({
+      id: `log_wh_cancel_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      service: 'Stripe Webhook',
+      message: `Webhook ${eventType} updated order ${targetObjectId || eventId} to Canceled.`,
+    });
+  } else if (eventType === 'charge.refunded') {
+    if (existingOrder) {
+      existingOrder.status = 'Refunded';
+      existingOrder.failureReason = sanitizeString(obj.reason || 'Refund issued via Stripe.', 160);
+      existingOrder.updatedAt = new Date().toISOString();
+    }
+    backendAuditLogs.push({
+      id: `log_wh_refund_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      service: 'Stripe Webhook',
+      message: `Webhook charge.refunded updated order ${targetObjectId || eventId} to Refunded.`,
+    });
   }
 
-  console.log(`[Stripe CLI Webhook] Received ${eventType} (${eventId})`);
-  res.json({ received: true, eventId, eventType });
+  console.log(`[Stripe Webhook] Received ${eventType} (${eventId})`);
+  return res.json({
+    received: true,
+    eventId,
+    eventType,
+    orderStatus: existingOrder?.status || null,
+  });
 });
 
-// Get recent stripe webhook logs
-app.get('/api/stripe/logs', (req, res) => {
+// Get recent stripe webhook logs & order ledger summary
+app.get('/api/stripe/logs', (_req, res) => {
   res.json({
     total: stripeWebhookLogs.length,
     logs: stripeWebhookLogs,
+    orders: Array.from(serverPaymentOrders.values()).slice(0, 25),
   });
 });
 
@@ -2904,7 +3042,7 @@ app.post('/api/stripe/trigger-test', (req, res) => {
   const testId = `evt_cli_test_${Date.now()}`;
   const logEntry: StripeWebhookLog = {
     id: testId,
-    type: eventType,
+    type: sanitizeString(eventType, 100) || 'payment_intent.succeeded',
     receivedAt: new Date().toISOString(),
     dataSummary: `Test simulated via Stripe CLI harness for ${eventType}`,
     livemode: false,
@@ -2914,7 +3052,7 @@ app.post('/api/stripe/trigger-test', (req, res) => {
   stripeWebhookLogs.unshift(logEntry);
   res.json({
     success: true,
-    message: `Dispatched test event ${eventType}`,
+    message: `Dispatched test event ${logEntry.type}`,
     event: logEntry,
   });
 });
@@ -2928,48 +3066,345 @@ const getStripe = () => {
 
 // Create real or simulated Stripe PaymentIntent
 app.post('/api/stripe/create-payment-intent', async (req, res) => {
-  const { amountXCD = 150, description = 'Dominica Job Posting', customerEmail } = req.body || {};
-  const peg = 2.70;
-  const amountUSD = Math.round((Number(amountXCD) / peg) * 100); // in cents
+  if (merchantPortalConfig.merchantPortalsEnabled.stripe === false) {
+    return res.status(503).json({
+      error: 'Stripe merchant checkout is currently paused by the portal administrator.',
+      code: 'portal_disabled',
+    });
+  }
+
+  const {
+    amountXCD,
+    description = 'Dominica Job Posting',
+    customerEmail,
+    employerName = 'Dominica Employer Partner',
+    billingInterval = 'one_time',
+    idempotencyKey: bodyIdemKey,
+    simulateOutcome,
+  } = req.body || {};
+
+  const parsedAmount = Number(amountXCD);
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > 500000) {
+    return res.status(400).json({
+      error: 'A valid positive amount in EC$ (XCD) is required.',
+      code: 'invalid_amount',
+    });
+  }
+
+  if (simulateOutcome === 'network_error') {
+    return res.status(502).json({
+      error: 'Unable to reach Stripe gateway (simulated upstream network failure). Please check your connection and retry.',
+      code: 'network_error',
+    });
+  }
+  if (simulateOutcome === 'timeout') {
+    return res.status(408).json({
+      error: 'Stripe payment gateway timed out before confirming authorization. No charge was captured.',
+      code: 'gateway_timeout',
+    });
+  }
+  if (simulateOutcome === 'decline') {
+    return res.status(402).json({
+      error: 'Your card was declined in Sandbox test mode (insufficient_funds / generic_decline). Please use another card.',
+      code: 'card_declined',
+    });
+  }
+  if (simulateOutcome === 'cancel') {
+    return res.status(400).json({
+      error: 'Payment authorization was canceled by user before charge submission.',
+      code: 'payment_canceled',
+    });
+  }
+
+  const idemKey = sanitizeString(
+    (req.headers['idempotency-key'] as string) || bodyIdemKey || '',
+    128
+  );
+  if (idemKey && idempotencyResponses.has(`pi:${idemKey}`)) {
+    const cached = idempotencyResponses.get(`pi:${idemKey}`)!;
+    return res.status(cached.status).json({ ...cached.body, idempotentReplay: true });
+  }
+
+  const peg = merchantPortalConfig.currencyPeg || 2.70;
+  const amountUSD = computePeggedUSD(parsedAmount, peg);
+  const amountCentsUSD = Math.round(amountUSD * 100);
+  const safeDescription = sanitizeString(description, 160) || 'Dominica Job Posting';
 
   const stripe = getStripe();
   if (stripe) {
     try {
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amountUSD,
-        currency: 'usd',
-        description: `${description} (${amountXCD} XCD Pegged at 2.70)`,
-        receipt_email: customerEmail || undefined,
-        metadata: {
-          platform: 'Nature Island Careers',
-          currencyXCD: String(amountXCD),
-          jurisdiction: 'Commonwealth of Dominica',
+      const paymentIntent = await stripe.paymentIntents.create(
+        {
+          amount: amountCentsUSD,
+          currency: 'usd',
+          description: `${safeDescription} (${parsedAmount} XCD Pegged at ${peg.toFixed(2)})`,
+          receipt_email: typeof customerEmail === 'string' && customerEmail.includes('@') ? customerEmail.trim() : undefined,
+          metadata: {
+            platform: 'Nature Island Careers',
+            currencyXCD: String(parsedAmount),
+            currencyPeg: String(peg),
+            jurisdiction: 'Commonwealth of Dominica',
+            employerName: sanitizeString(employerName, 120),
+          },
         },
-      });
-      return res.json({
+        idemKey ? { idempotencyKey: idemKey } : undefined
+      );
+
+      const orderRecord: ServerPaymentOrder = {
+        id: paymentIntent.id,
+        invoiceId: `INV-DOM-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+        planName: safeDescription,
+        employerName: sanitizeString(employerName, 120) || 'Dominica Employer Partner',
+        customerEmail: typeof customerEmail === 'string' ? sanitizeString(customerEmail, 160) : undefined,
+        amountXCD: parsedAmount,
+        amountUSD,
+        currencyPeg: peg,
+        billingInterval: billingInterval === 'monthly' ? 'monthly' : 'one_time',
+        status: 'requires_payment_method',
+        idempotencyKey: idemKey || undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      serverPaymentOrders.set(paymentIntent.id, orderRecord);
+
+      const payload = {
         clientSecret: paymentIntent.client_secret,
         id: paymentIntent.id,
-        amountUSD: amountUSD / 100,
-        amountXCD,
-        mode: 'live_or_test_key',
-      });
+        amountUSD,
+        amountXCD: parsedAmount,
+        currencyPeg: peg,
+        mode: paymentIntent.livemode ? 'live' : 'test',
+      };
+      if (idemKey) {
+        idempotencyResponses.set(`pi:${idemKey}`, { status: 200, body: payload, createdAt: Date.now() });
+      }
+      return res.json(payload);
     } catch (err: any) {
       console.error('[Stripe PaymentIntent Error]', err.message);
+      return res.status(502).json({
+        error: err?.message || 'Stripe PaymentIntent creation failed.',
+        code: 'stripe_api_error',
+      });
     }
   }
 
-  // Sandbox fallback
-  res.json({
-    clientSecret: `pi_mock_${Date.now()}_secret_${Math.random().toString(36).substring(7)}`,
-    id: `pi_mock_${Date.now()}`,
-    amountUSD: Math.round(Number(amountXCD) / 2.7),
-    amountXCD,
+  // Sandbox simulator fallback (never exposes or stores sensitive card data)
+  const intentId = `pi_sandbox_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const orderRecord: ServerPaymentOrder = {
+    id: intentId,
+    invoiceId: `INV-DOM-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+    planName: safeDescription,
+    employerName: sanitizeString(employerName, 120) || 'Dominica Employer Partner',
+    customerEmail: typeof customerEmail === 'string' ? sanitizeString(customerEmail, 160) : undefined,
+    amountXCD: parsedAmount,
+    amountUSD,
+    currencyPeg: peg,
+    billingInterval: billingInterval === 'monthly' ? 'monthly' : 'one_time',
+    status: 'requires_payment_method',
+    idempotencyKey: idemKey || undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  serverPaymentOrders.set(intentId, orderRecord);
+
+  const payload = {
+    clientSecret: `${intentId}_secret_${crypto.randomBytes(6).toString('hex')}`,
+    id: intentId,
+    amountUSD,
+    amountXCD: parsedAmount,
+    currencyPeg: peg,
     mode: 'sandbox_simulator',
+  };
+  if (idemKey) {
+    idempotencyResponses.set(`pi:${idemKey}`, { status: 200, body: payload, createdAt: Date.now() });
+  }
+  return res.json(payload);
+});
+
+// Sandbox payment confirmation endpoint with idempotency + failure state guarantees
+app.post('/api/stripe/confirm-payment-intent', (req, res) => {
+  if (merchantPortalConfig.merchantPortalsEnabled.stripe === false) {
+    return res.status(503).json({
+      error: 'Stripe merchant checkout is currently paused by the portal administrator.',
+      code: 'portal_disabled',
+    });
+  }
+
+  const {
+    paymentIntentId,
+    planName = 'Featured Top-of-Board Pin',
+    amountXCD,
+    employerName = 'Dominica Employer Partner',
+    customerEmail,
+    billingInterval = 'monthly',
+    cardLast4 = '4242',
+    cardBrand = 'Visa',
+    idempotencyKey: bodyIdemKey,
+    simulateOutcome = 'success',
+  } = req.body || {};
+
+  // Never log or store full card numbers or CVCs — discard if accidentally sent
+  const safeLast4 = sanitizeString(String(cardLast4).replace(/\D/g, '').slice(-4), 4) || '4242';
+  const safeBrand = sanitizeString(cardBrand, 32) || 'Visa';
+  const parsedAmount = Number(amountXCD);
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > 500000) {
+    return res.status(400).json({ error: 'Invalid payment amount in XCD.', code: 'invalid_amount' });
+  }
+
+  const idemKey = sanitizeString(
+    (req.headers['idempotency-key'] as string) || bodyIdemKey || '',
+    128
+  );
+  if (idemKey && idempotencyResponses.has(`confirm:${idemKey}`)) {
+    const cached = idempotencyResponses.get(`confirm:${idemKey}`)!;
+    return res.status(cached.status).json({ ...cached.body, idempotentReplay: true });
+  }
+
+  const peg = merchantPortalConfig.currencyPeg || 2.7;
+  const amountUSD = computePeggedUSD(parsedAmount, peg);
+  const safeIntentId =
+    sanitizeString(String(paymentIntentId || ''), 120).split('_secret')[0] ||
+    `pi_sandbox_${Date.now()}`;
+
+  const existingOrder = serverPaymentOrders.get(safeIntentId);
+
+  if (simulateOutcome === 'network_error') {
+    if (existingOrder) {
+      existingOrder.status = 'Failed';
+      existingOrder.failureReason = 'Network drop before payment capture';
+      existingOrder.updatedAt = new Date().toISOString();
+    }
+    return res.status(502).json({
+      error: 'Network connection lost while contacting Stripe. No funds were captured; you may safely retry.',
+      code: 'network_error',
+      paymentIntentId: safeIntentId,
+    });
+  }
+
+  if (simulateOutcome === 'timeout') {
+    if (existingOrder) {
+      existingOrder.status = 'Failed';
+      existingOrder.failureReason = 'Gateway authorization timed out';
+      existingOrder.updatedAt = new Date().toISOString();
+    }
+    return res.status(408).json({
+      error: 'Authorization timed out waiting for 3D Secure verification. Your card was not charged.',
+      code: 'gateway_timeout',
+      paymentIntentId: safeIntentId,
+    });
+  }
+
+  if (simulateOutcome === 'decline') {
+    if (existingOrder) {
+      existingOrder.status = 'Failed';
+      existingOrder.failureReason = 'Card declined by issuer (sandbox_declined)';
+      existingOrder.updatedAt = new Date().toISOString();
+    }
+    return res.status(402).json({
+      error: 'Card declined by issuing bank (Sandbox decline simulation). Please check card details or try a different card.',
+      code: 'card_declined',
+      paymentIntentId: safeIntentId,
+    });
+  }
+
+  if (simulateOutcome === 'cancel') {
+    if (existingOrder) {
+      existingOrder.status = 'Canceled';
+      existingOrder.failureReason = 'Canceled by payer';
+      existingOrder.updatedAt = new Date().toISOString();
+    }
+    return res.status(400).json({
+      error: 'Checkout was canceled before payment completion. No charge was made.',
+      code: 'payment_canceled',
+      paymentIntentId: safeIntentId,
+    });
+  }
+
+  const chargeId = `ch_sandbox_${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
+  const invoiceNumber =
+    existingOrder?.invoiceId ||
+    `INV-DOM-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+  const finalizedOrder: ServerPaymentOrder = {
+    id: safeIntentId,
+    invoiceId: invoiceNumber,
+    planName: sanitizeString(planName, 160) || 'Dominica Employer Plan',
+    employerName: sanitizeString(employerName, 120) || 'Dominica Employer Partner',
+    customerEmail: typeof customerEmail === 'string' ? sanitizeString(customerEmail, 160) : undefined,
+    amountXCD: parsedAmount,
+    amountUSD,
+    currencyPeg: peg,
+    billingInterval: billingInterval === 'monthly' ? 'monthly' : 'one_time',
+    status: 'Paid',
+    idempotencyKey: idemKey || undefined,
+    createdAt: existingOrder?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  serverPaymentOrders.set(safeIntentId, finalizedOrder);
+
+  const responseBody = {
+    success: true,
+    status: 'Paid',
+    chargeId,
+    paymentIntentId: safeIntentId,
+    invoiceNumber,
+    amountXCD: parsedAmount,
+    amountUSD,
+    currencyPeg: peg,
+    paymentMethodLabel: `Stripe •••• ${safeLast4} (${safeBrand})`,
+    receiptUrl: `https://pay.stripe.com/receipts/invoices/${chargeId}`,
+    mode: merchantPortalConfig.mode === 'live' && process.env.STRIPE_SECRET_KEY ? 'live' : 'sandbox_simulator',
+  };
+
+  if (idemKey) {
+    idempotencyResponses.set(`confirm:${idemKey}`, {
+      status: 200,
+      body: responseBody,
+      createdAt: Date.now(),
+    });
+  }
+
+  return res.json(responseBody);
+});
+
+// Sandbox refund endpoint to transition an order/invoice cleanly to Refunded
+app.post('/api/stripe/refund', (req, res) => {
+  const { paymentIntentId, reason = 'requested_by_customer' } = req.body || {};
+  const cleanId = sanitizeString(String(paymentIntentId || ''), 120).split('_secret')[0];
+  if (!cleanId) {
+    return res.status(400).json({ error: 'paymentIntentId is required to issue a refund.' });
+  }
+  const existing = serverPaymentOrders.get(cleanId);
+  if (existing) {
+    existing.status = 'Refunded';
+    existing.failureReason = sanitizeString(reason, 160);
+    existing.updatedAt = new Date().toISOString();
+  }
+  const refundId = `re_sandbox_${crypto.randomBytes(5).toString('hex')}`;
+  backendAuditLogs.push({
+    id: `log_refund_${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    level: 'info',
+    service: 'Stripe Gateway',
+    message: `Refund ${refundId} recorded for PaymentIntent ${cleanId} (${sanitizeString(reason, 80)}).`,
+  });
+  return res.json({
+    success: true,
+    refundId,
+    paymentIntentId: cleanId,
+    status: 'Refunded',
   });
 });
 
 // Create hosted or embedded Stripe Checkout session
 const handleCreateCheckoutSession = async (req: express.Request, res: express.Response) => {
+  if (merchantPortalConfig.merchantPortalsEnabled.stripe === false) {
+    return res.status(503).json({
+      error: 'Stripe merchant checkout is currently paused by an administrator.',
+      code: 'portal_disabled',
+    });
+  }
+
   const {
     planName = 'Standard Classified Listing',
     priceXCD = 150,
@@ -2978,8 +3413,30 @@ const handleCreateCheckoutSession = async (req: express.Request, res: express.Re
     cancelUrl,
     returnUrl,
     ui_mode = 'embedded',
+    idempotencyKey: bodyIdemKey,
   } = req.body || {};
-  const amountUSD = Math.round((Number(priceXCD) / 2.7) * 100);
+
+  const parsedPriceXCD = Number(priceXCD);
+  if (!price && (!Number.isFinite(parsedPriceXCD) || parsedPriceXCD <= 0 || parsedPriceXCD > 500000)) {
+    return res.status(400).json({
+      error: 'A valid positive price in EC$ (XCD) is required.',
+      code: 'invalid_amount',
+    });
+  }
+
+  const idemKey = sanitizeString(
+    (req.headers['idempotency-key'] as string) || bodyIdemKey || '',
+    128
+  );
+  if (idemKey && idempotencyResponses.has(`cs:${idemKey}`)) {
+    const cached = idempotencyResponses.get(`cs:${idemKey}`)!;
+    return res.status(cached.status).json({ ...cached.body, idempotentReplay: true });
+  }
+
+  const peg = merchantPortalConfig.currencyPeg || 2.7;
+  const amountUSD = computePeggedUSD(parsedPriceXCD, peg);
+  const unitAmountCents = Math.round(amountUSD * 100);
+  const safePlanName = sanitizeString(planName, 140) || 'Standard Classified Listing';
 
   const stripe = getStripe();
   if (stripe) {
@@ -2991,10 +3448,10 @@ const handleCreateCheckoutSession = async (req: express.Request, res: express.Re
               price_data: {
                 currency: 'usd',
                 product_data: {
-                  name: `Nature Island Careers - ${planName}`,
-                  description: `Dominica Job Classified (${priceXCD} XCD @ 2.70 peg)`,
+                  name: `Nature Island Careers - ${safePlanName}`,
+                  description: `Dominica Job Classified (${parsedPriceXCD} XCD @ ${peg.toFixed(2)} peg)`,
                 },
-                unit_amount: amountUSD,
+                unit_amount: unitAmountCents,
               },
               quantity: 1,
             },
@@ -3013,28 +3470,49 @@ const handleCreateCheckoutSession = async (req: express.Request, res: express.Re
         sessionParams.cancel_url = cancelUrl || `${req.headers.origin || 'http://localhost:3000'}/?payment_cancelled=true`;
       }
 
-      const session = await stripe.checkout.sessions.create(sessionParams);
-      return res.json({
+      const session = await stripe.checkout.sessions.create(
+        sessionParams,
+        idemKey ? { idempotencyKey: idemKey } : undefined
+      );
+      const responseBody = {
         client_secret: session.client_secret,
         clientSecret: session.client_secret,
         url: session.url,
         id: session.id,
-      });
+        amountXCD: parsedPriceXCD,
+        amountUSD,
+        currencyPeg: peg,
+      };
+      if (idemKey) {
+        idempotencyResponses.set(`cs:${idemKey}`, { status: 200, body: responseBody, createdAt: Date.now() });
+      }
+      return res.json(responseBody);
     } catch (err: any) {
       console.error('[Stripe Checkout Error]', err.message);
+      return res.status(502).json({
+        error: err?.message || 'Unable to initialize Stripe checkout session.',
+        code: 'stripe_checkout_error',
+      });
     }
   }
 
   // Simulated session with client_secret fallback for sandbox testing
-  const mockId = `cs_mock_${Date.now()}`;
-  const mockSecret = `${mockId}_secret_${Math.random().toString(36).substring(7)}`;
-  res.json({
+  const mockId = `cs_sandbox_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`;
+  const mockSecret = `${mockId}_secret_${crypto.randomBytes(6).toString('hex')}`;
+  const responseBody = {
     client_secret: mockSecret,
     clientSecret: mockSecret,
-    url: `${req.headers.origin || 'http://localhost:3000'}/?simulated_checkout=true&plan=${encodeURIComponent(planName)}`,
+    url: `${req.headers.origin || 'http://localhost:3000'}/?simulated_checkout=true&plan=${encodeURIComponent(safePlanName)}`,
     id: mockId,
+    amountXCD: parsedPriceXCD,
+    amountUSD,
+    currencyPeg: peg,
     mode: 'sandbox_simulator',
-  });
+  };
+  if (idemKey) {
+    idempotencyResponses.set(`cs:${idemKey}`, { status: 200, body: responseBody, createdAt: Date.now() });
+  }
+  return res.json(responseBody);
 };
 
 app.post('/api/stripe/create-checkout-session', handleCreateCheckoutSession);

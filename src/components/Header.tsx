@@ -198,6 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             <button
+              type="button"
               onClick={onOpenRemoteModal}
               className="hidden md:flex text-teal-300 hover:text-teal-200 items-center gap-1 transition-colors cursor-pointer"
             >
@@ -219,6 +220,7 @@ export const Header: React.FC<HeaderProps> = ({
               <>
                 <span className="text-emerald-800">|</span>
                 <button
+                  type="button"
                   onClick={adminLogout}
                   className="text-stone-400 hover:text-white text-[11px] underline cursor-pointer"
                 >
@@ -242,8 +244,17 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div
-            className="flex items-center cursor-pointer"
+            role="button"
+            tabIndex={0}
+            aria-label="Nature Island Careers Home"
+            className="flex items-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 rounded-lg"
             onClick={() => setActiveTab('jobs')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setActiveTab('jobs');
+              }
+            }}
             data-testid="header-brand-logo"
           >
             <BrandLogo variant="header" />
@@ -252,6 +263,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Navigation Links */}
           <nav className="hidden md:flex items-center space-x-1">
             <button
+              type="button"
               onClick={() => setActiveTab('jobs')}
               className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
                 activeTab === 'jobs'
@@ -263,6 +275,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab('remote')}
               className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'remote'
@@ -275,6 +288,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab('career')}
               className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'career'
@@ -287,6 +301,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab('recruiter')}
               className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'recruiter'
@@ -303,6 +318,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center space-x-2 sm:space-x-3">
             {/* New Job Alerts Notification Icon */}
             <button
+              type="button"
               onClick={onOpenNotifications}
               data-testid="new-job-alerts-button"
               aria-label="New Job Alerts"
@@ -384,11 +400,22 @@ export const Header: React.FC<HeaderProps> = ({
                       </span>
                     </div>
                     <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Toggle account menu"
+                      aria-expanded={isUserMenuOpen}
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsUserMenuOpen((prev) => !prev);
                       }}
-                      className="p-0.5 hover:bg-slate-200/60 rounded"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsUserMenuOpen((prev) => !prev);
+                        }
+                      }}
+                      className="p-0.5 hover:bg-slate-200/60 rounded focus:outline-none focus:ring-2 focus:ring-emerald-600"
                       title="Open Account Options"
                     >
                       <ChevronDown
@@ -590,6 +617,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Mobile Sub-Navigation Bar */}
         <div className="md:hidden flex items-center justify-between overflow-x-auto py-2 border-t border-slate-100 text-xs font-semibold space-x-2 no-scrollbar">
           <button
+            type="button"
             onClick={() => setActiveTab('jobs')}
             className={`whitespace-nowrap px-2.5 py-1 rounded ${
               activeTab === 'jobs' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
@@ -598,6 +626,7 @@ export const Header: React.FC<HeaderProps> = ({
             Classifieds
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('remote')}
             className={`whitespace-nowrap px-2.5 py-1 rounded ${
               activeTab === 'remote' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
@@ -606,6 +635,7 @@ export const Header: React.FC<HeaderProps> = ({
             Remote / WIN
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('profile')}
             className={`whitespace-nowrap px-2.5 py-1 rounded ${
               activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder'
@@ -616,6 +646,7 @@ export const Header: React.FC<HeaderProps> = ({
             Profile {userApplicationsCount > 0 ? `(${userApplicationsCount})` : ''}
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('career')}
             className={`whitespace-nowrap px-2.5 py-1 rounded ${
               activeTab === 'career' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'
@@ -624,6 +655,7 @@ export const Header: React.FC<HeaderProps> = ({
             Career Hub & Library
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('recruiter')}
             className={`whitespace-nowrap px-2.5 py-1 rounded ${
               activeTab === 'recruiter' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-600'

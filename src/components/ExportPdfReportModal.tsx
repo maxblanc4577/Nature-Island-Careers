@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { generateSalaryPdfReport } from '../utils/generateSalaryPdfReport';
@@ -20,11 +20,21 @@ export const ExportPdfReportModal: React.FC<ExportPdfReportModalProps> = ({ isOp
   const [notes, setNotes] = useState('Official statistical report generated from verified Dominica classified listings and compensation benchmarks.');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
   const handleExport = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isGenerating) return;
+    setErrorMsg(null);
     setIsGenerating(true);
 
     try {
@@ -39,15 +49,15 @@ export const ExportPdfReportModal: React.FC<ExportPdfReportModalProps> = ({ isOp
       });
 
       setIsSuccess(true);
-      setTimeout(() => {
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = window.setTimeout(() => {
         setIsSuccess(false);
         setIsGenerating(false);
         onClose();
       }, 1600);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setIsGenerating(false);
-      onClose();
+      setErrorMsg('Unable to generate the PDF report right now. Please try again.');
     }
   };
 
@@ -72,7 +82,12 @@ export const ExportPdfReportModal: React.FC<ExportPdfReportModalProps> = ({ isOp
               <p className="text-xs text-emerald-200">Official Labor & Salary Benchmark PDF</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close export report modal"
+            className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -87,6 +102,11 @@ export const ExportPdfReportModal: React.FC<ExportPdfReportModalProps> = ({ isOp
           </div>
         ) : (
           <form onSubmit={handleExport} className="p-5 space-y-4">
+            {errorMsg && (
+              <div role="alert" className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+                {errorMsg}
+              </div>
+            )}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
                 Compiler / Authority Name

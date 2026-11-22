@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import {
   X,
@@ -52,12 +52,19 @@ How can I help you today?`,
   ]);
   const [inputQuery, setInputQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const fallbackTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
   const handleSend = async (queryText?: string) => {
     const q = (queryText || inputQuery).trim();
-    if (!q) return;
+    if (!q || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -102,7 +109,8 @@ How can I help you today?`,
     }
 
     // High fidelity curated fallback response
-    setTimeout(() => {
+    if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+    fallbackTimerRef.current = window.setTimeout(() => {
       let reply = `Under the Commonwealth of Dominica Labour Standards Act and official guidelines:
       
 • **Working Hours & Overtime:** Standard working week is 40 hours. Overtime is compensated at 1.5x regular wage rate, and 2.0x on Sundays and Gazetted Public Holidays.
@@ -168,6 +176,7 @@ How can I help you today?`,
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 text-emerald-200 hover:text-white rounded-lg transition-colors cursor-pointer"
             aria-label="Close dialog"

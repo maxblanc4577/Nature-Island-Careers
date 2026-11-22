@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { SECTOR_COMPENSATION_GUIDE } from '../data/salaryData';
 import { AdminSalaryTrendsChart } from './AdminSalaryTrendsChart';
@@ -35,16 +35,27 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
     syncRecords,
     runSyncSimulation,
     isAdminLoggedIn,
+    siteSettings,
   } = useJobContext();
 
   const [activeSubTab, setActiveSubTab] = useState<
     'trends' | 'distribution' | 'parishes' | 'guide' | 'database'
   >('trends');
   const [syncing, setSyncing] = useState(false);
+  const syncTimerRef = useRef<number | null>(null);
+  const pegRate = siteSettings?.currencyPeg || 2.7;
+
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    };
+  }, []);
 
   const handleSync = () => {
+    if (syncing) return;
     setSyncing(true);
-    setTimeout(() => {
+    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(() => {
       runSyncSimulation('Dominica Labour Division');
       setSyncing(false);
     }, 1000);
@@ -79,15 +90,17 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
 
         <div className="flex flex-wrap items-center gap-3">
           <button
+            type="button"
             onClick={handleSync}
             disabled={syncing}
-            className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-semibold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border border-emerald-500/30 transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-semibold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border border-emerald-500/30 transition-all cursor-pointer disabled:opacity-60"
           >
             <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             <span>{syncing ? 'Syncing...' : 'Sync Registry'}</span>
           </button>
 
           <button
+            type="button"
             onClick={onOpenExportPdf}
             className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition-all cursor-pointer"
           >
@@ -117,7 +130,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
             EC$ {totalMonthlyAvg.toLocaleString()}
           </p>
           <p className="text-[11px] text-slate-600 font-semibold mt-1">
-            ≈ ${(totalMonthlyAvg / 2.7).toFixed(0)} USD (2.70 Peg)
+            ≈ ${(totalMonthlyAvg / pegRate).toFixed(0)} USD ({pegRate.toFixed(2)} Peg)
           </p>
         </div>
 
@@ -141,8 +154,9 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
       </div>
 
       {/* Sub Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 text-sm font-bold">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2 text-sm font-bold">
         <button
+          type="button"
           onClick={() => setActiveSubTab('trends')}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'trends'
@@ -154,6 +168,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
         </button>
 
         <button
+          type="button"
           data-testid="tab-salary-distribution"
           onClick={() => setActiveSubTab('distribution')}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
@@ -166,6 +181,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('parishes')}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'parishes'
@@ -177,6 +193,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('guide')}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'guide'
@@ -188,6 +205,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('database')}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'database'
@@ -270,10 +288,12 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
               </p>
             </div>
             <button
+              type="button"
               onClick={handleSync}
-              className="text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg hover:bg-emerald-100 cursor-pointer"
+              disabled={syncing}
+              className="text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg hover:bg-emerald-100 cursor-pointer disabled:opacity-60"
             >
-              Trigger Instant Sync
+              {syncing ? 'Syncing...' : 'Trigger Instant Sync'}
             </button>
           </div>
 

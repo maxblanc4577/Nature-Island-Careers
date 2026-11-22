@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { JobSector } from '../types';
@@ -12,6 +12,7 @@ import {
   Calendar,
   DollarSign,
   ArrowRight,
+  AlertCircle,
 } from 'lucide-react';
 
 interface RemoteAssignmentModalProps {
@@ -61,15 +62,55 @@ export const RemoteAssignmentModal: React.FC<RemoteAssignmentModalProps> = ({
   const [hasInternetStipend, setHasInternetStipend] = useState(true);
 
   const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
+
+    const requiredSkills = skillsText.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!title.trim() || title.trim().length < 3) {
+      setErrorMessage('Please enter an assignment title (at least 3 characters).');
+      return;
+    }
+    if (!projectDuration.trim()) {
+      setErrorMessage('Please specify the contract or project duration.');
+      return;
+    }
+    if (!Number.isFinite(Number(minSalary)) || Number(minSalary) <= 0 || Number(maxSalary) < Number(minSalary)) {
+      setErrorMessage('Maximum compensation must be greater than or equal to minimum compensation (and greater than EC$0).');
+      return;
+    }
+    if (requiredSkills.length === 0) {
+      setErrorMessage('Please list at least one required remote skill.');
+      return;
+    }
+    if (!description.trim() || description.trim().length < 10) {
+      setErrorMessage('Please describe the project deliverables and mission (at least 10 characters).');
+      return;
+    }
+    if (!applicationDeadline.trim()) {
+      setErrorMessage('Please choose a proposal deadline date.');
+      return;
+    }
+
+    setErrorMessage('');
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     const responsibilities = responsibilitiesText.split('\n').map((s) => s.trim()).filter(Boolean);
     const requirements = requirementsText.split('\n').map((s) => s.trim()).filter(Boolean);
-    const requiredSkills = skillsText.split(',').map((s) => s.trim()).filter(Boolean);
     const benefits = [
       hasInternetStipend ? 'EC$350 monthly high-speed internet stipend' : 'Standard project fee',
       'Flexible asynchronous working hours',
@@ -77,13 +118,13 @@ export const RemoteAssignmentModal: React.FC<RemoteAssignmentModalProps> = ({
     ];
 
     const ok = createRemoteAssignment({
-      title,
+      title: title.trim(),
       sector,
-      projectDuration,
+      projectDuration: projectDuration.trim(),
       minSalary: Number(minSalary),
       maxSalary: Number(maxSalary),
       requiredSkills,
-      description,
+      description: description.trim(),
       responsibilities: responsibilities.length > 0 ? responsibilities : ['Execute remote milestone deliverables'],
       requirements: requirements.length > 0 ? requirements : ['Workstation and broadband connection'],
       benefits,
@@ -92,10 +133,17 @@ export const RemoteAssignmentModal: React.FC<RemoteAssignmentModalProps> = ({
 
     if (ok) {
       setIsSuccess(true);
-      setTimeout(() => {
+      timerRef.current = window.setTimeout(() => {
         setIsSuccess(false);
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        setTitle('');
         onClose();
       }, 1800);
+    } else {
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
+      setErrorMessage('An active client subscription is required to publish a remote work assignment.');
     }
   };
 
@@ -126,6 +174,7 @@ export const RemoteAssignmentModal: React.FC<RemoteAssignmentModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg cursor-pointer"
             aria-label="Close modal"
@@ -179,7 +228,16 @@ export const RemoteAssignmentModal: React.FC<RemoteAssignmentModalProps> = ({
               </p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-3.5">
+            <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+              {errorMessage && (
+                <div
+                  role="alert"
+                  className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-start gap-2"
+                >
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
               
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-[11px] text-emerald-950 flex items-center justify-between">
                 <span>Employer: <strong>{currentUser?.companyName || currentRecruiter.companyName}</strong></span>
@@ -357,9 +415,10 @@ export const RemoteAssignmentModal: React.FC<RemoteAssignmentModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-semibold shadow-xs cursor-pointer transition-colors"
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-white rounded-lg font-semibold shadow-xs cursor-pointer transition-colors"
                 >
-                  Post Remote Assignment
+                  {isSubmitting ? 'Publishing...' : 'Post Remote Assignment'}
                 </button>
               </div>
 

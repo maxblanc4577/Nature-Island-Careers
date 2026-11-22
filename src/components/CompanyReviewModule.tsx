@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Star,
   MessageSquare,
@@ -9,6 +9,7 @@ import {
   Building,
   Sparkles,
   Lock,
+  AlertCircle,
 } from 'lucide-react';
 
 export interface CompanyReview {
@@ -109,6 +110,14 @@ export const CompanyReviewModule: React.FC<CompanyReviewModuleProps> = ({
   );
   const [reviewText, setReviewText] = useState('');
   const [submitNotice, setSubmitNotice] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -134,12 +143,16 @@ export const CompanyReviewModule: React.FC<CompanyReviewModuleProps> = ({
 
   const handleSubmitReview = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reviewText.trim()) return;
+    if (!roleTitle.trim() || !reviewText.trim()) {
+      setReviewError('Please specify the role title and share your recruitment experience before submitting.');
+      return;
+    }
+    setReviewError(null);
 
     const newRev: CompanyReview = {
       id: `rev-${Date.now()}`,
       companyName,
-      roleTitle: roleTitle.trim() || 'Candidate',
+      roleTitle: roleTitle.trim(),
       ratingOverall,
       ratingInterview,
       ratingSpeed,
@@ -155,7 +168,8 @@ export const CompanyReviewModule: React.FC<CompanyReviewModuleProps> = ({
     setRoleTitle('');
     setIsFormOpen(false);
     setSubmitNotice(true);
-    setTimeout(() => setSubmitNotice(false), 3000);
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => setSubmitNotice(false), 3000);
   };
 
   return (
@@ -279,11 +293,22 @@ export const CompanyReviewModule: React.FC<CompanyReviewModuleProps> = ({
             </div>
           </div>
 
+          {reviewError && (
+            <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-medium flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{reviewError}</span>
+            </div>
+          )}
+
           {/* Rating Selectors */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             <div>
-              <span className="block text-[10px] font-bold text-stone-500 uppercase">Overall Experience</span>
+              <label htmlFor="review-rating-overall" className="block text-[10px] font-bold text-stone-500 uppercase">
+                Overall Experience
+              </label>
               <select
+                id="review-rating-overall"
+                aria-label="Overall Experience Rating"
                 value={ratingOverall}
                 onChange={(e) => setRatingOverall(Number(e.target.value))}
                 className="w-full mt-0.5 px-2 py-1 border border-stone-300 rounded text-xs"
@@ -295,8 +320,12 @@ export const CompanyReviewModule: React.FC<CompanyReviewModuleProps> = ({
             </div>
 
             <div>
-              <span className="block text-[10px] font-bold text-stone-500 uppercase">Interview Professionalism</span>
+              <label htmlFor="review-rating-interview" className="block text-[10px] font-bold text-stone-500 uppercase">
+                Interview Professionalism
+              </label>
               <select
+                id="review-rating-interview"
+                aria-label="Interview Professionalism Rating"
                 value={ratingInterview}
                 onChange={(e) => setRatingInterview(Number(e.target.value))}
                 className="w-full mt-0.5 px-2 py-1 border border-stone-300 rounded text-xs"
@@ -308,8 +337,12 @@ export const CompanyReviewModule: React.FC<CompanyReviewModuleProps> = ({
             </div>
 
             <div>
-              <span className="block text-[10px] font-bold text-stone-500 uppercase">Response Speed</span>
+              <label htmlFor="review-rating-speed" className="block text-[10px] font-bold text-stone-500 uppercase">
+                Response Speed
+              </label>
               <select
+                id="review-rating-speed"
+                aria-label="Response Speed Rating"
                 value={ratingSpeed}
                 onChange={(e) => setRatingSpeed(Number(e.target.value))}
                 className="w-full mt-0.5 px-2 py-1 border border-stone-300 rounded text-xs"
@@ -321,8 +354,12 @@ export const CompanyReviewModule: React.FC<CompanyReviewModuleProps> = ({
             </div>
 
             <div>
-              <span className="block text-[10px] font-bold text-stone-500 uppercase">Wage Transparency</span>
+              <label htmlFor="review-rating-transparency" className="block text-[10px] font-bold text-stone-500 uppercase">
+                Wage Transparency
+              </label>
               <select
+                id="review-rating-transparency"
+                aria-label="Wage Transparency Rating"
                 value={ratingTransparency}
                 onChange={(e) => setRatingTransparency(Number(e.target.value))}
                 className="w-full mt-0.5 px-2 py-1 border border-stone-300 rounded text-xs"

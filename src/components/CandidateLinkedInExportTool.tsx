@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useJobContext } from '../context/JobContext';
 import {
   ExternalLink,
@@ -12,11 +12,22 @@ import {
   Layers,
   Sparkles,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 
 export const CandidateLinkedInExportTool: React.FC = () => {
   const { currentUser } = useJobContext();
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
+  const revokeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    };
+  }, []);
 
   // Resume data from localStorage if saved in resume builder
   const storedResume = (() => {
@@ -44,7 +55,7 @@ export const CandidateLinkedInExportTool: React.FC = () => {
   ];
 
   // Experiences and Education (from stored resume or defaults)
-  const experiences = storedResume?.experiences || [
+  const experiences = storedResume?.experiences || storedResume?.experience || [
     {
       id: 'exp-1',
       title: 'Senior Cloud Infrastructure Architect',
@@ -99,10 +110,29 @@ export const CandidateLinkedInExportTool: React.FC = () => {
     },
   ];
 
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedSection(id);
-    setTimeout(() => setCopiedSection(null), 2000);
+  const handleCopy = async (text: string, id: string) => {
+    setClipboardError(null);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('Clipboard copy unsupported');
+      }
+      setCopiedSection(id);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopiedSection(null), 2000);
+    } catch {
+      setClipboardError('Unable to copy automatically. Please select and copy the text manually.');
+    }
   };
 
   // Generate LinkedIn 'Add to Profile' URL for Certification
@@ -196,7 +226,8 @@ Verified through Nature Island Careers (Waitukubuli Premier Job Classifieds).`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    revokeTimerRef.current = window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -330,6 +361,12 @@ Verified through Nature Island Careers (Waitukubuli Premier Job Classifieds).`;
             <p className="text-xs text-slate-500">
               Formatted specifically for pasting into the LinkedIn "About" section on your public profile.
             </p>
+            {clipboardError && (
+              <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-medium flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{clipboardError}</span>
+              </div>
+            )}
             <textarea
               readOnly
               rows={8}

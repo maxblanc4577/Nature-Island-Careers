@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { JobListing } from '../types';
 import {
@@ -16,6 +16,8 @@ import {
   Info,
   Clock,
   Printer,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 
 interface CandidateCoverLetterGeneratorProps {
@@ -44,7 +46,18 @@ export const CandidateCoverLetterGenerator: React.FC<CandidateCoverLetterGenerat
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedLetter, setGeneratedLetter] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
+  const revokeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    };
+  }, []);
 
   // Active target job
   const activeJob: JobListing | undefined = jobs.find((j) => j.id === selectedJobId);
@@ -152,11 +165,30 @@ ${candidatePayload.headline}`;
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!generatedLetter) return;
-    navigator.clipboard.writeText(generatedLetter);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setClipboardError(null);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(generatedLetter);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = generatedLetter;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('Clipboard copy unsupported');
+      }
+      setCopied(true);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setClipboardError('Unable to copy automatically. Please select and copy the draft below.');
+    }
   };
 
   const handleDownloadTxt = () => {
@@ -169,27 +201,13 @@ ${candidatePayload.headline}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    revokeTimerRef.current = window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handlePrint = () => {
     if (!generatedLetter) return;
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Cover Letter - ${currentUser?.name || 'Candidate'}</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; padding: 40px; color: #1e293b; max-width: 750px; margin: 0 auto; white-space: pre-wrap; font-size: 14px; }
-            </style>
-          </head>
-          <body>${generatedLetter}</body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
-    }
+    setShowPrintPreview(true);
   };
 
   return (
@@ -477,6 +495,13 @@ ${candidatePayload.headline}`;
             </div>
 
             {/* Letter Content Area */}
+            {clipboardError && (
+              <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-medium flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{clipboardError}</span>
+              </div>
+            )}
+
             {generatedLetter ? (
               <div className="space-y-3">
                 <textarea
@@ -512,16 +537,58 @@ ${candidatePayload.headline}`;
                 <button
                   type="button"
                   onClick={handleGenerate}
-                  className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-xs transition-colors cursor-pointer mt-2"
+                  disabled={isGenerating}
+                  className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50 mt-2"
                 >
                   <Wand2 className="w-4 h-4 text-amber-300" />
-                  <span>Generate Now</span>
+                  <span>{isGenerating ? 'Generating...' : 'Generate Now'}</span>
                 </button>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Safe In-App Print Preview Modal (avoids window.open and raw HTML interpolation) */}
+      {showPrintPreview && generatedLetter && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cover Letter Print Preview"
+            className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between print:hidden">
+              <h4 className="text-sm font-bold text-slate-900">
+                Print Preview — Cover Letter ({currentUser?.name || 'Candidate'})
+              </h4>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print?.()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print / Save PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPrintPreview(false)}
+                  aria-label="Close print preview"
+                  className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto bg-white">
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-800">
+                {generatedLetter}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

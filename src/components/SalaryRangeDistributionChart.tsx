@@ -290,9 +290,18 @@ export const SalaryRangeDistributionChart: React.FC<SalaryRangeDistributionChart
           return (
             <div
               key={bracket.id}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSelected}
               data-testid={`salary-bracket-row-${bracket.id}`}
               onClick={() => setSelectedBracketId(isSelected ? null : bracket.id)}
-              className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedBracketId(isSelected ? null : bracket.id);
+                }
+              }}
+              className={`p-3.5 rounded-xl border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 ${
                 isSelected
                   ? 'border-emerald-600 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-600'
                   : 'border-slate-200 hover:border-emerald-300 hover:bg-slate-50/70 bg-white'
@@ -374,9 +383,17 @@ export const SalaryRangeDistributionChart: React.FC<SalaryRangeDistributionChart
               {activeBracket.jobs.map((job) => (
                 <div
                   key={job.id}
+                  role="button"
+                  tabIndex={0}
                   data-testid={`bracket-job-card-${job.id}`}
                   onClick={() => onSelectJob && onSelectJob(job)}
-                  className="bg-white p-3 rounded-xl border border-slate-200 hover:border-emerald-400 transition-colors cursor-pointer flex flex-col justify-between gap-1.5"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectJob && onSelectJob(job);
+                    }
+                  }}
+                  className="bg-white p-3 rounded-xl border border-slate-200 hover:border-emerald-400 transition-colors cursor-pointer flex flex-col justify-between gap-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>

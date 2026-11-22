@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { JobListing, ResumeData } from '../types';
 import { useJobContext } from '../context/JobContext';
 import {
@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Send,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
 interface CoverLetterGeneratorProps {
@@ -26,6 +27,18 @@ export const CoverLetterGenerator: React.FC<CoverLetterGeneratorProps> = ({
   const [selectedJobId, setSelectedJobId] = useState<string>(jobs[0]?.id || '');
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedError, setCopiedError] = useState<string | null>(null);
+  const genTimerRef = useRef<number | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
+  const revokeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (genTimerRef.current) window.clearTimeout(genTimerRef.current);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    };
+  }, []);
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId) || jobs[0];
 
@@ -107,40 +120,50 @@ ${data.headline ? `${data.headline}\n` : ''}Commonwealth of Dominica`;
     }
 
     // High quality client-side fallback
-    setTimeout(() => {
+    if (genTimerRef.current) window.clearTimeout(genTimerRef.current);
+    genTimerRef.current = window.setTimeout(() => {
       setLetterContent(buildInitialLetter(selectedJob, resumeData));
       setIsGenerating(false);
     }, 600);
   };
 
   const handleCopy = async () => {
+    setCopiedError(null);
     try {
-      if (navigator.clipboard) {
+      if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(letterContent);
       } else {
         const ta = document.createElement('textarea');
         ta.value = letterContent;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
-        document.execCommand('copy');
+        const ok = document.execCommand('copy');
         document.body.removeChild(ta);
+        if (!ok) throw new Error('Clipboard copy unsupported');
       }
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied(false);
+      setCopiedError('Automatic copy unavailable. Please select and copy the text manually.');
     }
   };
 
   const handleDownloadText = () => {
     const element = document.createElement('a');
     const file = new Blob([letterContent], { type: 'text/plain' });
-    element.href = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    element.href = url;
     element.download = `${(resumeData.fullName || 'Candidate').replace(/\s+/g, '_')}_Cover_Letter_${selectedJob?.company || 'Dominica'}.txt`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+    if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    revokeTimerRef.current = window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -250,6 +273,13 @@ ${data.headline ? `${data.headline}\n` : ''}Commonwealth of Dominica`;
             </button>
           </div>
         </div>
+
+        {copiedError && (
+          <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-medium flex items-center gap-1.5">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{copiedError}</span>
+          </div>
+        )}
 
         <textarea
           rows={16}

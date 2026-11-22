@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { DOMINICA_NETWORKING_EVENTS } from '../data/resumeDefaults';
 import { ResumeLibrary } from './ResumeLibrary';
@@ -294,6 +294,23 @@ export const CareerGuidanceAssistant: React.FC = () => {
   const [coachError, setCoachError] = useState<string | null>(null);
   const [coachSourceBadge, setCoachSourceBadge] = useState<string>('gemini-proxy');
   const [isCoachListening, setIsCoachListening] = useState(false);
+  const coachRecognitionRef = useRef<any>(null);
+  const advisorTimerRef = useRef<number | null>(null);
+  const evalTimerRef = useRef<number | null>(null);
+  const revokeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (advisorTimerRef.current) window.clearTimeout(advisorTimerRef.current);
+      if (evalTimerRef.current) window.clearTimeout(evalTimerRef.current);
+      if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+      try {
+        coachRecognitionRef.current?.stop?.();
+      } catch {
+        // ignore stop errors on unmount
+      }
+    };
+  }, []);
 
   const handleCoachResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -447,6 +464,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
     }
     try {
       const recognition = new SpeechRec();
+      coachRecognitionRef.current = recognition;
       recognition.lang = 'en-US';
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
@@ -469,7 +487,7 @@ export const CareerGuidanceAssistant: React.FC = () => {
   // Advisor Chat Logic
   const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || inputText;
-    if (!query.trim()) return;
+    if (!query.trim() || isTyping) return;
 
     const userMsg: Message = {
       id: `msg-${Date.now()}`,
@@ -509,7 +527,8 @@ export const CareerGuidanceAssistant: React.FC = () => {
     }
 
     // Default advisor response
-    setTimeout(() => {
+    if (advisorTimerRef.current) window.clearTimeout(advisorTimerRef.current);
+    advisorTimerRef.current = window.setTimeout(() => {
       const botMsg: Message = {
         id: `msg-${Date.now()}-bot`,
         sender: 'assistant',
@@ -555,7 +574,8 @@ export const CareerGuidanceAssistant: React.FC = () => {
     }
 
     // High quality fallback
-    setTimeout(() => {
+    if (evalTimerRef.current) window.clearTimeout(evalTimerRef.current);
+    evalTimerRef.current = window.setTimeout(() => {
       setEvaluationResult({
         score: 86,
         strengths: [
@@ -606,6 +626,8 @@ export const CareerGuidanceAssistant: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    revokeTimerRef.current = window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const getGoogleCalendarUrl = (event: NetworkingEvent) => {

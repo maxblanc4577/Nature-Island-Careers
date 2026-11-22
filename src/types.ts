@@ -120,11 +120,13 @@ export interface EmployerInvoice {
   amountXCD: number;
   amountUSD: number;
   billingInterval: 'monthly' | 'one_time' | 'annual';
-  status: 'Paid' | 'Processing' | 'Renewal Pending';
+  status: 'Paid' | 'Processing' | 'Renewal Pending' | 'Failed' | 'Canceled' | 'Refunded';
   paymentMethod: string;
   receiptUrl?: string;
   stripeSubscriptionId?: string;
   paymentIntentId?: string;
+  idempotencyKey?: string;
+  failureReason?: string;
   timestamp?: string;
   stripeFeeXCD?: number;
   currency?: string;

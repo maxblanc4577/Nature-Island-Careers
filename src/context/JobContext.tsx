@@ -3936,6 +3936,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // Background service: audit employer subscriptions and alert site contact email if expired

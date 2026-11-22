@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { JobListing } from '../types';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import {
@@ -278,7 +278,16 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
   const modalRef = useModalKeyboard({ isOpen: isOpen && Boolean(job), onClose });
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
   const [isPreviewPopupOpen, setIsPreviewPopupOpen] = useState(false);
+  const timersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach((id) => window.clearTimeout(id));
+      timersRef.current = [];
+    };
+  }, []);
 
   if (!isOpen || !job) return null;
 
@@ -287,6 +296,7 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
   const shareText = `🇩🇲 Dominica Career Opportunity: ${job.title} at ${job.company}\n📍 Parish: ${job.parish} (${job.locality || 'Dominica'})\n💰 Compensation: EC$ ${job.minSalary.toLocaleString()} - EC$ ${job.maxSalary.toLocaleString()} / month\n🌐 Sector: ${job.sector}\n\n👉 Apply or view complete requirements:\n${shareUrl}`;
 
   const handleCopyLink = async () => {
+    setClipboardError(null);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(shareUrl);
@@ -297,18 +307,21 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
         textarea.style.opacity = '0';
         document.body.appendChild(textarea);
         textarea.select();
-        document.execCommand('copy');
+        const copied = document.execCommand('copy');
         document.body.removeChild(textarea);
+        if (!copied) throw new Error('Clipboard unavailable');
       }
       setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2400);
+      const t = window.setTimeout(() => setCopiedLink(false), 2400);
+      timersRef.current.push(t);
     } catch {
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2400);
+      setCopiedLink(false);
+      setClipboardError('Clipboard access was blocked by your browser. Please select the URL above and press Ctrl+C / Cmd+C.');
     }
   };
 
   const handleCopySummary = async () => {
+    setClipboardError(null);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(shareText);
@@ -319,19 +332,20 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
         textarea.style.opacity = '0';
         document.body.appendChild(textarea);
         textarea.select();
-        document.execCommand('copy');
+        const copied = document.execCommand('copy');
         document.body.removeChild(textarea);
+        if (!copied) throw new Error('Clipboard unavailable');
       }
       setCopiedSummary(true);
-      setTimeout(() => setCopiedSummary(false), 2400);
+      const t = window.setTimeout(() => setCopiedSummary(false), 2400);
+      timersRef.current.push(t);
     } catch {
-      setCopiedSummary(true);
-      setTimeout(() => setCopiedSummary(false), 2400);
+      setCopiedSummary(false);
+      setClipboardError('Clipboard access was blocked by your browser. Please copy the link or share directly below.');
     }
   };
 
   const handleOpenPreviewPopup = () => {
-    openJobBoardPreviewPopup(job);
     setIsPreviewPopupOpen(true);
   };
 
@@ -390,6 +404,7 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={onClose}
               className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg transition-colors cursor-pointer"
               aria-label="Close share dialog"
@@ -487,6 +502,15 @@ export const ShareJobModal: React.FC<ShareJobModalProps> = ({
                 <span className="text-[10px] text-emerald-700 uppercase font-black tracking-wider">
                   Success
                 </span>
+              </div>
+            )}
+
+            {clipboardError && (
+              <div
+                role="alert"
+                className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold"
+              >
+                {clipboardError}
               </div>
             )}
           </div>

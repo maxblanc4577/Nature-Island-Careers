@@ -43,8 +43,17 @@ export const AdminParishSalaryDistribution: React.FC<AdminParishSalaryDistributi
           return (
             <div
               key={item.parish}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSelected}
               onClick={() => setSelectedParish(item)}
-              className={`p-3 rounded-xl border transition-all cursor-pointer ${
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedParish(item);
+                }
+              }}
+              className={`p-3 rounded-xl border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 ${
                 isSelected
                   ? 'border-emerald-600 bg-emerald-50/60 shadow-xs ring-1 ring-emerald-500'
                   : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'
@@ -128,6 +137,7 @@ export const AdminParishSalaryDistribution: React.FC<AdminParishSalaryDistributi
         {onSelectParishFilter && (
           <div className="pt-2 flex justify-end">
             <button
+              type="button"
               onClick={() => onSelectParishFilter(selectedParish.parish)}
               className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition-colors cursor-pointer"
             >

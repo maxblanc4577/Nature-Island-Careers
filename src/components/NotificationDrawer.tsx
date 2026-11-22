@@ -72,15 +72,19 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
             <div className="flex items-center space-x-2">
               {notifications.length > 0 && (
                 <button
+                  type="button"
                   onClick={markAllNotificationsAsRead}
                   title="Mark all as read"
+                  aria-label="Mark all notifications as read"
                   className="p-1.5 text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer"
                 >
                   <CheckCheck className="w-4 h-4" />
                 </button>
               )}
               <button
+                type="button"
                 onClick={onClose}
+                aria-label="Close notifications"
                 className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -130,8 +134,16 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
               notifications.map((notif) => (
                 <div
                   key={notif.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => markNotificationAsRead(notif.id)}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      markNotificationAsRead(notif.id);
+                    }
+                  }}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 ${
                     notif.isRead
                       ? 'bg-slate-50 border-slate-200 text-slate-600'
                       : 'bg-emerald-50/70 border-emerald-300 text-slate-900 shadow-xs'

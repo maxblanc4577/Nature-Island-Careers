@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   DOMINICA_TRENDING_ROLES,
   TRAINING_PROGRAMS_CATALOG,
@@ -92,10 +92,18 @@ export const CareerSkillsGapAnalyzer: React.FC<CareerSkillsGapAnalyzerProps> = (
   });
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToastMessage(null), 2500);
   };
 
   const toggleSaveCourse = (courseId: string) => {

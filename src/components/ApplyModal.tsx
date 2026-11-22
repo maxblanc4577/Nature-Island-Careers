@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { JobListing, Parish } from '../types';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
+import { isValidEmail, isValidPhone } from '../utils/paymentValidation';
 import {
   X,
   UploadCloud,
@@ -15,6 +16,7 @@ import {
   Check,
   Sparkles,
   Save,
+  AlertCircle,
 } from 'lucide-react';
 
 interface ApplyModalProps {
@@ -51,6 +53,9 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
   const [isSubmitSuccess, setIsSubmitSuccess] = useState(false);
   const [completedAppId, setCompletedAppId] = useState<string | null>(null);
   const [draftNotice, setDraftNotice] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const isSubmittingRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
 
   // Form State
   const [applicantName, setApplicantName] = useState('Max Blanc');
@@ -98,6 +103,22 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
     }
   }, [job?.id, isOpen]);
 
+  // Clear timers on unmount
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach((id) => window.clearTimeout(id));
+      timersRef.current = [];
+    };
+  }, []);
+
+  // Reset transient state when opening or changing job
+  useEffect(() => {
+    if (!isOpen) return;
+    setValidationError(null);
+    setIsSubmitting(false);
+    isSubmittingRef.current = false;
+  }, [isOpen, job?.id]);
+
   // Save Draft to localStorage
   const handleSaveDraft = () => {
     if (!job) return;
@@ -117,80 +138,171 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
       };
       localStorage.setItem(draftKey, JSON.stringify(draftData));
       setDraftNotice(true);
-      setTimeout(() => setDraftNotice(false), 2400);
+      const t = window.setTimeout(() => setDraftNotice(false), 2400);
+      timersRef.current.push(t);
     } catch (e) {
       console.warn('Could not save draft', e);
     }
   };
 
-  if (!isOpen || !job) return null;
-
-  const handleFileUploadSim = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setResumeFileName(file.name);
-      setResumeFileSize(`${Math.round(file.size / 1024)} KB`);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!consentChecked) return;
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      const newId = submitApplication({
-        jobId: job.id,
-        applicantName,
-        applicantEmail,
-        applicantPhone,
-        parish,
-        citizenStatus,
-        resumeFileName,
-        resumeFileSize,
-        portfolioUrl: portfolioUrl || undefined,
-        coverNote,
-        screeningAnswers,
-      });
-
-      // Show checkmark animation then celebratory confetti shower!
-      setIsSubmitting(false);
-      setIsSubmitSuccess(true);
-
-      // Trigger celebratory shower
-      try {
-        confetti({
-          particleCount: 90,
-          spread: 80,
-          origin: { y: 0.6 },
-          colors: ['#047857', '#0d9488', '#fbbf24', '#10b981', '#34d399'],
-        });
-      } catch (err) {
-        console.warn('Confetti notice:', err);
-      }
-
-      // Clear draft
-      try {
-        localStorage.removeItem(`natureisland_apply_draft_${job.id}`);
-      } catch {
-        // ignore
-      }
-
-      setTimeout(() => {
-        setIsSubmitSuccess(false);
-        setCompletedAppId(newId);
-        onSuccess(newId);
-      }, 750);
-    }, 700);
-  };
-
   const resetAndClose = () => {
     setStep(1);
     setCompletedAppId(null);
+    setValidationError(null);
+    setIsSubmitting(false);
+    isSubmittingRef.current = false;
     onClose();
   };
 
   const modalRef = useModalKeyboard({ isOpen: isOpen && Boolean(job), onClose: resetAndClose });
+
+  if (!isOpen || !job) return null;
+
+  const handleFileUploadSim = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setValidationError(null);
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const allowedExt = /\.(pdf|doc|docx)$/i;
+      if (!allowedExt.test(file.name)) {
+        setValidationError('Invalid file format. Please upload a PDF, DOC, or DOCX resume.');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setValidationError('Resume file exceeds the 5 MB limit. Please select a smaller document.');
+        return;
+      }
+      setResumeFileName(file.name);
+      setResumeFileSize(`${Math.max(1, Math.round(file.size / 1024))} KB`);
+    }
+  };
+
+  const validateStep1 = (): boolean => {
+    if (!applicantName.trim() || applicantName.trim().length < 2) {
+      setValidationError('Please enter your full legal name (at least 2 characters).');
+      return false;
+    }
+    if (!isValidEmail(applicantEmail)) {
+      setValidationError('Please enter a valid email address for application updates.');
+      return false;
+    }
+    if (!isValidPhone(applicantPhone)) {
+      setValidationError('Please enter a valid contact phone number (at least 7 digits).');
+      return false;
+    }
+    setValidationError(null);
+    return true;
+  };
+
+  const validateStep2 = (): boolean => {
+    if (!resumeFileName.trim()) {
+      setValidationError('Please upload or keep a valid PDF/DOCX resume before continuing.');
+      return false;
+    }
+    if (portfolioUrl.trim()) {
+      try {
+        const parsed = new URL(portfolioUrl.trim());
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          setValidationError('Portfolio URL must begin with https:// or http://.');
+          return false;
+        }
+      } catch {
+        setValidationError('Please enter a valid Portfolio / LinkedIn URL (e.g. https://linkedin.com/in/yourname).');
+        return false;
+      }
+    }
+    if (!coverNote.trim() || coverNote.trim().length < 10) {
+      setValidationError('Please provide a brief personal statement (at least 10 characters).');
+      return false;
+    }
+    setValidationError(null);
+    return true;
+  };
+
+  const validateStep3 = (): boolean => {
+    for (const q of job.screeningQuestions) {
+      if (!q.required) continue;
+      if (q.type === 'yes_no') continue;
+      const ans = (screeningAnswers[q.id] || '').trim();
+      if (!ans) {
+        setValidationError(`Please answer the required screening question: "${q.question}"`);
+        return false;
+      }
+    }
+    setValidationError(null);
+    return true;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmittingRef.current) return;
+    if (!validateStep1() || !validateStep2() || !validateStep3()) return;
+    if (!consentChecked) {
+      setValidationError('Please certify accuracy and grant consent before submitting.');
+      return;
+    }
+
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    setValidationError(null);
+
+    const normalizedScreening = { ...screeningAnswers };
+    job.screeningQuestions.forEach((q) => {
+      if (q.type === 'yes_no' && !normalizedScreening[q.id]) {
+        normalizedScreening[q.id] = 'Yes';
+      }
+    });
+
+    const t1 = window.setTimeout(() => {
+      try {
+        const newId = submitApplication({
+          jobId: job.id,
+          applicantName: applicantName.trim(),
+          applicantEmail: applicantEmail.trim(),
+          applicantPhone: applicantPhone.trim(),
+          parish,
+          citizenStatus,
+          resumeFileName,
+          resumeFileSize,
+          portfolioUrl: portfolioUrl.trim() || undefined,
+          coverNote: coverNote.trim(),
+          screeningAnswers: normalizedScreening,
+        });
+
+        setIsSubmitting(false);
+        setIsSubmitSuccess(true);
+
+        try {
+          confetti({
+            particleCount: 90,
+            spread: 80,
+            origin: { y: 0.6 },
+            colors: ['#047857', '#0d9488', '#fbbf24', '#10b981', '#34d399'],
+          });
+        } catch (err) {
+          console.warn('Confetti notice:', err);
+        }
+
+        try {
+          localStorage.removeItem(`natureisland_apply_draft_${job.id}`);
+        } catch {
+          // ignore
+        }
+
+        const t2 = window.setTimeout(() => {
+          setIsSubmitSuccess(false);
+          isSubmittingRef.current = false;
+          setCompletedAppId(newId);
+          onSuccess(newId);
+        }, 750);
+        timersRef.current.push(t2);
+      } catch {
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        setValidationError('Unable to transmit application right now. Please try again.');
+      }
+    }, 700);
+    timersRef.current.push(t1);
+  };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
@@ -215,6 +327,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
             <p className="text-xs text-stone-500">{job.company} · {job.parish}</p>
           </div>
           <button
+            type="button"
             onClick={resetAndClose}
             className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg cursor-pointer"
             aria-label="Close application modal"
@@ -270,6 +383,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
 
               <div className="pt-3">
                 <button
+                  type="button"
                   onClick={resetAndClose}
                   className="px-6 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer"
                 >
@@ -278,7 +392,17 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs" noValidate>
+              {validationError && (
+                <div
+                  role="alert"
+                  data-testid="apply-modal-validation-error"
+                  className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-start gap-2"
+                >
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{validationError}</span>
+                </div>
+              )}
               
               {/* STEP 1: Identification */}
               {step === 1 && (
@@ -373,7 +497,9 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
                   <div className="flex justify-end pt-3">
                     <button
                       type="button"
-                      onClick={() => setStep(2)}
+                      onClick={() => {
+                        if (validateStep1()) setStep(2);
+                      }}
                       className="flex items-center gap-1.5 px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-medium cursor-pointer"
                     >
                       <span>Continue to Resume</span>
@@ -460,7 +586,9 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setStep(3)}
+                      onClick={() => {
+                        if (validateStep2()) setStep(3);
+                      }}
                       className="flex items-center gap-1.5 px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-medium cursor-pointer"
                     >
                       <span>Continue to Screening</span>
@@ -494,7 +622,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
                               <input
                                 type="radio"
                                 name={`q_${q.id}`}
-                                defaultChecked
+                                checked={(screeningAnswers[q.id] || 'Yes') === 'Yes'}
                                 onChange={() =>
                                   setScreeningAnswers((prev) => ({ ...prev, [q.id]: 'Yes' }))
                                 }
@@ -506,6 +634,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
                               <input
                                 type="radio"
                                 name={`q_${q.id}`}
+                                checked={screeningAnswers[q.id] === 'No'}
                                 onChange={() =>
                                   setScreeningAnswers((prev) => ({ ...prev, [q.id]: 'No' }))
                                 }
@@ -541,7 +670,9 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setStep(4)}
+                      onClick={() => {
+                        if (validateStep3()) setStep(4);
+                      }}
                       className="flex items-center gap-1.5 px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-medium cursor-pointer"
                     >
                       <span>Review & Submit</span>

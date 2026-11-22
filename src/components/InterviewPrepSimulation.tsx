@@ -86,7 +86,24 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
   // Voice Speech Recognition state
   const [isListening, setIsListening] = useState(false);
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const generateTimerRef = useRef<number | null>(null);
+  const evalTimerRef = useRef<number | null>(null);
+  const revokeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (generateTimerRef.current) window.clearTimeout(generateTimerRef.current);
+      if (evalTimerRef.current) window.clearTimeout(evalTimerRef.current);
+      if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+      try {
+        recognitionRef.current?.stop?.();
+      } catch {
+        // ignore stop errors on unmount
+      }
+    };
+  }, []);
 
   // Sector pre-filled role suggestions
   const SECTOR_ROLE_PRESETS: Record<JobSector, string[]> = {
@@ -199,6 +216,13 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
       };
 
       recognitionRef.current = recognition;
+      return () => {
+        try {
+          recognition.stop();
+        } catch {
+          // ignore
+        }
+      };
     }
   }, [currentIndex]);
 
@@ -235,6 +259,12 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
 
   // Generate Simulation Questions via Gemini API
   const handleStartSimulation = async () => {
+    const cleanedRole = targetRole.trim();
+    if (!cleanedRole) {
+      setConfigError('Please enter or select a target role before starting the simulation.');
+      return;
+    }
+    setConfigError(null);
     setSimulationState('generating');
     setQuestions([]);
     setCurrentIndex(0);
@@ -268,7 +298,8 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
     }
 
     // High quality client-side fallback generator if API key not supplied
-    setTimeout(() => {
+    if (generateTimerRef.current) window.clearTimeout(generateTimerRef.current);
+    generateTimerRef.current = window.setTimeout(() => {
       const fallbackList: SimulationQuestion[] = [
         {
           id: 'sim-1',
@@ -354,7 +385,8 @@ export const InterviewPrepSimulation: React.FC<InterviewPrepSimulationProps> = (
     }
 
     // High quality fallback assessment
-    setTimeout(() => {
+    if (evalTimerRef.current) window.clearTimeout(evalTimerRef.current);
+    evalTimerRef.current = window.setTimeout(() => {
       setEvaluations((prev) => ({
         ...prev,
         [currentIndex]: {
@@ -461,6 +493,8 @@ End of Report. Dominica National Labour Exchange.`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    revokeTimerRef.current = window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const currentQ = questions[currentIndex];
@@ -510,6 +544,13 @@ End of Report. Dominica National Labour Exchange.`;
               Gemini AI will dynamically craft technical questions, behavioral STAR scenarios, and local Dominican case studies matched to your target parameters.
             </p>
           </div>
+
+          {configError && (
+            <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{configError}</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
             {/* Sector Selector */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ResumeLibraryDocument,
   ResumeVersionHistoryEntry,
@@ -78,6 +78,15 @@ export const ResumeLibrary: React.FC = () => {
   const [newDocContent, setNewDocContent] = useState('');
   const [newDocTags, setNewDocTags] = useState('');
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const revokeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    };
+  }, []);
 
   const historyModalRef = useModalKeyboard({
     isOpen: Boolean(activeDocForHistory),
@@ -94,7 +103,8 @@ export const ResumeLibrary: React.FC = () => {
 
   const triggerToast = (msg: string) => {
     setSuccessToast(msg);
-    setTimeout(() => setSuccessToast(null), 2500);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setSuccessToast(null), 2500);
   };
 
   // Filtered documents
@@ -266,6 +276,8 @@ export const ResumeLibrary: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    if (revokeTimerRef.current) window.clearTimeout(revokeTimerRef.current);
+    revokeTimerRef.current = window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     triggerToast(`Downloaded ${doc.title} (.txt)`);
   };
 
@@ -437,8 +449,16 @@ export const ResumeLibrary: React.FC = () => {
 
                 {/* Title */}
                 <h3
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setActiveDocForHistory(doc)}
-                  className="font-bold text-base text-slate-900 hover:text-emerald-800 transition-colors cursor-pointer leading-snug font-display"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setActiveDocForHistory(doc);
+                    }
+                  }}
+                  className="font-bold text-base text-slate-900 hover:text-emerald-800 transition-colors cursor-pointer leading-snug font-display focus:outline-none focus:ring-2 focus:ring-emerald-600 rounded"
                 >
                   {doc.title}
                 </h3>
@@ -549,8 +569,9 @@ export const ResumeLibrary: React.FC = () => {
                   <span>Commit New Version</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setActiveDocForHistory(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
                   aria-label="Close version history"
                 >
                   <X className="w-5 h-5" />
@@ -716,8 +737,10 @@ export const ResumeLibrary: React.FC = () => {
                 </h3>
               </div>
               <button
+                type="button"
+                aria-label="Close add document modal"
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-700"
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>

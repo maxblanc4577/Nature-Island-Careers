@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { ResumeCertification } from '../types';
 import {
@@ -38,18 +38,38 @@ export const CertificateScannerModal: React.FC<CertificateScannerModalProps> = (
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [credentialId, setCredentialId] = useState('');
   const [suggestedSkills, setSuggestedSkills] = useState<string[]>([]);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const ocrTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (ocrTimerRef.current !== null) window.clearTimeout(ocrTimerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
   const handleImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setScanError(null);
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (!file.type.startsWith('image/')) {
+        setScanError('Please select a valid image file (PNG, JPG, or WebP) of your certificate.');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setScanError('Certificate image must be 10 MB or smaller.');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         setImagePreview(event.target?.result as string);
         runAiAnalysis(file.name);
+      };
+      reader.onerror = () => {
+        setScanError('Unable to read the selected image file. Please try another file.');
       };
       reader.readAsDataURL(file);
     }
@@ -59,11 +79,12 @@ export const CertificateScannerModal: React.FC<CertificateScannerModalProps> = (
     setIsAnalyzing(true);
     setAnalysisCompleted(false);
 
+    if (ocrTimerRef.current !== null) window.clearTimeout(ocrTimerRef.current);
     // Simulate smart OCR / Gemini multimodal document analysis
-    setTimeout(() => {
+    ocrTimerRef.current = window.setTimeout(() => {
       let parsedName = 'Certified Eco-Tourism & Marine Heritage Specialist';
       let parsedIssuer = 'Dominica State College (DSC)';
-      let parsedYear = '2025';
+      const parsedYear = '2025';
       let parsedCredId = `DSC-CERT-${Math.floor(100000 + Math.random() * 900000)}`;
       let skills = ['Eco-Tourism Guiding', 'First Aid & CPR', 'Dominica Flora & Fauna'];
 
@@ -91,7 +112,11 @@ export const CertificateScannerModal: React.FC<CertificateScannerModalProps> = (
   };
 
   const handleApply = () => {
-    if (!certName.trim() || !issuer.trim()) return;
+    if (!certName.trim() || !issuer.trim()) {
+      setScanError('Please enter both the certificate title and issuing institution.');
+      return;
+    }
+    setScanError(null);
 
     const newCert: ResumeCertification = {
       id: `cert-${Date.now()}`,
@@ -136,6 +161,7 @@ export const CertificateScannerModal: React.FC<CertificateScannerModalProps> = (
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 text-emerald-200 hover:text-white rounded-lg transition-colors cursor-pointer"
             aria-label="Close dialog"
@@ -146,6 +172,11 @@ export const CertificateScannerModal: React.FC<CertificateScannerModalProps> = (
 
         {/* Modal Content */}
         <div className="p-5 sm:p-6 space-y-5 overflow-y-auto text-xs text-stone-800">
+          {scanError && (
+            <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+              {scanError}
+            </div>
+          )}
           {/* Upload or Camera input */}
           {!imagePreview ? (
             <div className="border-2 border-dashed border-stone-300 hover:border-emerald-700 rounded-2xl p-8 text-center bg-stone-50 hover:bg-emerald-50/20 transition-all space-y-3">

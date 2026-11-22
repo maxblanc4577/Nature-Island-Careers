@@ -3,6 +3,7 @@ import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { Parish, JobSector } from '../types';
 import { evaluatePasswordStrength } from '../utils/passwordStrength';
+import { isValidEmail } from '../utils/paymentValidation';
 import { sendFirebasePasswordReset } from '../firebase';
 import {
   X,
@@ -303,7 +304,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setFormError('Please enter your full legal name (at least 2 characters).');
       return;
     }
-    if (!jsEmail.trim() || !jsEmail.includes('@')) {
+    if (!isValidEmail(jsEmail)) {
       setFormError('Please enter a valid email address.');
       return;
     }
@@ -352,7 +353,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setFormError('Please enter the contact person or HR lead name.');
       return;
     }
-    if (!clEmail.trim() || !clEmail.includes('@')) {
+    if (!isValidEmail(clEmail)) {
       setFormError('Please enter a valid business email address.');
       return;
     }
@@ -387,8 +388,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoginError(null);
 
     const trimmedEmail = loginEmail.trim().toLowerCase();
-    if (!trimmedEmail) {
-      setLoginError('Please enter your registered email address.');
+    if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+      setLoginError('Please enter a valid registered email address.');
       return;
     }
 
@@ -512,6 +513,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setRecoveryError(null);
     setRecoveryNotice(null);
 
+    if (!isValidEmail(recoveryEmail)) {
+      setRecoveryError('Please enter a valid email address to receive your recovery code.');
+      return;
+    }
+
     const result = requestPasswordReset(recoveryEmail);
     if (!result.success) {
       setRecoveryError(
@@ -624,6 +630,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg cursor-pointer"
             aria-label="Close authentication modal"
