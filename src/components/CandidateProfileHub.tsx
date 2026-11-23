@@ -3729,6 +3729,7 @@ END:VCALENDAR`;
 
         <button
           type="button"
+          data-testid="subtab-saved-jobs"
           onClick={() => setActiveSubTab('saved_jobs')}
           className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
             activeSubTab === 'saved_jobs'
@@ -3737,7 +3738,7 @@ END:VCALENDAR`;
           }`}
         >
           <Bookmark className="w-4 h-4 text-amber-500" />
-          <span>Saved Jobs ({savedJobsList.length})</span>
+          <span>My Saved Jobs ({savedJobsList.length})</span>
         </button>
 
         <button
@@ -4677,7 +4678,7 @@ END:VCALENDAR`;
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Bookmark className="w-5 h-5 text-amber-500" />
-                Bookmarked Vacancies ({savedJobsList.length})
+                My Saved Jobs ({savedJobsList.length})
               </h3>
               <p className="text-xs text-slate-500">
                 Organize your saved Dominica career opportunities into custom named folders and submit applications.

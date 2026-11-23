@@ -33,6 +33,7 @@ import { Footer } from './components/Footer';
 import { EmailAlertToast } from './components/EmailAlertToast';
 import { MobilePlatformViews, PlatformViewMode } from './components/MobilePlatformViews';
 import { BrandIdentityGenerator } from './components/BrandIdentityGenerator';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import {
   JobListing,
   Parish,
@@ -1009,6 +1010,8 @@ function DominicaJobBoardContent() {
           onClose={() => setJobToShare(null)}
         />
       )}
+
+      <OfflineIndicator />
     </div>
   );
 }

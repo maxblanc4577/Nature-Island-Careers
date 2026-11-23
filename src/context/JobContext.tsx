@@ -1080,9 +1080,33 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [latestDispatchedEmail, setLatestDispatchedEmail] = useState<EmailNotification | null>(null);
 
-  // Sync to local storage
+  // Sync to local storage & Service Worker Cache Storage for offline availability
   useEffect(() => {
-    localStorage.setItem('dominica_jobs', JSON.stringify(jobs));
+    try {
+      localStorage.setItem('dominica_jobs', JSON.stringify(jobs));
+    } catch {
+      // ignore storage quota errors
+    }
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      caches
+        .open('dominica-jobs-api-cache')
+        .then((cache) => {
+          const payload = JSON.stringify({
+            jobs,
+            cachedAt: new Date().toISOString(),
+            source: 'dominica-offline-sync',
+          });
+          return cache.put(
+            '/api/jobs',
+            new Response(payload, {
+              headers: { 'Content-Type': 'application/json' },
+            })
+          );
+        })
+        .catch(() => {
+          // ignore cache storage errors in restricted contexts
+        });
+    }
   }, [jobs]);
 
   useEffect(() => {

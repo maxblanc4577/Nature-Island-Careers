@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import http from 'node:http';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -6,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
+import { INITIAL_JOBS } from './src/data/mockData';
 
 dotenv.config();
 
@@ -1862,7 +1864,14 @@ interface BackendAuditLog {
   id: string;
   timestamp: string;
   level: 'info' | 'warn' | 'error' | 'success';
-  service: 'Stripe Gateway' | 'AI Assistant' | 'Job Dispatcher' | 'Auth Guard' | 'System Core' | 'Cache Engine';
+  service:
+    | 'Stripe Gateway'
+    | 'Stripe Webhook'
+    | 'AI Assistant'
+    | 'Job Dispatcher'
+    | 'Auth Guard'
+    | 'System Core'
+    | 'Cache Engine';
   message: string;
   details?: Record<string, any>;
 }
@@ -2983,7 +2992,7 @@ app.post('/api/stripe/webhook', (req: any, res) => {
     backendAuditLogs.push({
       id: `log_wh_fail_${Date.now()}`,
       timestamp: new Date().toISOString(),
-      level: 'warning',
+      level: 'warn',
       service: 'Stripe Webhook',
       message: `Webhook payment_intent.payment_failed for ${targetObjectId || eventId}: ${failReason}`,
     });
@@ -3518,6 +3527,16 @@ const handleCreateCheckoutSession = async (req: express.Request, res: express.Re
 app.post('/api/stripe/create-checkout-session', handleCreateCheckoutSession);
 app.post('/create-checkout-session', handleCreateCheckoutSession);
 
+// Offline-cacheable public Dominica job listings feed for Service Worker runtime caching
+app.get('/api/jobs', (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
+  res.json({
+    jobs: INITIAL_JOBS,
+    cachedAt: new Date().toISOString(),
+    source: 'dominica-jobs-feed',
+  });
+});
+
 // 2. Health check
 app.get('/api/health', (req, res) => {
   res.json({
@@ -3530,10 +3549,19 @@ app.get('/api/health', (req, res) => {
 
 // Mount Vite middleware for dev or serve dist in production
 const isProduction = process.env.NODE_ENV === 'production';
+const httpServer = http.createServer(app);
 
 if (!isProduction) {
   const vite = await createViteServer({
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      allowedHosts: true,
+      ws: {
+        server: httpServer,
+      },
+      hmr: false,
+      watch: null,
+    },
     appType: 'spa',
   });
   app.use(vite.middlewares);
@@ -3544,6 +3572,6 @@ if (!isProduction) {
   });
 }
 
-app.listen(port, '0.0.0.0', () => {
+httpServer.listen(port, '0.0.0.0', () => {
   console.log(`Dominica Jobs server listening on http://0.0.0.0:${port}`);
 });

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { PlatformViewMode } from './MobilePlatformViews';
 import { BrandLogo } from './BrandLogo';
+import { PWAInstallButton } from './PWAInstallButton';
 
 export { RecentSearches };
 
@@ -316,6 +317,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            <PWAInstallButton />
             {/* New Job Alerts Notification Icon */}
             <button
               type="button"
@@ -520,7 +522,7 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <span className="flex items-center gap-2">
                           <Bookmark className="w-4 h-4 text-amber-500" />
-                          <span>Saved Vacancies</span>
+                          <span>My Saved Jobs</span>
                         </span>
                         {savedJobIds.length > 0 && (
                           <span className="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-bold">

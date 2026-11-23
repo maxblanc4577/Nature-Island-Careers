@@ -1,7 +1,7 @@
 import React from 'react';
 import { JobListing, JobSector } from '../types';
 import { useJobContext } from '../context/JobContext';
-import { ShareJobModal, buildShareViaEmailMailto } from './ShareJobModal';
+import { ShareJobModal, buildShareViaEmailMailto, buildJobShareUrl } from './ShareJobModal';
 import {
   Bookmark,
   BookmarkCheck,
@@ -223,8 +223,27 @@ export const JobCard: React.FC<JobCardProps> = ({
     setCustomFolderName('');
   };
 
-  const handleShareClick = (e: React.MouseEvent) => {
+  const handleShareClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const shareUrl = buildJobShareUrl(job.id);
+    const shareTitle = `${job.title} at ${job.company} — Nature Island Careers`;
+    const shareText = `Check out this Dominica job opportunity: ${job.title} at ${job.company} (${job.parish}, EC$ ${job.minSalary.toLocaleString()} - ${job.maxSalary.toLocaleString()}/${job.salaryPeriod}).`;
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
     if (onShare) {
       onShare(job);
     } else {
@@ -481,12 +500,34 @@ export const JobCard: React.FC<JobCardProps> = ({
 
             <button
               type="button"
+              data-testid={`share-job-btn-${job.id}`}
               onClick={handleShareClick}
-              className="p-1.5 rounded-lg text-stone-400 hover:text-emerald-800 hover:bg-stone-50 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-stone-500 hover:text-emerald-800 hover:bg-emerald-50/80 border border-transparent hover:border-emerald-200 transition-colors cursor-pointer"
               title="Share job opportunity"
               aria-label="Share job"
             >
               <Share2 className="w-4 h-4" />
+            </button>
+
+            {/* Feature: Interactive Bookmark Icon saving directly to My Saved Jobs */}
+            <button
+              type="button"
+              data-testid={`bookmark-job-btn-${job.id}`}
+              aria-pressed={saved}
+              onClick={handleToggleSave}
+              className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center border ${
+                saved
+                  ? 'text-amber-700 bg-amber-50 border-amber-300 shadow-2xs hover:bg-amber-100'
+                  : 'text-stone-500 hover:text-amber-700 hover:bg-amber-50/70 border-stone-200/70'
+              }`}
+              title={saved ? 'Bookmarked in My Saved Jobs' : 'Bookmark to My Saved Jobs'}
+              aria-label={saved ? 'Remove bookmark from My Saved Jobs' : 'Bookmark job to My Saved Jobs'}
+            >
+              {saved ? (
+                <BookmarkCheck className="w-4 h-4 text-amber-600 fill-amber-200" />
+              ) : (
+                <Bookmark className="w-4 h-4" />
+              )}
             </button>
 
             {/* Feature: 'Save Job' heart button toggling saved status with heartbeat animation */}
@@ -1024,8 +1065,8 @@ export const JobCard: React.FC<JobCardProps> = ({
             <p className="text-xs text-slate-200 mt-0.5 leading-snug">
               <strong className="font-bold text-white">{job.title}</strong> at {job.company}{' '}
               {saveToastAction === 'saved'
-                ? 'has been added to your saved list.'
-                : 'has been removed from your saved list.'}
+                ? 'has been added to your My Saved Jobs list.'
+                : 'has been removed from your My Saved Jobs list.'}
             </p>
           </div>
           <button
