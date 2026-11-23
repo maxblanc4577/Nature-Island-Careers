@@ -131,6 +131,15 @@ export interface EmployerInvoice {
   stripeFeeXCD?: number;
   currency?: string;
   notifiedAt?: string;
+  dssRegistrationNo?: string;
+  parish?: string;
+  contactPerson?: string;
+  membershipFeatures?: string[];
+  quotaPostings?: number;
+  remoteWorkEnabled?: boolean;
+  renewsAt?: string;
+  signupVerifiedAt?: string;
+  verificationChannel?: string;
 }
 
 export interface MerchantPortalsEnabled {
@@ -307,10 +316,12 @@ export interface EmailNotification {
     | 'interview_invite'
     | 'job_alert'
     | 'recruiter_new_applicant'
-    | 'feedback_received';
+    | 'feedback_received'
+    | 'employer_membership_verified';
   timestamp: string;
   isRead: boolean;
   relatedJobId?: string;
+  relatedInvoiceId?: string;
 }
 
 export interface JobAlertSubscription {

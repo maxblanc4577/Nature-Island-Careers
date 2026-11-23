@@ -33,6 +33,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
     switch (type) {
       case 'interview_invite':
         return <Calendar className="w-4 h-4 text-amber-500 shrink-0" />;
+      case 'employer_membership_verified':
       case 'status_update':
       case 'application_received':
         return <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />;

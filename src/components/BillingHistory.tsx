@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { convertXcdToUsd } from '../utils/paymentValidation';
+import { getMembershipPlanDetails } from '../utils/membershipPlans';
+import { generateInvoicePdf } from '../utils/generateInvoicePdf';
 import { EmployerInvoice } from '../types';
 import {
   CreditCard,
@@ -11,6 +13,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Receipt,
+  MailCheck,
   X,
 } from 'lucide-react';
 
@@ -272,100 +275,151 @@ export const BillingHistory: React.FC<BillingHistoryProps> = ({ onOpenStripe }) 
         )}
       </div>
 
-      {/* Tax Receipt Modal */}
-      {selectedInvoice && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div
-            ref={receiptModalRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Official Dominica Employer Receipt ${selectedInvoice.invoiceNumber}`}
-            tabIndex={-1}
-            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-          >
-            {/* Modal Top */}
-            <div className="p-4 bg-emerald-950 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-emerald-400" />
-                <span className="font-bold text-sm">Official Dominica Employer Receipt</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedInvoice(null)}
-                aria-label="Close receipt modal"
-                className="text-emerald-300 hover:text-white p-1 rounded cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Receipt Body */}
-            <div className="p-6 space-y-4 text-xs text-slate-800">
-              <div className="text-center pb-3 border-b border-slate-200">
-                <h3 className="text-base font-black text-slate-900">NATURE ISLAND CAREERS</h3>
-                <p className="text-[11px] text-slate-500">Commonwealth of Dominica Labour Division Authorized Exchange</p>
-                <p className="text-[11px] text-emerald-800 font-mono mt-1 font-bold">VAT / DSS Reg: DOM-EMP-TAX-77491</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <div>
-                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Billed To</span>
-                  <span className="font-bold text-slate-900 block">{selectedInvoice.companyName}</span>
-                  <span className="text-[11px] text-slate-600">Commonwealth of Dominica</span>
+      {/* Tax Receipt / Membership Invoice Modal */}
+      {selectedInvoice && (() => {
+        const planDetails = getMembershipPlanDetails(selectedInvoice.plan);
+        const featuresList =
+          selectedInvoice.membershipFeatures && selectedInvoice.membershipFeatures.length > 0
+            ? selectedInvoice.membershipFeatures
+            : planDetails.features;
+        return (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div
+              ref={receiptModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Official Dominica Employer Receipt ${selectedInvoice.invoiceNumber}`}
+              tabIndex={-1}
+              data-testid="billing-history-invoice-modal"
+              className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            >
+              {/* Modal Top */}
+              <div className="p-4 bg-emerald-950 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-emerald-400" />
+                  <span className="font-bold text-sm">Official Dominica Employer Membership Invoice</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Invoice No</span>
-                  <span className="font-mono font-bold text-slate-900 block">{selectedInvoice.invoiceNumber}</span>
-                  <span className="text-[11px] text-slate-600">Date: {selectedInvoice.date}</span>
-                </div>
-              </div>
-
-              <div className="space-y-2 border-t border-b border-slate-100 py-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-900">{selectedInvoice.plan}</span>
-                  <span className="font-mono font-bold text-slate-900">EC${selectedInvoice.amountXCD.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center text-[11px] text-slate-500">
-                  <span>Billing Cadence: {selectedInvoice.billingInterval === 'monthly' ? 'Monthly Recurring Subscription' : 'One-Time Listing'}</span>
-                  <span className="font-mono">USD Approx: ${selectedInvoice.amountUSD.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between items-center text-[11px] text-slate-500">
-                  <span>Payment Gateway: Stripe Verified</span>
-                  <span className="font-mono">{selectedInvoice.paymentMethod}</span>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center text-sm font-black text-emerald-950 pt-1">
-                <span>Total {selectedInvoice.status}:</span>
-                <span className="font-mono text-base">EC${selectedInvoice.amountXCD.toLocaleString()} XCD</span>
-              </div>
-
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-xl text-[11px] flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Payment status: {selectedInvoice.status}. Eligible for Dominica corporate tax deduction.</span>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setSelectedInvoice(null)}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  aria-label="Close receipt modal"
+                  className="text-emerald-300 hover:text-white p-1 rounded cursor-pointer"
                 >
-                  Close
+                  <X className="w-5 h-5" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Print Receipt</span>
-                </button>
+              </div>
+
+              {/* Receipt Body */}
+              <div className="p-6 space-y-4 text-xs text-slate-800">
+                <div className="text-center pb-3 border-b border-slate-200">
+                  <h3 className="text-base font-black text-slate-900">NATURE ISLAND CAREERS</h3>
+                  <p className="text-[11px] text-slate-500">Commonwealth of Dominica Labour Division Authorized Exchange</p>
+                  <p className="text-[11px] text-emerald-800 font-mono mt-1 font-bold">VAT / DSS Reg: DOM-EMP-TAX-77491</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <div>
+                    <span className="text-slate-500 text-[10px] font-bold block">Billed To</span>
+                    <span className="font-bold text-slate-900 block">{selectedInvoice.companyName}</span>
+                    {selectedInvoice.recipientEmail && (
+                      <span className="text-[11px] text-slate-600 block">{selectedInvoice.recipientEmail}</span>
+                    )}
+                    <span className="text-[11px] text-slate-600 font-mono">
+                      DSS: {selectedInvoice.dssRegistrationNo || 'DSS-DOM-VERIFIED'} · {selectedInvoice.parish || 'Dominica'}
+                    </span>
+                  </div>
+                  <div className="text-right tabular-nums">
+                    <span className="text-slate-500 text-[10px] font-bold block">Invoice No</span>
+                    <span className="font-mono font-bold text-slate-900 block">{selectedInvoice.invoiceNumber}</span>
+                    <span className="text-[11px] text-slate-600 block">Date: {selectedInvoice.date}</span>
+                    {selectedInvoice.renewsAt && (
+                      <span className="text-[11px] text-slate-500 block">Renews: {selectedInvoice.renewsAt}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2 border-t border-b border-slate-100 py-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-[10px] text-slate-500 block">Selected Membership Tier</span>
+                      <span className="font-bold text-slate-900 text-sm">{selectedInvoice.plan}</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900 text-sm tabular-nums">
+                      EC${selectedInvoice.amountXCD.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-emerald-800 font-semibold">
+                    {selectedInvoice.quotaPostings && selectedInvoice.quotaPostings >= 999
+                      ? 'Unlimited Job & Remote Vacancies'
+                      : `${selectedInvoice.quotaPostings ?? planDetails.quotaPostings} Active Vacancies`}{' '}
+                    · {selectedInvoice.remoteWorkEnabled ?? planDetails.remoteWorkEnabled ? 'WIN Remote Enabled' : 'Local Parish Classifieds'}
+                  </div>
+                  <ul className="text-[11px] text-slate-600 space-y-0.5 pt-1">
+                    {featuresList.slice(0, 3).map((feat, i) => (
+                      <li key={i}>• {feat}</li>
+                    ))}
+                  </ul>
+                  <div className="flex justify-between items-center text-[11px] text-slate-500 pt-1.5">
+                    <span>Billing Cadence: {selectedInvoice.billingInterval === 'monthly' ? 'Monthly Recurring Subscription' : 'One-Time Listing'}</span>
+                    <span className="font-mono tabular-nums">USD Approx: ${selectedInvoice.amountUSD.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] text-slate-500">
+                    <span>Payment Channel:</span>
+                    <span className="font-mono">{selectedInvoice.paymentMethod}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-sm font-black text-emerald-950 pt-1 tabular-nums">
+                  <span>Total {selectedInvoice.status}:</span>
+                  <span className="font-mono text-base">EC${selectedInvoice.amountXCD.toLocaleString()} XCD</span>
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-xl text-[11px] space-y-1">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Payment status: {selectedInvoice.status}. Eligible for Dominica corporate tax deduction.</span>
+                  </div>
+                  {selectedInvoice.recipientEmail && (
+                    <div className="flex items-center gap-2 text-emerald-800">
+                      <MailCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        Verification notice &amp; invoice dispatched to {selectedInvoice.recipientEmail}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInvoice(null)}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="billing-download-invoice-pdf-btn"
+                    onClick={() => generateInvoicePdf(selectedInvoice)}
+                    className="px-4 py-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download PDF Invoice</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Print Receipt</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

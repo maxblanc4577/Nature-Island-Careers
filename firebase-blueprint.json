@@ -85,6 +85,79 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "EmailCategorySubscription": {
+      "title": "EmailCategorySubscription",
+      "description": "Email job category subscription linked to an authenticated user account for automated Dominica vacancy notifications.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Deterministic subscription document identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "uid": {
+          "type": "string",
+          "description": "The Firebase Authentication UID of the subscription owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Recipient email address for job category alerts.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "name": {
+          "type": "string",
+          "description": "Subscriber display name.",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "categories": {
+          "type": "array",
+          "description": "Bounded list of up to 10 subscribed Dominica job categories/sectors.",
+          "maxLength": 10
+        },
+        "parishes": {
+          "type": "array",
+          "description": "Bounded list of up to 11 Dominica parishes.",
+          "maxLength": 11
+        },
+        "frequency": {
+          "type": "string",
+          "description": "Automated email digest frequency.",
+          "enum": ["instant", "daily", "weekly"]
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether automated notifications are currently active."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the subscription was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the subscription was last updated."
+        }
+      },
+      "required": [
+        "id",
+        "uid",
+        "email",
+        "categories",
+        "frequency",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -93,6 +166,12 @@
         "$ref": "#/entities/UserProfile"
       },
       "description": "Stores isolated account profile data for candidates and employers, strictly accessible only by the document owner."
+    },
+    "/users/{userId}/emailSubscriptions/{subscriptionId}": {
+      "schema": {
+        "$ref": "#/entities/EmailCategorySubscription"
+      },
+      "description": "Stores email job category alert subscriptions per verified user for automated vacancy notifications."
     }
   }
 }

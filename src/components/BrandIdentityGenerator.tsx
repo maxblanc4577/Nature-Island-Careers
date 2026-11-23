@@ -11,6 +11,7 @@ import {
   isColorLight,
 } from '../utils/colorUtils';
 import { loadGoogleFont } from '../utils/fontLoader';
+import { BrandAssetGenerator } from './BrandAssetGenerator';
 import {
   Sparkles,
   Share2,
@@ -168,13 +169,19 @@ export const SOCIAL_SPECS: Record<'facebook' | 'twitter' | 'instagram', SocialMo
 interface BrandIdentityGeneratorProps {
   onClose?: () => void;
   isOpenAsModal?: boolean;
+  isAdmin?: boolean;
+  adminToken?: string;
+  onOpenAdminLogin?: () => void;
 }
 
 export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
   onClose,
   isOpenAsModal = false,
+  isAdmin = false,
+  adminToken,
+  onOpenAdminLogin,
 }) => {
-  const [activeTab, setActiveTab] = useState<'all' | 'facebook' | 'twitter' | 'instagram' | 'palette' | 'typography'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'facebook' | 'twitter' | 'instagram' | 'palette' | 'typography' | 'ai_assets'>('all');
   const [selectedFontPairing, setSelectedFontPairing] = useState<FontPairingPreset>(FONT_PAIRING_PRESETS[0]);
   const [brandSlogan, setBrandSlogan] = useState('Connecting Dominica to Sustainable Career Opportunities');
   const [brandSubtitle, setBrandSubtitle] = useState('Geothermal Energy · Eco-Tourism · Tech & Remote WIN · NEP Apprenticeships');
@@ -390,13 +397,38 @@ export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
             <Type className="w-3.5 h-3.5" />
             <span>Typography Pairings</span>
           </button>
+
+          <button
+            type="button"
+            data-testid="tab-ai-brand-assets"
+            onClick={() => setActiveTab('ai_assets')}
+            className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'ai_assets'
+                ? 'bg-[#082407] text-lime-300 shadow-xs ring-1 ring-lime-500/40'
+                : 'text-stone-700 hover:text-emerald-900 hover:bg-emerald-50'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>AI Brand Assets (Admin)</span>
+          </button>
         </div>
       </header>
 
       {/* Main Content Viewport */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
         
+        {/* AI BRAND ASSET GENERATOR (ADMIN-ONLY STUDIO) */}
+        {activeTab === 'ai_assets' && (
+          <BrandAssetGenerator
+            isAdmin={isAdmin}
+            adminToken={adminToken}
+            onOpenAdminLogin={onOpenAdminLogin}
+            defaultHeadline={brandSlogan}
+          />
+        )}
+
         {/* Dynamic Customization Control Bar */}
+        {activeTab !== 'ai_assets' && (
         <section
           data-testid="brand-customization-toolbar"
           className="bg-white rounded-2xl border border-stone-200/90 p-4 sm:p-5 shadow-xs space-y-4"
@@ -462,6 +494,7 @@ export const BrandIdentityGenerator: React.FC<BrandIdentityGeneratorProps> = ({
             </div>
           </div>
         </section>
+        )}
 
         {/* SECTION 1: FACEBOOK COVER PHOTO MOCKUP */}
         {(activeTab === 'all' || activeTab === 'facebook') && (

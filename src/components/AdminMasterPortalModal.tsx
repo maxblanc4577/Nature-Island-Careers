@@ -10,6 +10,7 @@ import {
   getRemainingAdminSessionMs,
 } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
+import { BrandAssetGenerator } from './BrandAssetGenerator';
 import {
   JobListing,
   Parish,
@@ -159,6 +160,7 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
     | 'backend'
     | 'activity-log'
     | 'admin-alerts'
+    | 'brand_assets'
   >('applications');
 
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<string>('All');
@@ -1033,6 +1035,19 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
           >
             <History className="w-4 h-4 text-emerald-600" />
             <span>Audit Log ({adminActivityLogs.length})</span>
+          </button>
+
+          <button
+            data-testid="admin-brand-assets-tab"
+            onClick={() => setActiveTab('brand_assets')}
+            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'brand_assets'
+                ? 'bg-[#082407] text-lime-300 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span>AI Brand Assets</span>
           </button>
         </div>
 
@@ -2178,6 +2193,13 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                 </div>
               </div>
 
+              <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl text-[11px] text-slate-300 space-y-1">
+                <div className="font-bold text-emerald-300">Webhook Integration Checklist (docs/STRIPE_WEBHOOK_GUIDE.md)</div>
+                <p>
+                  Verify <code className="text-amber-300 font-mono">STRIPE_WEBHOOK_SECRET</code> matches your live/sandbox endpoint. Checkout sessions verify <code className="text-amber-300 font-mono">payment_status !== &apos;unpaid&apos;</code> before syncing job listings to Paid in <code className="text-amber-300 font-mono">/api/jobs</code>.
+                </p>
+              </div>
+
               {cliTestStatus && (
                 <div className="p-3 bg-emerald-950/80 border border-emerald-700/60 rounded-xl text-xs font-bold text-emerald-200 animate-in fade-in flex items-center justify-between">
                   <span>{cliTestStatus}</span>
@@ -3298,6 +3320,16 @@ export const AdminMasterPortalModal: React.FC<AdminMasterPortalModalProps> = ({
                   ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Tab 8b: AI BRAND ASSET GENERATOR */}
+        {activeTab === 'brand_assets' && (
+          <div className="p-6 flex-1 overflow-y-auto">
+            <BrandAssetGenerator
+              isAdmin={isAdminLoggedIn}
+              adminToken={adminSessionToken || undefined}
+            />
           </div>
         )}
 

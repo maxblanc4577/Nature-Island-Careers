@@ -2067,11 +2067,18 @@ interface EmployerPaymentNotificationRecord {
   employerName: string;
   recipientEmail: string;
   planName: string;
+  membershipTier?: string;
   amountXCD: number;
   amountUSD: number;
   invoiceId: string;
   paymentIntentId?: string;
   portalUsed: string;
+  signupVerified?: boolean;
+  dssRegistrationNo?: string;
+  parish?: string;
+  quotaPostings?: number;
+  renewsAt?: string;
+  billingInterval?: string;
   sentAt: string;
   status: 'sent' | 'queued';
 }
@@ -2412,6 +2419,7 @@ app.get('/api/admin/routes', requireAdminAuth, (_req, res) => {
       { method: 'POST', path: '/api/ai/parse-resume', auth: 'Rate-Limited', category: 'Gemini AI' },
       { method: 'POST', path: '/api/alerts/subscribe', auth: 'Public', category: 'Job Alerts' },
       { method: 'GET', path: '/api/alerts/subscribers', auth: 'Admin Token', category: 'Job Alerts' },
+      { method: 'POST', path: '/api/brand/generate-asset', auth: 'Admin Token', category: 'Brand Asset AI' },
     ],
   });
 });
@@ -2732,6 +2740,326 @@ app.post('/api/alerts/test-dispatch', (req, res) => {
   });
 });
 
+// 8e. Email Category Subscriptions API Endpoints (Firestore-synced service backend)
+interface EmailCategorySubscriptionItem {
+  id: string;
+  email: string;
+  name: string;
+  categories: string[];
+  parishes: string[];
+  frequency: 'instant' | 'daily' | 'weekly';
+  keyword?: string;
+  minSalary?: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const emailCategorySubscriptions = new Map<string, EmailCategorySubscriptionItem>();
+
+const ALLOWED_BRAND_ASSET_TYPES = [
+  'logo_variation',
+  'social_facebook_cover',
+  'social_twitter_header',
+  'social_instagram_post',
+  'social_linkedin_banner',
+] as const;
+
+const ALLOWED_BRAND_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'] as const;
+
+const BRAND_ASSET_PROMPT_SPECS: Record<(typeof ALLOWED_BRAND_ASSET_TYPES)[number], string> = {
+  logo_variation:
+    'Clean vector-grade minimalist emblem logo design for "Nature Island Careers" (Dominica job portal), featuring stylized tropical rainforest canopy silhouette, subtle golden morning sun arc over emerald island peaks, razor-sharp geometric composition centered on a clean studio backdrop.',
+  social_facebook_cover:
+    'High-resolution horizontal Facebook Cover graphic template for "Nature Island Careers", Commonwealth of Dominica flagship career portal. Deep forest emerald gradient, stylized Caribbean sea mist and Waitukubuli mountain silhouette on the right, generous clean negative space on the left for profile text clarity.',
+  social_twitter_header:
+    'Wide panoramic X/Twitter organizational header banner for "Nature Island Careers" in Dominica. Modern dark rainforest emerald palette with refined gold sun rays, crisp geometric tropical leaf accents, subtle tech-energy lattice texture, balanced wide framing avoiding bottom-left corner clutter.',
+  social_instagram_post:
+    'Modern square Instagram editorial announcement graphic template for "Nature Island Careers" in Dominica. Crisp architectural framing, deep forest green and vibrant nature lime accents, sunlit tropical mountain contour emblem watermark, clean central typographic focal zone.',
+  social_linkedin_banner:
+    'Executive corporate LinkedIn company banner for "Nature Island Careers — Commonwealth of Dominica Talent Network". Deep rainforest green (#082407) and emerald (#15803D) architectural gradient with subtle Caribbean gold horizon highlights and clean right-aligned botanical crest motif.',
+};
+
+const BRAND_STYLE_MODIFIERS: Record<string, string> = {
+  minimal_badge: 'Ultra-clean Swiss modernist flat vector aesthetic, bold silhouettes, balanced negative space, crisp edges.',
+  emerald_crest: 'Authoritative civic heritage crest style, layered emerald leaves, subtle fine gold foil linework, timeless prestige.',
+  geothermal_modern: 'Forward-looking clean-tech aesthetic blending lush Dominica botanical motifs with subtle clean geometric energy lines.',
+  editorial_caribbean: 'Warm magazine editorial luxury Caribbean aesthetic, natural organic textures, sunlit amber highlights, deep forest contrast.',
+};
+
+app.post('/api/brand/generate-asset', requireAdminAuth, aiRateLimiter, async (req, res) => {
+  const rawAssetType = sanitizeString(req.body?.assetType || 'logo_variation', 60);
+  if (!ALLOWED_BRAND_ASSET_TYPES.includes(rawAssetType as any)) {
+    return res.status(400).json({
+      error: `Unsupported assetType "${rawAssetType}". Allowed types: ${ALLOWED_BRAND_ASSET_TYPES.join(', ')}`,
+      code: 'invalid_asset_type',
+    });
+  }
+  const assetType = rawAssetType as (typeof ALLOWED_BRAND_ASSET_TYPES)[number];
+
+  const rawAspectRatio = sanitizeString(req.body?.aspectRatio || '1:1', 16);
+  if (!ALLOWED_BRAND_ASPECT_RATIOS.includes(rawAspectRatio as any)) {
+    return res.status(400).json({
+      error: `Unsupported aspectRatio "${rawAspectRatio}". Allowed ratios: ${ALLOWED_BRAND_ASPECT_RATIOS.join(', ')}`,
+      code: 'invalid_aspect_ratio',
+    });
+  }
+  const aspectRatio = rawAspectRatio as (typeof ALLOWED_BRAND_ASPECT_RATIOS)[number];
+
+  const styleKey = sanitizeString(req.body?.style || 'minimal_badge', 60);
+  const styleModifier = BRAND_STYLE_MODIFIERS[styleKey] || BRAND_STYLE_MODIFIERS.minimal_badge;
+  const paletteFocus =
+    sanitizeString(req.body?.paletteFocus, 160) ||
+    'Dominican Forest Green (#082407), Emerald Rainforest (#15803D), Nature Lime (#5BC22B), and Caribbean Sun Gold (#F59E0B)';
+  const headlineCue = sanitizeString(req.body?.headline, 120);
+  const customPrompt = sanitizeString(req.body?.customPrompt, 600);
+
+  if (!aiClient) {
+    return res.status(503).json({
+      error:
+        'GEMINI_API_KEY is not configured in Settings > Secrets. Configure a valid paid Gemini API key to generate AI brand assets.',
+      code: 'gemini_not_configured',
+    });
+  }
+
+  const promptParts = [
+    BRAND_ASSET_PROMPT_SPECS[assetType],
+    `Art Direction Style: ${styleModifier}`,
+    `Color Palette Focus: ${paletteFocus}.`,
+    headlineCue ? `Subject / Campaign Theme: ${headlineCue}.` : '',
+    customPrompt ? `Additional Creative Direction: ${customPrompt}.` : '',
+    'Produce a cohesive, publication-ready high-resolution visual asset with zero watermarks and no distorted gibberish text.',
+  ].filter(Boolean);
+
+  const builtPrompt = promptParts.join(' ');
+
+  try {
+    const response = await aiClient.models.generateContent({
+      model: 'gemini-3.1-flash-lite-image',
+      contents: {
+        parts: [{ text: builtPrompt }],
+      },
+      config: {
+        imageConfig: {
+          aspectRatio,
+        },
+      },
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    let imageDataUrl: string | null = null;
+    let imageMimeType = 'image/png';
+    const textNotes: string[] = [];
+
+    for (const part of parts) {
+      if (part.inlineData?.data && !imageDataUrl) {
+        imageMimeType = part.inlineData.mimeType || 'image/png';
+        imageDataUrl = `data:${imageMimeType};base64,${part.inlineData.data}`;
+      } else if (part.text) {
+        textNotes.push(part.text);
+      }
+    }
+
+    if (!imageDataUrl) {
+      return res.status(502).json({
+        error: 'Gemini image model completed without returning an image payload. Please refine your prompt and retry.',
+        code: 'no_image_returned',
+      });
+    }
+
+    const assetId = `asset_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    backendAuditLogs.push({
+      id: `log_brand_ai_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      service: 'AI Assistant',
+      message: `Generated ${assetType} (${aspectRatio}, ${styleKey}) via gemini-3.1-flash-lite-image.`,
+    });
+
+    return res.json({
+      success: true,
+      asset: {
+        id: assetId,
+        dataUrl: imageDataUrl,
+        mimeType: imageMimeType,
+        assetType,
+        aspectRatio,
+        style: styleKey,
+        paletteFocus,
+        promptUsed: builtPrompt,
+        notes: textNotes.join(' ').trim() || undefined,
+        model: 'gemini-3.1-flash-lite-image',
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (err: any) {
+    const statusCode = Number(err?.status || err?.statusCode || 502);
+    const rawMsg = typeof err?.message === 'string' ? err.message : 'Upstream image generation error.';
+    console.error('[Gemini Brand Asset Error]', statusCode, rawMsg);
+
+    backendAuditLogs.push({
+      id: `log_brand_ai_err_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      service: 'AI Assistant',
+      message: `Brand asset generation failed (${statusCode}): ${sanitizeString(rawMsg, 200)}`,
+    });
+
+    if (statusCode === 401 || statusCode === 403) {
+      return res.status(403).json({
+        error:
+          'Gemini image generation was denied by upstream API credentials. Verify your paid GEMINI_API_KEY in Settings > Secrets.',
+        code: 'gemini_auth_error',
+      });
+    }
+    if (statusCode === 429) {
+      return res.status(429).json({
+        error: 'Gemini image generation quota temporarily exceeded. Please wait a moment and try again.',
+        code: 'gemini_rate_limited',
+      });
+    }
+    if (statusCode === 400) {
+      return res.status(400).json({
+        error: `Gemini rejected image generation parameters: ${sanitizeString(rawMsg, 220)}`,
+        code: 'gemini_bad_request',
+      });
+    }
+    return res.status(502).json({
+      error: `Unable to generate brand asset via Gemini: ${sanitizeString(rawMsg, 220)}`,
+      code: 'gemini_upstream_error',
+    });
+  }
+});
+
+app.post('/api/email/subscribe', (req, res) => {
+  const { subscriptionId, email, name, categories, parishes, frequency, keyword, minSalary } = req.body || {};
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+    return res.status(400).json({ error: 'Valid email address is required.' });
+  }
+  const cleanCategories = Array.isArray(categories)
+    ? categories.map((c: any) => sanitizeString(c, 100)).filter((c: string) => c.length >= 2).slice(0, 10)
+    : [];
+  if (cleanCategories.length === 0) {
+    return res.status(400).json({ error: 'At least one job category is required.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase().slice(0, 160);
+  const cleanName = sanitizeString(name, 120) || 'Dominica Job Seeker';
+  const cleanParishes = Array.isArray(parishes)
+    ? parishes.map((p: any) => sanitizeString(p, 64)).filter(Boolean).slice(0, 11)
+    : [];
+  const cleanFrequency: 'instant' | 'daily' | 'weekly' = ['instant', 'daily', 'weekly'].includes(frequency)
+    ? frequency
+    : 'instant';
+  const id =
+    sanitizeString(subscriptionId, 128).replace(/[^a-zA-Z0-9_\-]/g, '_') ||
+    `sub_${cleanEmail.replace(/[^a-z0-9]/g, '_').slice(0, 48)}_${Date.now()}`;
+  const nowIso = new Date().toISOString();
+
+  const existing = emailCategorySubscriptions.get(id);
+  const record: EmailCategorySubscriptionItem = {
+    id,
+    email: cleanEmail,
+    name: cleanName,
+    categories: cleanCategories,
+    parishes: cleanParishes,
+    frequency: cleanFrequency,
+    keyword: keyword ? sanitizeString(keyword, 100) : undefined,
+    minSalary: typeof minSalary === 'number' && minSalary > 0 ? minSalary : undefined,
+    active: true,
+    createdAt: existing?.createdAt || nowIso,
+    updatedAt: nowIso,
+  };
+  emailCategorySubscriptions.set(id, record);
+
+  // Also mirror into jobAlertSubscribers so alert dispatch & stats stay unified
+  const existingAlertIdx = jobAlertSubscribers.findIndex((s) => s.email.toLowerCase() === cleanEmail);
+  if (existingAlertIdx >= 0) {
+    jobAlertSubscribers[existingAlertIdx].sectors = cleanCategories;
+    jobAlertSubscribers[existingAlertIdx].parishes = cleanParishes;
+    jobAlertSubscribers[existingAlertIdx].frequency = cleanFrequency;
+    jobAlertSubscribers[existingAlertIdx].active = true;
+  } else {
+    jobAlertSubscribers.unshift({
+      id,
+      email: cleanEmail,
+      name: cleanName,
+      parishes: cleanParishes,
+      sectors: cleanCategories,
+      frequency: cleanFrequency,
+      keyword: record.keyword,
+      minSalary: record.minSalary,
+      createdAt: nowIso,
+      active: true,
+      notifiedCount: 0,
+    });
+  }
+
+  return res.json({
+    success: true,
+    subscription: record,
+    totalSubscriptions: emailCategorySubscriptions.size,
+  });
+});
+
+app.get('/api/email/subscriptions', (req, res) => {
+  const emailFilter = sanitizeString(req.query?.email, 160).toLowerCase();
+  const list = Array.from(emailCategorySubscriptions.values()).filter((item) =>
+    emailFilter ? item.email.toLowerCase() === emailFilter : true
+  );
+  res.json({
+    total: list.length,
+    subscriptions: list,
+  });
+});
+
+app.delete('/api/email/subscribe/:id', (req, res) => {
+  const id = sanitizeString(req.params?.id, 128);
+  const removed = emailCategorySubscriptions.delete(id);
+  res.json({ success: true, removed, id });
+});
+
+app.post('/api/email/dispatch-category-alerts', (req, res) => {
+  const { job } = req.body || {};
+  if (!job || typeof job !== 'object') {
+    return res.status(400).json({ error: 'Valid job object is required.' });
+  }
+  const jobSector = sanitizeString(job.sector, 140).toLowerCase();
+  const jobTitle = sanitizeString(job.title, 200);
+  const matched: EmailCategorySubscriptionItem[] = [];
+
+  for (const sub of emailCategorySubscriptions.values()) {
+    if (!sub.active) continue;
+    const isMatch = sub.categories.some(
+      (cat) => cat.toLowerCase() === jobSector || cat === 'All Job Sectors' || cat === 'All'
+    );
+    if (isMatch) {
+      matched.push(sub);
+      alertNotificationLogs.unshift({
+        id: `notif_cat_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`,
+        subscriberEmail: sub.email,
+        subscriberName: sub.name,
+        jobId: sanitizeString(job.id, 120) || `job_${Date.now()}`,
+        jobTitle,
+        company: sanitizeString(job.company, 160),
+        parish: sanitizeString(job.parish, 80),
+        sector: sanitizeString(job.sector, 120),
+        salaryText: `EC$ ${Number(job.minSalary || 0).toLocaleString()} - EC$ ${Number(job.maxSalary || 0).toLocaleString()}`,
+        notifiedAt: new Date().toISOString(),
+        matchReasons: [`Subscribed Category: ${job.sector}`],
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    matchedCount: matched.length,
+    recipients: matched.map((m) => m.email),
+  });
+});
+
 // ----------------------------------------------------
 // 12. STRIPE CLI & WEBHOOK INTEGRATION ENDPOINTS
 // ----------------------------------------------------
@@ -2765,6 +3093,7 @@ interface ServerPaymentOrder {
 }
 
 const serverPaymentOrders = new Map<string, ServerPaymentOrder>();
+const jobListingPaymentStatuses = new Map<string, { status: string; updatedAt: string; paymentIntentId?: string; eventType: string }>();
 const idempotencyResponses = new Map<string, { status: number; body: any; createdAt: number }>();
 
 const computePeggedUSD = (amountXCD: number, peg: number): number => {
@@ -2788,14 +3117,23 @@ app.get('/api/stripe/config', (_req, res) => {
   });
 });
 
-// Dispatch & record Employer Payment Receipt Notification after successful Stripe payment
+// Dispatch & record Employer Payment & Membership Verification Notification
 app.post('/api/stripe/notify-employer', (req, res) => {
   const employerName = sanitizeString(req.body?.employerName, 160) || 'Dominica Employer Partner';
   const recipientEmail = sanitizeString(req.body?.recipientEmail, 160);
-  const planName = sanitizeString(req.body?.planName, 160) || 'Classified Listing Plan';
-  const invoiceId = sanitizeString(req.body?.invoiceId, 100) || `INV-${Date.now()}`;
+  const planName = sanitizeString(req.body?.planName, 160) || 'Standard Local Employer';
+  const membershipTier = sanitizeString(req.body?.membershipTier || planName, 160);
+  const invoiceId = sanitizeString(req.body?.invoiceId, 100) || `INV-DOM-${Date.now()}`;
   const paymentIntentId = sanitizeString(req.body?.paymentIntentId, 120) || undefined;
   const portalUsed = sanitizeString(req.body?.portalUsed, 80) || 'Stripe Card Checkout';
+  const dssRegistrationNo = sanitizeString(req.body?.dssRegistrationNo, 64) || undefined;
+  const parish = sanitizeString(req.body?.parish, 64) || undefined;
+  const renewsAt = sanitizeString(req.body?.renewsAt, 40) || undefined;
+  const billingInterval = sanitizeString(req.body?.billingInterval, 32) || 'monthly';
+  const signupVerified = req.body?.signupVerified !== false;
+  const quotaPostings = Number.isFinite(Number(req.body?.quotaPostings))
+    ? Number(req.body.quotaPostings)
+    : undefined;
   const amountXCD = Math.max(0, Number(req.body?.amountXCD) || 0);
   const amountUSD =
     Math.round((Number(req.body?.amountUSD) || amountXCD / merchantPortalConfig.currencyPeg) * 100) /
@@ -2810,11 +3148,18 @@ app.post('/api/stripe/notify-employer', (req, res) => {
     employerName,
     recipientEmail,
     planName,
+    membershipTier,
     amountXCD,
     amountUSD,
     invoiceId,
     paymentIntentId,
     portalUsed,
+    signupVerified,
+    dssRegistrationNo,
+    parish,
+    quotaPostings,
+    renewsAt,
+    billingInterval,
     sentAt: new Date().toISOString(),
     status: 'sent',
   };
@@ -2824,8 +3169,8 @@ app.post('/api/stripe/notify-employer', (req, res) => {
 
   queueAdminEmailAlert(
     'stripe_payment_finalized',
-    `[Stripe Payment Finalized] ${employerName} — EC$ ${amountXCD.toLocaleString()} (${invoiceId})`,
-    `Stripe payment confirmed for ${employerName} (${planName}) via ${portalUsed}. Employer receipt sent to ${recipientEmail}.`,
+    `[Employer Membership Verified] ${employerName} — ${membershipTier} · EC$ ${amountXCD.toLocaleString()} (${invoiceId})`,
+    `Employer signup & payment verified for ${employerName} (${membershipTier}) via ${portalUsed}. Official invoice & notification sent to ${recipientEmail}.`,
     { relatedInvoiceId: invoiceId, amountXCD }
   );
 
@@ -2833,13 +3178,28 @@ app.post('/api/stripe/notify-employer', (req, res) => {
     id: `log_emp_receipt_${Date.now()}`,
     timestamp: record.sentAt,
     level: 'success',
-    service: 'Stripe Gateway',
-    message: `Employer Stripe payment receipt sent to ${recipientEmail} (${employerName}) for ${planName} — EC$ ${amountXCD.toLocaleString()}.`,
+    service: 'Employer Billing & Verification',
+    message: `Employer signup & payment verification notification + invoice (${invoiceId} · ${membershipTier}) sent to ${recipientEmail} (${employerName}) — EC$ ${amountXCD.toLocaleString()}.`,
   });
 
   return res.json({
     success: true,
     notification: record,
+  });
+});
+
+// Query persisted Employer Membership & Payment Verification Notifications
+app.get('/api/employer/notifications', (req, res) => {
+  const emailFilter = sanitizeString(req.query?.email, 160).toLowerCase();
+  const invoiceFilter = sanitizeString(req.query?.invoiceId, 100).toLowerCase();
+  const filtered = employerPaymentNotifications.filter((item) => {
+    if (emailFilter && item.recipientEmail.toLowerCase() !== emailFilter) return false;
+    if (invoiceFilter && item.invoiceId.toLowerCase() !== invoiceFilter) return false;
+    return true;
+  });
+  return res.json({
+    count: filtered.length,
+    notifications: filtered.slice(0, 50),
   });
 });
 
@@ -2927,11 +3287,40 @@ app.post('/api/stripe/webhook', (req: any, res) => {
 
   const receiptEmail = obj.receipt_email || obj.customer_email || obj.metadata?.employerEmail;
 
+  const jobIdFromMeta = sanitizeString(obj.metadata?.jobId || obj.client_reference_id, 120);
+
   if (
     eventType === 'payment_intent.succeeded' ||
     eventType === 'invoice.payment_succeeded' ||
-    eventType === 'checkout.session.completed'
+    eventType === 'checkout.session.completed' ||
+    eventType === 'checkout.session.async_payment_succeeded'
   ) {
+    // For checkout.session.completed, verify payment_status !== 'unpaid' before fulfilling
+    const isUnpaidSession =
+      eventType === 'checkout.session.completed' && obj.payment_status === 'unpaid';
+
+    if (isUnpaidSession) {
+      if (existingOrder) {
+        existingOrder.status = 'processing';
+        existingOrder.updatedAt = new Date().toISOString();
+      }
+      if (jobIdFromMeta) {
+        jobListingPaymentStatuses.set(jobIdFromMeta, {
+          status: 'Processing',
+          updatedAt: new Date().toISOString(),
+          paymentIntentId: targetObjectId || undefined,
+          eventType,
+        });
+      }
+      return res.json({
+        received: true,
+        eventId,
+        eventType,
+        orderStatus: existingOrder?.status || 'processing',
+        deferredFulfillment: true,
+      });
+    }
+
     const amountUSD =
       typeof obj.amount === 'number'
         ? obj.amount / 100
@@ -2947,6 +3336,14 @@ app.post('/api/stripe/webhook', (req: any, res) => {
       existingOrder.status = 'Paid';
       existingOrder.failureReason = undefined;
       existingOrder.updatedAt = new Date().toISOString();
+    }
+    if (jobIdFromMeta) {
+      jobListingPaymentStatuses.set(jobIdFromMeta, {
+        status: 'Paid',
+        updatedAt: new Date().toISOString(),
+        paymentIntentId: targetObjectId || undefined,
+        eventType,
+      });
     }
 
     queueAdminEmailAlert(
@@ -2979,7 +3376,7 @@ app.post('/api/stripe/webhook', (req: any, res) => {
         message: `Webhook ${eventType} triggered employer receipt notification to ${notif.recipientEmail}.`,
       });
     }
-  } else if (eventType === 'payment_intent.payment_failed') {
+  } else if (eventType === 'payment_intent.payment_failed' || eventType === 'checkout.session.async_payment_failed') {
     const failReason = sanitizeString(
       obj.last_payment_error?.message || 'Card declined by issuing bank.',
       200
@@ -2989,12 +3386,20 @@ app.post('/api/stripe/webhook', (req: any, res) => {
       existingOrder.failureReason = failReason;
       existingOrder.updatedAt = new Date().toISOString();
     }
+    if (jobIdFromMeta) {
+      jobListingPaymentStatuses.set(jobIdFromMeta, {
+        status: 'Failed',
+        updatedAt: new Date().toISOString(),
+        paymentIntentId: targetObjectId || undefined,
+        eventType,
+      });
+    }
     backendAuditLogs.push({
       id: `log_wh_fail_${Date.now()}`,
       timestamp: new Date().toISOString(),
       level: 'warn',
       service: 'Stripe Webhook',
-      message: `Webhook payment_intent.payment_failed for ${targetObjectId || eventId}: ${failReason}`,
+      message: `Webhook ${eventType} for ${targetObjectId || eventId}: ${failReason}`,
     });
   } else if (eventType === 'payment_intent.canceled' || eventType === 'checkout.session.expired') {
     if (existingOrder) {
@@ -3004,6 +3409,14 @@ app.post('/api/stripe/webhook', (req: any, res) => {
           ? 'Checkout session expired prior to completion.'
           : 'Payment was canceled before capture.';
       existingOrder.updatedAt = new Date().toISOString();
+    }
+    if (jobIdFromMeta) {
+      jobListingPaymentStatuses.set(jobIdFromMeta, {
+        status: 'Canceled',
+        updatedAt: new Date().toISOString(),
+        paymentIntentId: targetObjectId || undefined,
+        eventType,
+      });
     }
     backendAuditLogs.push({
       id: `log_wh_cancel_${Date.now()}`,
@@ -3017,6 +3430,14 @@ app.post('/api/stripe/webhook', (req: any, res) => {
       existingOrder.status = 'Refunded';
       existingOrder.failureReason = sanitizeString(obj.reason || 'Refund issued via Stripe.', 160);
       existingOrder.updatedAt = new Date().toISOString();
+    }
+    if (jobIdFromMeta) {
+      jobListingPaymentStatuses.set(jobIdFromMeta, {
+        status: 'Refunded',
+        updatedAt: new Date().toISOString(),
+        paymentIntentId: targetObjectId || undefined,
+        eventType,
+      });
     }
     backendAuditLogs.push({
       id: `log_wh_refund_${Date.now()}`,
@@ -3033,6 +3454,35 @@ app.post('/api/stripe/webhook', (req: any, res) => {
     eventId,
     eventType,
     orderStatus: existingOrder?.status || null,
+    jobPaymentStatus: jobIdFromMeta ? jobListingPaymentStatuses.get(jobIdFromMeta)?.status || null : null,
+  });
+});
+
+// Get personal & employer payment history for CSV export and record-keeping
+app.get('/api/payments/history', (req, res) => {
+  const emailFilter = sanitizeString(req.query?.email, 160).toLowerCase();
+  const orders = Array.from(serverPaymentOrders.values())
+    .filter((o) =>
+      emailFilter ? (o.customerEmail || '').toLowerCase() === emailFilter : true
+    )
+    .map((o) => ({
+      id: o.id,
+      invoiceNumber: o.invoiceId,
+      date: o.createdAt.split('T')[0],
+      planName: o.planName,
+      companyName: o.employerName,
+      recipientEmail: o.customerEmail || '',
+      amountXCD: o.amountXCD,
+      amountUSD: o.amountUSD,
+      billingInterval: o.billingInterval,
+      status: o.status === 'processing' || o.status === 'requires_payment_method' ? 'Processing' : o.status,
+      paymentMethod: 'Stripe •••• 4242 (Visa)',
+      paymentIntentId: o.id,
+    }));
+
+  res.json({
+    total: orders.length,
+    payments: orders,
   });
 });
 
@@ -3530,8 +3980,18 @@ app.post('/create-checkout-session', handleCreateCheckoutSession);
 // Offline-cacheable public Dominica job listings feed for Service Worker runtime caching
 app.get('/api/jobs', (_req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
+  const enrichedJobs = INITIAL_JOBS.map((job) => {
+    const paymentSync = jobListingPaymentStatuses.get(job.id);
+    return paymentSync
+      ? {
+          ...job,
+          paymentStatus: paymentSync.status,
+          paymentUpdatedAt: paymentSync.updatedAt,
+        }
+      : job;
+  });
   res.json({
-    jobs: INITIAL_JOBS,
+    jobs: enrichedJobs,
     cachedAt: new Date().toISOString(),
     source: 'dominica-jobs-feed',
   });

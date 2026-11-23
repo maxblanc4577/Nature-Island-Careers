@@ -168,6 +168,66 @@ export function sanitizeUserProfileForFirestore(
   return payload;
 }
 
+export const EMAIL_SUBSCRIPTION_CONSTRAINTS = {
+  ID_MAX_LENGTH: 128,
+  ID_PATTERN: /^[a-zA-Z0-9_\-]+$/,
+  UID_MAX_LENGTH: 128,
+  EMAIL_MIN_LENGTH: 3,
+  EMAIL_MAX_LENGTH: 160,
+  NAME_MIN_LENGTH: 2,
+  NAME_MAX_LENGTH: 120,
+  CATEGORIES_MAX_ITEMS: 10,
+  CATEGORY_ITEM_MAX_LENGTH: 100,
+  PARISHES_MAX_ITEMS: 11,
+  PARISH_ITEM_MAX_LENGTH: 64,
+};
+
+export function sanitizeEmailSubscriptionForFirestore(input: {
+  id: string;
+  uid: string;
+  email: string;
+  name?: string;
+  categories: string[];
+  parishes?: string[];
+  frequency: 'instant' | 'daily' | 'weekly';
+  active: boolean;
+}): Record<string, unknown> {
+  const cleanId = input.id
+    .replace(/[^a-zA-Z0-9_\-]/g, '_')
+    .slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.ID_MAX_LENGTH) || 'sub_default';
+  const cleanUid = input.uid
+    .replace(/[^a-zA-Z0-9_\-]/g, '')
+    .slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.UID_MAX_LENGTH);
+  const cleanEmail = (input.email || 'user@natureislecareers.com')
+    .trim()
+    .toLowerCase()
+    .slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.EMAIL_MAX_LENGTH);
+  const cleanName = (input.name || 'Dominica Subscriber')
+    .trim()
+    .slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.NAME_MAX_LENGTH);
+  const cleanCategories = (input.categories || [])
+    .map((c) => String(c).trim().slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.CATEGORY_ITEM_MAX_LENGTH))
+    .filter((c) => c.length >= 2)
+    .slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.CATEGORIES_MAX_ITEMS);
+  const cleanParishes = (input.parishes || [])
+    .map((p) => String(p).trim().slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.PARISH_ITEM_MAX_LENGTH))
+    .filter((p) => p.length >= 2)
+    .slice(0, EMAIL_SUBSCRIPTION_CONSTRAINTS.PARISHES_MAX_ITEMS);
+
+  const payload: Record<string, unknown> = {
+    id: cleanId,
+    uid: cleanUid,
+    email: cleanEmail.length >= 3 ? cleanEmail : 'user@natureislecareers.com',
+    name: cleanName.length >= 2 ? cleanName : 'Dominica Subscriber',
+    categories: cleanCategories.length > 0 ? cleanCategories : ['All Job Sectors'],
+    parishes: cleanParishes,
+    frequency: ['instant', 'daily', 'weekly'].includes(input.frequency) ? input.frequency : 'instant',
+    active: Boolean(input.active),
+  };
+
+  return payload;
+}
+
 export async function syncAuthenticatedUserToFirestore(user: UserAccount): Promise<void> {
   const fbUser = auth.currentUser;
   if (!fbUser || !fbUser.emailVerified) return;

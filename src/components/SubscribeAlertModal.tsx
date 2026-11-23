@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { isValidEmail } from '../utils/paymentValidation';
+import { subscribeToJobCategories } from '../services/emailService';
 import { Parish, JobSector } from '../types';
 import { X, BellRing, Mail, MapPin, CheckCircle2, ShieldCheck, Sparkles, User } from 'lucide-react';
 
@@ -48,7 +49,7 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmittingRef.current) return;
 
@@ -100,15 +101,32 @@ export const SubscribeAlertModal: React.FC<SubscribeAlertModalProps> = ({ isOpen
         : [selectedSector];
 
     const numericMinSalary = Number(minSalary);
+    const cleanEmail = email.trim();
+    const cleanName = name.trim() || 'Dominica Resident';
+
     subscribeToAlert({
-      email: email.trim(),
-      name: name.trim() || 'Dominica Resident',
+      email: cleanEmail,
+      name: cleanName,
       parishes,
       sectors,
       frequency,
       keyword: keyword.trim() || undefined,
       minSalary: Number.isFinite(numericMinSalary) && numericMinSalary > 0 ? numericMinSalary : undefined,
     });
+
+    try {
+      await subscribeToJobCategories({
+        email: cleanEmail,
+        name: cleanName,
+        categories: sectors,
+        parishes,
+        frequency,
+        keyword: keyword.trim() || undefined,
+        minSalary: Number.isFinite(numericMinSalary) && numericMinSalary > 0 ? numericMinSalary : undefined,
+      });
+    } catch {
+      // Local subscription remains active if offline
+    }
 
     setMatchingCount(liveMatches);
     setIsSuccess(true);

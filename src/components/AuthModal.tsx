@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
-import { Parish, JobSector } from '../types';
+import { Parish, JobSector, SubscriptionPlan } from '../types';
 import { evaluatePasswordStrength } from '../utils/passwordStrength';
 import { isValidEmail } from '../utils/paymentValidation';
+import { EMPLOYER_MEMBERSHIP_PLANS } from '../utils/membershipPlans';
 import { sendFirebasePasswordReset } from '../firebase';
 import {
   X,
@@ -281,7 +282,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [clParish, setClParish] = useState<Parish>('St. George');
   const [clDss, setClDss] = useState('DSS-DOM-90124');
   const [clIndustry, setClIndustry] = useState<JobSector>('Eco-Tourism & Hospitality');
-  const [proceedToCheckout, setProceedToCheckout] = useState(false);
+  const [clSelectedPlan, setClSelectedPlan] = useState<SubscriptionPlan>('Enterprise Growth Partner');
+  const [proceedToCheckout, setProceedToCheckout] = useState(true);
 
   // Login fields
   const [loginAccountType, setLoginAccountType] = useState<'all' | 'jobseeker' | 'client'>('all');
@@ -375,6 +377,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       dssRegistrationNo: clDss.trim() || 'DSS-DOM-90124',
       industry: clIndustry,
       password: clPassword || undefined,
+      selectedPlan: clSelectedPlan,
     });
     onAuthSuccess?.('client');
     onClose();
@@ -1169,14 +1172,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </div>
 
+              {/* Select Employer Membership Plan */}
+              <div data-testid="employer-register-membership-section" className="space-y-1.5">
+                <span className="block font-semibold text-stone-900">
+                  Select Employer Membership Tier *
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {EMPLOYER_MEMBERSHIP_PLANS.map((tier) => {
+                    const isSelected = clSelectedPlan === tier.plan;
+                    return (
+                      <button
+                        key={tier.plan}
+                        type="button"
+                        data-testid={`employer-register-plan-${tier.plan.replace(/\s+/g, '-').toLowerCase()}`}
+                        aria-pressed={isSelected}
+                        onClick={() => setClSelectedPlan(tier.plan)}
+                        className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-800 bg-emerald-50 text-emerald-950'
+                            : 'border-stone-200 bg-white hover:bg-stone-50 text-stone-800'
+                        }`}
+                      >
+                        <div className="font-bold text-[11px] leading-tight">{tier.shortLabel}</div>
+                        <div className="font-mono font-extrabold text-sm text-emerald-900 tabular-nums mt-0.5">
+                          EC${tier.priceXCD}
+                          <span className="text-[10px] font-normal text-stone-500">/mo</span>
+                        </div>
+                        <div className="text-[10px] text-stone-600 mt-0.5 leading-snug">
+                          {tier.quotaPostings >= 999
+                            ? 'Unlimited Vacancies · WIN Remote'
+                            : `${tier.quotaPostings} Active Vacancies`}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <label className="flex items-center gap-2 text-[11px] text-stone-700 cursor-pointer pt-1">
                 <input
                   type="checkbox"
+                  data-testid="employer-proceed-to-checkout-checkbox"
                   checked={proceedToCheckout}
                   onChange={(e) => setProceedToCheckout(e.target.checked)}
                   className="rounded border-stone-300 text-emerald-700 focus:ring-emerald-600"
                 />
-                <span>Also open Employer Subscription Checkout after creating account</span>
+                <span>Proceed to payment verification &amp; generate membership invoice after signup</span>
               </label>
 
               <div className="pt-2 space-y-2.5">

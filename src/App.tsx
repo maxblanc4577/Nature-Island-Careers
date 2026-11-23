@@ -35,6 +35,10 @@ import { MobilePlatformViews, PlatformViewMode } from './components/MobilePlatfo
 import { BrandIdentityGenerator } from './components/BrandIdentityGenerator';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
+  useGlobalKeyboardShortcuts,
+  GLOBAL_NAVIGATION_SHORTCUTS,
+} from './hooks/useGlobalKeyboardShortcuts';
+import {
   JobListing,
   Parish,
   JobSector,
@@ -58,6 +62,7 @@ import {
   X,
   Smartphone,
   Columns,
+  Keyboard,
 } from 'lucide-react';
 
 function DominicaJobBoardContent() {
@@ -163,6 +168,7 @@ function DominicaJobBoardContent() {
   const [isExportPdfOpen, setIsExportPdfOpen] = useState(false);
   const [isStripeModalOpen, setIsStripeModalOpen] = useState(false);
   const [isMasterAdminOpen, setIsMasterAdminOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [jobToShare, setJobToShare] = useState<JobListing | null>(null);
 
   // Auto-open job detail if URL query param ?job=<id> is present
@@ -181,17 +187,44 @@ function DominicaJobBoardContent() {
     }
   }, [jobs]);
 
-  // Admin Portal keyboard shortcut: Alt + A or Ctrl + Shift + A
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.altKey && e.key.toLowerCase() === 'a') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a')) {
-        e.preventDefault();
-        handleOpenAdminMasterPortal();
+  const navigateMainTab = React.useCallback(
+    (
+      tab:
+        | 'jobs'
+        | 'remote'
+        | 'profile'
+        | 'applications'
+        | 'resume_builder'
+        | 'recruiter'
+        | 'analytics'
+        | 'career'
+        | 'brand'
+    ) => {
+      if (currentPath !== '/') {
+        navigateToPath('/');
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAdminLoggedIn]);
+      setActiveTab(tab);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [currentPath, navigateToPath]
+  );
+
+  // Global keyboard shortcuts for primary site navigation & accessibility
+  const shortcutHandlers = useMemo(
+    () => ({
+      onNavigateJobs: () => navigateMainTab('jobs'),
+      onNavigateRemote: () => navigateMainTab('remote'),
+      onNavigateProfile: () => navigateMainTab('profile'),
+      onNavigateCareer: () => navigateMainTab('career'),
+      onNavigateEmployers: () => navigateMainTab('recruiter'),
+      onNavigateBrandStudio: () => navigateMainTab('brand'),
+      onNavigateAdmin: () => handleOpenAdminMasterPortal(),
+      onToggleHelpModal: () => setIsShortcutsModalOpen((prev) => !prev),
+    }),
+    [navigateMainTab, isAdminLoggedIn]
+  );
+
+  useGlobalKeyboardShortcuts(shortcutHandlers);
 
   // Dynamic Site Settings state
   const [siteSettings, setSiteSettings] = useState(() => {
@@ -414,6 +447,7 @@ function DominicaJobBoardContent() {
           setActiveTab('brand');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
+        onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         searchQuery={searchQuery}
         onSelectSearchQuery={(query) => {
           setSearchQuery(query);
@@ -760,6 +794,8 @@ function DominicaJobBoardContent() {
         {/* TAB 8: BRAND IDENTITY & SOCIAL MOCKUP STUDIO */}
         {activeTab === 'brand' && (
           <BrandIdentityGenerator
+            isAdmin={isAdminLoggedIn}
+            onOpenAdminLogin={() => navigateToPath('/admin-login')}
             onClose={() => {
               setActiveTab('jobs');
               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1009,6 +1045,61 @@ function DominicaJobBoardContent() {
           isOpen={Boolean(jobToShare)}
           onClose={() => setJobToShare(null)}
         />
+      )}
+
+      {/* Global Keyboard Shortcuts Accessibility Modal */}
+      {isShortcutsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Global Keyboard Shortcuts"
+            data-testid="keyboard-shortcuts-modal"
+            className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+          >
+            <div className="bg-emerald-950 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Keyboard className="w-5 h-5 text-amber-300" />
+                <div>
+                  <h3 className="font-bold text-sm">Global Navigation Keyboard Shortcuts</h3>
+                  <p className="text-[11px] text-emerald-200">
+                    Disabled automatically while typing in inputs or textareas
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(false)}
+                aria-label="Close keyboard shortcuts modal"
+                className="text-emerald-200 hover:text-white p-1 rounded cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 divide-y divide-slate-100 text-xs">
+              {GLOBAL_NAVIGATION_SHORTCUTS.map((sc) => (
+                <div key={sc.combo} className="py-2.5 flex items-center justify-between gap-4">
+                  <div>
+                    <span className="font-bold text-slate-900 block">{sc.label}</span>
+                    <span className="text-slate-500 text-[11px]">{sc.description}</span>
+                  </div>
+                  <kbd className="px-2.5 py-1 bg-slate-100 border border-slate-300 rounded-lg font-mono font-bold text-slate-800 shrink-0 shadow-2xs">
+                    {sc.combo}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(false)}
+                className="px-4 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-lg cursor-pointer"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <OfflineIndicator />

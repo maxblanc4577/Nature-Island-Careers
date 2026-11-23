@@ -52,6 +52,7 @@ import {
   syncAuthenticatedUserToFirestore,
   sendFirebasePasswordReset,
 } from '../firebase';
+import { getMembershipPlanDetails } from '../utils/membershipPlans';
 
 interface JobContextType {
   // Role & Recruiter
@@ -108,11 +109,13 @@ interface JobContextType {
     password?: string;
     locality?: string;
     nepPartner?: boolean;
+    selectedPlan?: SubscriptionPlan;
   }) => UserAccount;
   subscribeClientPlan: (
     userId: string,
     plan: SubscriptionPlan,
-    paymentMethod: 'National Bank of Dominica (NBD)' | 'Credit/Debit Card (XCD)' | 'Republic Bank / Wire'
+    paymentMethod: 'National Bank of Dominica (NBD)' | 'Credit/Debit Card (XCD)' | 'Republic Bank / Wire',
+    options?: { skipEmail?: boolean; transactionRef?: string }
   ) => void;
   loginUser: (email: string, password?: string, roleFilter?: 'jobseeker' | 'client') => boolean;
   authenticateWithGoogle: (
@@ -1670,6 +1673,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password?: string;
     locality?: string;
     nepPartner?: boolean;
+    selectedPlan?: SubscriptionPlan;
   }) => {
     const cleanEmail = data.email.trim();
     const cleanCompany = data.companyName.trim();
@@ -1708,6 +1712,9 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existingUser = users.find(
       (u) => u.email.toLowerCase() === cleanEmail.toLowerCase() && u.role === 'client'
     );
+    const initialPlanMeta = getMembershipPlanDetails(
+      data.selectedPlan || existingUser?.subscription?.plan || 'Standard Local Employer'
+    );
     const newUser: UserAccount = {
       id: existingUser?.id || `usr-client-${Date.now()}`,
       email: cleanEmail,
@@ -1721,17 +1728,29 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       industry: data.industry,
       locality: newRecruiter.locality,
       recruiterId,
-      subscription: existingUser?.subscription || {
-        plan: 'Standard Local Employer',
-        priceXCD: 250,
-        status: 'pending_payment',
-        paymentMethod: 'National Bank of Dominica (NBD)',
-        transactionRef: `INV-DOM-${Date.now().toString().slice(-6)}`,
-        subscribedAt: new Date().toISOString().split('T')[0],
-        renewsAt: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-        quotaPostings: 5,
-        remoteWorkEnabled: false,
-      },
+      subscription: data.selectedPlan
+        ? {
+            plan: initialPlanMeta.plan,
+            priceXCD: initialPlanMeta.priceXCD,
+            status: 'pending_payment',
+            paymentMethod: 'National Bank of Dominica (NBD)',
+            transactionRef: `INV-DOM-${Date.now().toString().slice(-6)}`,
+            subscribedAt: new Date().toISOString().split('T')[0],
+            renewsAt: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+            quotaPostings: initialPlanMeta.quotaPostings,
+            remoteWorkEnabled: initialPlanMeta.remoteWorkEnabled,
+          }
+        : existingUser?.subscription || {
+            plan: initialPlanMeta.plan,
+            priceXCD: initialPlanMeta.priceXCD,
+            status: 'pending_payment',
+            paymentMethod: 'National Bank of Dominica (NBD)',
+            transactionRef: `INV-DOM-${Date.now().toString().slice(-6)}`,
+            subscribedAt: new Date().toISOString().split('T')[0],
+            renewsAt: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+            quotaPostings: initialPlanMeta.quotaPostings,
+            remoteWorkEnabled: initialPlanMeta.remoteWorkEnabled,
+          },
       createdAt: existingUser?.createdAt || new Date().toISOString().split('T')[0],
     };
     setUsers((prev) => {
@@ -1759,10 +1778,12 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const subscribeClientPlan = (
     userId: string,
     plan: SubscriptionPlan,
-    paymentMethod: 'National Bank of Dominica (NBD)' | 'Credit/Debit Card (XCD)' | 'Republic Bank / Wire'
+    paymentMethod: 'National Bank of Dominica (NBD)' | 'Credit/Debit Card (XCD)' | 'Republic Bank / Wire',
+    options?: { skipEmail?: boolean; transactionRef?: string }
   ) => {
-    const price = plan === 'Enterprise Growth Partner' ? 650 : plan === 'NEP Partner Tier' ? 180 : 250;
-    const txRef = `TX-DOM-${Math.floor(100000 + Math.random() * 900000)}`;
+    const planMeta = getMembershipPlanDetails(plan);
+    const price = planMeta.priceXCD;
+    const txRef = options?.transactionRef || `TX-DOM-${Math.floor(100000 + Math.random() * 900000)}`;
     const nowStr = new Date().toISOString().split('T')[0];
     const renewsStr = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
 
@@ -1774,57 +1795,74 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       transactionRef: txRef,
       subscribedAt: nowStr,
       renewsAt: renewsStr,
-      quotaPostings: plan === 'Enterprise Growth Partner' ? 999 : plan === 'NEP Partner Tier' ? 15 : 5,
-      remoteWorkEnabled: true,
+      quotaPostings: planMeta.quotaPostings,
+      remoteWorkEnabled: planMeta.remoteWorkEnabled,
     };
 
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, subscription: updatedSub } : u))
-    );
+    const targetUser =
+      usersRef.current.find((u) => u.id === userId) ||
+      (currentUser?.id === userId ? currentUser : undefined);
+
+    setUsers((prev) => {
+      const next = prev.map((u) => (u.id === userId ? { ...u, subscription: updatedSub } : u));
+      try {
+        localStorage.setItem('dominica_users', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
 
     if (currentUser && currentUser.id === userId) {
-      setCurrentUser({ ...currentUser, subscription: updatedSub });
+      const updatedCurrentUser = { ...currentUser, subscription: updatedSub };
+      setCurrentUser(updatedCurrentUser);
+      try {
+        localStorage.setItem('dominica_current_user', JSON.stringify(updatedCurrentUser));
+      } catch {
+        // ignore
+      }
     }
 
-    // Send confirmation email
-    const emailNotif: EmailNotification = {
-      id: `notif-sub-${Date.now()}`,
-      recipientEmail: currentUser?.email || 'careers@fortyounghotel.com',
-      recipientName: currentUser?.name || 'Dominican Employer',
-      subject: `Subscription Confirmed: ${plan} Active (Ref ${txRef})`,
-      previewText: `Your employer subscription of EC$${price}/month has been verified. Remote Work Assignment and Vacancy posting privileges are active.`,
-      bodyHtml: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
-          <h2 style="color: #006b4d; margin-top: 0;">Nature Isle Careers · Employer Subscription Active</h2>
-          <p style="font-size: 14px; color: #334155;">
-            Thank you for subscribing to the <strong>${plan}</strong> plan for Dominican recruitment.
-          </p>
-          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 16px; margin: 16px 0;">
-            <p style="margin: 0; font-size: 14px; color: #065f46;"><strong>Amount Paid:</strong> EC$${price.toLocaleString()} XCD</p>
-            <p style="margin: 4px 0 0 0; font-size: 14px; color: #065f46;"><strong>Payment Gateway:</strong> ${paymentMethod}</p>
-            <p style="margin: 4px 0 0 0; font-size: 14px; color: #065f46;"><strong>Transaction Ref:</strong> ${txRef}</p>
-            <p style="margin: 4px 0 0 0; font-size: 14px; color: #065f46;"><strong>Next Renewal:</strong> ${renewsStr}</p>
+    if (!options?.skipEmail) {
+      const resolvedEmail = targetUser?.email || currentUser?.email || 'careers@fortyounghotel.com';
+      const resolvedName = targetUser?.companyName || targetUser?.name || currentUser?.name || 'Dominican Employer';
+      const emailNotif: EmailNotification = {
+        id: `notif-sub-${Date.now()}`,
+        recipientEmail: resolvedEmail,
+        recipientName: resolvedName,
+        subject: `Account & Membership Verified: ${plan} Active (Ref ${txRef})`,
+        previewText: `Signup & payment verification completed for ${resolvedName}. Selected membership: ${plan} (EC$${price}/month).`,
+        bodyHtml: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 8px;">
+            <h2 style="color: #006b4d; margin-top: 0;">Nature Island Careers · Employer Membership Verified</h2>
+            <p style="font-size: 14px; color: #334155;">
+              Your employer registration and payment verification for the <strong>${plan}</strong> membership tier are now complete.
+            </p>
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 16px; margin: 16px 0;">
+              <p style="margin: 0; font-size: 14px; color: #065f46;"><strong>Selected Membership:</strong> ${plan} (${planMeta.quotaLabel})</p>
+              <p style="margin: 4px 0 0 0; font-size: 14px; color: #065f46;"><strong>Amount Paid:</strong> EC$${price.toLocaleString()} XCD</p>
+              <p style="margin: 4px 0 0 0; font-size: 14px; color: #065f46;"><strong>Payment Gateway:</strong> ${paymentMethod}</p>
+              <p style="margin: 4px 0 0 0; font-size: 14px; color: #065f46;"><strong>Transaction Ref:</strong> ${txRef}</p>
+              <p style="margin: 4px 0 0 0; font-size: 14px; color: #065f46;"><strong>Next Renewal:</strong> ${renewsStr}</p>
+            </div>
           </div>
-          <p style="font-size: 13px; color: #64748b;">
-            Your account is now authorized to place Remote Work Assignments across Dominica and manage applicant candidate dossiers.
-          </p>
-        </div>
-      `,
-      type: 'status_update',
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      isRead: false,
-    };
-    dispatchEmail(emailNotif);
+        `,
+        type: 'employer_membership_verified',
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        isRead: false,
+      };
+      dispatchEmail(emailNotif);
+    }
 
     if (paymentMethod === 'Credit/Debit Card (XCD)') {
       sendAdminEmailAlert({
         eventType: 'stripe_payment_finalized',
-        subject: `[Admin Stripe Alert] Client Subscription Paid: ${currentUser?.companyName || currentUser?.name || 'Dominican Employer'} — EC$ ${price.toLocaleString()} (${txRef})`,
+        subject: `[Admin Stripe Alert] Client Subscription Paid: ${targetUser?.companyName || currentUser?.companyName || currentUser?.name || 'Dominican Employer'} — EC$ ${price.toLocaleString()} (${txRef})`,
         summary: `Client employer subscription (${plan}) settled via card checkout for EC$ ${price.toLocaleString()} XCD.`,
         relatedInvoiceId: txRef,
         amountXCD: price,
         serverPayload: {
-          employerName: currentUser?.companyName || currentUser?.name || 'Dominican Employer',
+          employerName: targetUser?.companyName || currentUser?.companyName || currentUser?.name || 'Dominican Employer',
           planName: plan,
           invoiceId: txRef,
           amountXCD: price,
@@ -2420,45 +2458,86 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         r.id === invoice.recruiterId ||
         r.companyName.toLowerCase() === invoice.companyName.toLowerCase()
     );
+    const matchedUser = usersRef.current.find(
+      (u) =>
+        u.role === 'client' &&
+        (u.recruiterId === invoice.recruiterId ||
+          (recipientEmail && u.email.toLowerCase() === recipientEmail.toLowerCase()) ||
+          (invoice.companyName && u.companyName?.toLowerCase() === invoice.companyName.toLowerCase()))
+    );
     const targetEmail =
       recipientEmail?.trim() ||
       invoice.recipientEmail?.trim() ||
+      matchedUser?.email ||
       matchedRecruiter?.email ||
       getSiteContactEmail();
+    const contactPerson =
+      invoice.contactPerson ||
+      matchedUser?.name ||
+      matchedRecruiter?.contactPerson ||
+      invoice.companyName;
+    const dssReg =
+      invoice.dssRegistrationNo ||
+      matchedUser?.dssRegistrationNo ||
+      matchedRecruiter?.dssRegistrationNo ||
+      'DSS-DOM-VERIFIED';
+    const parish =
+      invoice.parish || matchedUser?.parish || matchedRecruiter?.parish || 'St. George';
+    const planMeta = getMembershipPlanDetails(invoice.plan);
+    const quotaPostings = invoice.quotaPostings ?? planMeta.quotaPostings;
+    const remoteEnabled = invoice.remoteWorkEnabled ?? planMeta.remoteWorkEnabled;
+    const membershipFeatures =
+      invoice.membershipFeatures && invoice.membershipFeatures.length > 0
+        ? invoice.membershipFeatures
+        : planMeta.features;
+    const renewsAt =
+      invoice.renewsAt ||
+      new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+
     const sentAtIso = new Date().toISOString();
     const formattedTime = sentAtIso.replace('T', ' ').substring(0, 16);
 
     const paymentReceiptNotif: EmailNotification = {
-      id: `notif-stripe-emp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: `notif-emp-verified-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       recipientEmail: targetEmail,
-      recipientName: matchedRecruiter?.contactPerson || invoice.companyName,
-      subject: `Stripe Payment Confirmed: ${invoice.plan} — EC$ ${invoice.amountXCD.toLocaleString()} (${invoice.invoiceNumber})`,
-      previewText: `Payment receipt for ${invoice.companyName}: EC$ ${invoice.amountXCD.toLocaleString()} (~$${invoice.amountUSD.toLocaleString()} USD) processed via Stripe.`,
+      recipientName: contactPerson,
+      subject: `Employer Signup & Payment Verified: ${invoice.plan} Active — Invoice ${invoice.invoiceNumber}`,
+      previewText: `Registration & payment verification completed for ${invoice.companyName}. Selected membership: ${invoice.plan} (EC$ ${invoice.amountXCD.toLocaleString()} · ${quotaPostings >= 999 ? 'Unlimited vacancies' : `${quotaPostings} active vacancies`} · Invoice ${invoice.invoiceNumber}).`,
       bodyHtml: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 10px;">
-          <div style="border-bottom: 2px solid #635BFF; padding-bottom: 12px; margin-bottom: 16px;">
-            <h2 style="color: #065f46; margin: 0;">Stripe Payment Receipt · Nature Island Careers</h2>
-            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Verified Employer Transaction Notification (${portalUsed})</p>
+        <div style="font-family: sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 10px;">
+          <div style="border-bottom: 2px solid #065f46; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: #065f46; margin: 0;">Nature Island Careers · Employer Account &amp; Payment Verified</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Official Membership Confirmation &amp; Tax Invoice (${portalUsed})</p>
           </div>
-          <p style="font-size: 14px; color: #1e293b;">Dear ${matchedRecruiter?.contactPerson || invoice.companyName},</p>
+          <p style="font-size: 14px; color: #1e293b;">Dear ${contactPerson},</p>
           <p style="font-size: 14px; color: #334155; line-height: 1.5;">
-            Your Stripe payment for <strong>${invoice.companyName}</strong> has been authorized and settled successfully.
+            Your employer signup and payment verification for <strong>${invoice.companyName}</strong> have been completed. Your selected membership tier is now active across the Commonwealth of Dominica.
           </p>
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #635BFF; border-radius: 6px; padding: 14px 16px; margin: 16px 0; font-size: 13px;">
-            <p style="margin: 0; color: #0f172a;"><strong>Invoice #:</strong> ${invoice.invoiceNumber}</p>
-            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Package:</strong> ${invoice.plan} (${invoice.billingInterval})</p>
-            <p style="margin: 4px 0 0 0; color: #065f46;"><strong>Amount Settled:</strong> EC$ ${invoice.amountXCD.toLocaleString()} (~$${invoice.amountUSD.toLocaleString()} USD)</p>
-            <p style="margin: 4px 0 0 0; color: #334155;"><strong>Payment Intent:</strong> ${invoice.paymentIntentId || 'Verified'}</p>
-            <p style="margin: 4px 0 0 0; color: #334155;"><strong>Method:</strong> ${invoice.paymentMethod}</p>
+          <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            <p style="margin: 0; color: #0f172a;"><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Selected Membership:</strong> ${invoice.plan} (${invoice.billingInterval === 'monthly' ? 'Monthly Recurring' : '30-Day Pass'})</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Posting Quota:</strong> ${quotaPostings >= 999 ? 'Unlimited Active Vacancies' : `${quotaPostings} Active Vacancies`} · Remote/WIN: ${remoteEnabled ? 'Enabled' : 'Standard Local'}</p>
+            <p style="margin: 4px 0 0 0; color: #065f46;"><strong>Amount Verified &amp; Paid:</strong> EC$ ${invoice.amountXCD.toLocaleString()} XCD (~$${invoice.amountUSD.toFixed(2)} USD)</p>
+            <p style="margin: 4px 0 0 0; color: #334155;"><strong>DSS Registration:</strong> ${dssReg} · <strong>Parish:</strong> ${parish}</p>
+            <p style="margin: 4px 0 0 0; color: #334155;"><strong>Payment Channel:</strong> ${invoice.paymentMethod}</p>
+            <p style="margin: 4px 0 0 0; color: #334155;"><strong>Verification Ref:</strong> ${invoice.paymentIntentId || 'Verified'}</p>
+            <p style="margin: 4px 0 0 0; color: #334155;"><strong>Next Renewal Date:</strong> ${renewsAt}</p>
+          </div>
+          <div style="font-size: 12px; color: #334155; margin-bottom: 14px;">
+            <strong>Included Membership Entitlements:</strong>
+            <ul style="margin: 6px 0 0 18px; padding: 0;">
+              ${membershipFeatures.map((feat) => `<li>${feat}</li>`).join('')}
+            </ul>
           </div>
           <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-            Dispatched automatically via Nature Island Careers Employer Billing · info@natureislecareers.com
+            VAT / DSS Code: DOM-EMP-TAX-77491 · Dispatched automatically via Nature Island Careers Employer Billing · info@natureislecareers.com
           </p>
         </div>
       `,
-      type: 'status_update',
+      type: 'employer_membership_verified',
       timestamp: formattedTime,
       isRead: false,
+      relatedInvoiceId: invoice.invoiceNumber,
     };
 
     dispatchEmail(paymentReceiptNotif);
@@ -2466,14 +2545,27 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInvoices((prev) =>
       prev.map((inv) =>
         inv.id === invoice.id
-          ? { ...inv, recipientEmail: targetEmail, notifiedAt: sentAtIso }
+          ? {
+              ...inv,
+              recipientEmail: targetEmail,
+              notifiedAt: sentAtIso,
+              contactPerson,
+              dssRegistrationNo: dssReg,
+              parish,
+              quotaPostings,
+              remoteWorkEnabled: remoteEnabled,
+              membershipFeatures,
+              renewsAt,
+              signupVerifiedAt: sentAtIso,
+              verificationChannel: portalUsed,
+            }
           : inv
       )
     );
 
     logAdminActivity(
-      'Employer Stripe Notification Sent',
-      `Dispatched Stripe payment receipt to ${targetEmail} (${invoice.companyName}) for ${invoice.invoiceNumber} — EC$${invoice.amountXCD}.`,
+      'Employer Signup & Payment Notification Sent',
+      `Dispatched verification notification & membership invoice (${invoice.plan}) to ${targetEmail} (${invoice.companyName}) for ${invoice.invoiceNumber} — EC$${invoice.amountXCD}.`,
       'Payment Update'
     );
 
@@ -2486,11 +2578,18 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             employerName: invoice.companyName,
             recipientEmail: targetEmail,
             planName: invoice.plan,
+            membershipTier: invoice.plan,
             amountXCD: invoice.amountXCD,
             amountUSD: invoice.amountUSD,
             invoiceId: invoice.invoiceNumber,
             paymentIntentId: invoice.paymentIntentId,
             portalUsed,
+            signupVerified: true,
+            dssRegistrationNo: dssReg,
+            parish,
+            quotaPostings,
+            renewsAt,
+            billingInterval: invoice.billingInterval,
           }),
         }).catch(() => {});
       }
@@ -2507,15 +2606,52 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         r.id === invoiceData.recruiterId ||
         r.companyName.toLowerCase() === invoiceData.companyName.toLowerCase()
     );
+    const matchedUser = usersRef.current.find(
+      (u) =>
+        u.role === 'client' &&
+        (u.recruiterId === invoiceData.recruiterId ||
+          (invoiceData.recipientEmail &&
+            u.email.toLowerCase() === invoiceData.recipientEmail.toLowerCase()) ||
+          u.companyName?.toLowerCase() === invoiceData.companyName.toLowerCase())
+    );
     const resolvedRecipient =
-      invoiceData.recipientEmail || matchedRecruiter?.email || getSiteContactEmail();
+      invoiceData.recipientEmail ||
+      matchedUser?.email ||
+      matchedRecruiter?.email ||
+      getSiteContactEmail();
     const nowIso = new Date().toISOString();
+    const planMeta = getMembershipPlanDetails(invoiceData.plan);
+    const defaultRenewsAt =
+      invoiceData.renewsAt ||
+      new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
 
     const newInvoice: EmployerInvoice = {
       ...invoiceData,
       id: `inv-${Date.now()}`,
       recipientEmail: resolvedRecipient,
+      contactPerson:
+        invoiceData.contactPerson ||
+        matchedUser?.name ||
+        matchedRecruiter?.contactPerson ||
+        invoiceData.companyName,
+      dssRegistrationNo:
+        invoiceData.dssRegistrationNo ||
+        matchedUser?.dssRegistrationNo ||
+        matchedRecruiter?.dssRegistrationNo ||
+        'DSS-DOM-VERIFIED',
+      parish:
+        invoiceData.parish || matchedUser?.parish || matchedRecruiter?.parish || 'St. George',
+      quotaPostings: invoiceData.quotaPostings ?? planMeta.quotaPostings,
+      remoteWorkEnabled: invoiceData.remoteWorkEnabled ?? planMeta.remoteWorkEnabled,
+      membershipFeatures:
+        invoiceData.membershipFeatures && invoiceData.membershipFeatures.length > 0
+          ? invoiceData.membershipFeatures
+          : planMeta.features,
+      renewsAt: defaultRenewsAt,
       notifiedAt: invoiceData.status === 'Paid' ? nowIso : undefined,
+      signupVerifiedAt: invoiceData.status === 'Paid' ? nowIso : undefined,
+      verificationChannel:
+        invoiceData.verificationChannel || invoiceData.paymentMethod || 'Stripe Card Checkout',
       paymentIntentId:
         invoiceData.paymentIntentId ||
         `pi_live_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}XCD`,

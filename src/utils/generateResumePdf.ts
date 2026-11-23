@@ -230,6 +230,22 @@ export const generateResumePdf = async (options: ResumePdfOptions): Promise<stri
         });
       }
     }
+
+    // Stamp discreet Nature Island Careers footer across all generated pages
+    const pageCount = pdf?.getNumberOfPages?.() ?? 1;
+    for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
+      pdf?.setPage?.(pageNum);
+      pdf?.setDrawColor?.(226, 232, 240);
+      pdf?.line?.(margin, pdfHeight - 12, pdfWidth - margin, pdfHeight - 12);
+      pdf?.setFont?.('helvetica', 'normal');
+      pdf?.setFontSize?.(8);
+      pdf?.setTextColor?.(100, 116, 139);
+      pdf?.text?.(
+        `Nature Island Careers · Commonwealth of Dominica · Page ${pageNum} of ${pageCount}`,
+        margin,
+        pdfHeight - 7.5
+      );
+    }
   } catch {
     // Ignore formatting errors on minimal test mocks
   }

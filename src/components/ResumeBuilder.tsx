@@ -175,6 +175,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({
     useState<JobSector>('Information Technology & Digital');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportNotice, setExportNotice] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [isLivePreviewModalOpen, setIsLivePreviewModalOpen] = useState<boolean>(
     Boolean(initialOpenPreviewModal)
   );
@@ -292,6 +293,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({
   // Handle PDF Export
   const handleExportPdf = async () => {
     setIsExportingPdf(true);
+    setExportError(null);
 
     try {
       await generateResumePdf({
@@ -303,8 +305,8 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({
       });
       setExportNotice(true);
       setTimeout(() => setExportNotice(false), 2500);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setExportError(err?.message || 'Unable to generate PDF CV. Please try again.');
     } finally {
       setIsExportingPdf(false);
     }
@@ -859,6 +861,19 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({
         <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs rounded-xl flex items-center gap-2 font-bold animate-in fade-in">
           <Check className="w-4 h-4 text-emerald-700" />
           <span>Professional Dominica PDF CV downloaded successfully!</span>
+        </div>
+      )}
+
+      {exportError && (
+        <div role="alert" className="p-3 bg-rose-50 border border-rose-300 text-rose-900 text-xs rounded-xl flex items-center justify-between gap-2 font-bold">
+          <span>{exportError}</span>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            className="text-rose-600 hover:text-rose-900 cursor-pointer"
+          >
+            ×
+          </button>
         </div>
       )}
 

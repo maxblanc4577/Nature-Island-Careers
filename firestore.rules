@@ -75,13 +75,68 @@ service cloud.firestore {
         && data.parish.size() <= 64
         && (!('phone' in data) || (data.phone is string && data.phone.size() >= 4 && data.phone.size() <= 40))
         && (!('companyName' in data) || (data.companyName is string && data.companyName.size() >= 1 && data.companyName.size() <= 140))
-        && (!('dssRegistrationNo' in data) || (data.dssRegistrationNo is string && data.dssRegistrationNo is string && data.dssRegistrationNo.size() >= 1 && data.dssRegistrationNo.size() <= 64))
+        && (!('dssRegistrationNo' in data) || (data.dssRegistrationNo is string && data.dssRegistrationNo.size() >= 1 && data.dssRegistrationNo.size() <= 64))
         && (!('careerSector' in data) || (data.careerSector is string && data.careerSector.size() >= 2 && data.careerSector.size() <= 100))
         && (!('skills' in data) || (
           data.skills is list
           && data.skills.size() <= 10
           && (data.skills.size() == 0 || (data.skills[0] is string && data.skills[0].size() <= 80))
         ))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint for EmailCategorySubscription (/users/{userId}/emailSubscriptions/{subscriptionId})
+    function isValidEmailCategorySubscription(data) {
+      return data.keys().hasAll([
+          'id',
+          'uid',
+          'email',
+          'categories',
+          'frequency',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'uid',
+          'email',
+          'name',
+          'categories',
+          'parishes',
+          'frequency',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.id is string
+        && data.id.size() >= 1
+        && data.id.size() <= 128
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid is string
+        && data.uid == request.auth.uid
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 160
+        && (!('name' in data) || (data.name is string && data.name.size() >= 2 && data.name.size() <= 120))
+        && data.categories is list
+        && data.categories.size() >= 1
+        && data.categories.size() <= 10
+        && data.categories[0] is string
+        && data.categories[0].size() >= 2
+        && data.categories[0].size() <= 100
+        && (!('parishes' in data) || (
+          data.parishes is list
+          && data.parishes.size() <= 11
+          && (data.parishes.size() == 0 || (data.parishes[0] is string && data.parishes[0].size() >= 2 && data.parishes[0].size() <= 64))
+        ))
+        && data.frequency is string
+        && (data.frequency == 'instant' || data.frequency == 'daily' || data.frequency == 'weekly')
+        && data.active is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -120,6 +175,45 @@ service cloud.firestore {
         );
 
       allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Isolated Email Category Subscriptions Subcollection
+      match /emailSubscriptions/{subscriptionId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(subscriptionId);
+        allow list: if isOwner(userId) && isValidId(userId) && resource.data.uid == request.auth.uid;
+
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(subscriptionId)
+          && isValidEmailCategorySubscription(incoming())
+          && incoming().id == subscriptionId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(subscriptionId)
+          && isValidEmailCategorySubscription(incoming())
+          && incoming().id == existing().id
+          && incoming().uid == existing().uid
+          && incoming().email == existing().email
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name',
+            'categories',
+            'parishes',
+            'frequency',
+            'active',
+            'updatedAt'
+          ]);
+
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(subscriptionId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+      }
     }
   }
 }

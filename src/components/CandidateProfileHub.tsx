@@ -6,6 +6,7 @@ import { JobAlertAutomationManager } from './JobAlertAutomationManager';
 import { CandidateCoverLetterGenerator } from './CandidateCoverLetterGenerator';
 import { CandidateLinkedInExportTool } from './CandidateLinkedInExportTool';
 import { CandidatePrivacySettingsPanel } from './CandidatePrivacySettingsPanel';
+import { PaymentHistory } from './PaymentHistory';
 import { isValidEmail, isValidPhone } from '../utils/paymentValidation';
 import {
   Parish,
@@ -56,6 +57,7 @@ import {
   LogIn,
   UserPlus,
   AlertCircle,
+  CreditCard,
 } from 'lucide-react';
 
 export type CandidateHubSubTab =
@@ -68,7 +70,8 @@ export type CandidateHubSubTab =
   | 'saved_jobs'
   | 'interview_prep'
   | 'privacy'
-  | 'job_alerts';
+  | 'job_alerts'
+  | 'payment_history';
 
 export interface ParsedResumeProfileData {
   fullName?: string;
@@ -3780,6 +3783,20 @@ END:VCALENDAR`;
           <Bell className="w-4 h-4" />
           <span>Job Alerts</span>
         </button>
+
+        <button
+          type="button"
+          data-testid="subtab-payment-history"
+          onClick={() => setActiveSubTab('payment_history')}
+          className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+            activeSubTab === 'payment_history'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          <span>Payment History</span>
+        </button>
       </div>
 
       {/* SECTION 0: TOP-LEVEL 'PROFILE OVERVIEW' DASHBOARD SUMMARY */}
@@ -5341,6 +5358,13 @@ END:VCALENDAR`;
       {activeSubTab === 'job_alerts' && (
         <div className="animate-in fade-in">
           <JobAlertAutomationManager />
+        </div>
+      )}
+
+      {/* SECTION 9: PAYMENT HISTORY & CSV EXPORT */}
+      {activeSubTab === 'payment_history' && (
+        <div className="animate-in fade-in">
+          <PaymentHistory />
         </div>
       )}
     </div>

@@ -19,6 +19,7 @@ import {
   Monitor,
   Columns,
   Palette,
+  Keyboard,
 } from 'lucide-react';
 import { PlatformViewMode } from './MobilePlatformViews';
 import { BrandLogo } from './BrandLogo';
@@ -55,6 +56,7 @@ interface HeaderProps {
   onOpenRemoteModal: () => void;
   onOpenAdminPortal?: () => void;
   onOpenBrandStudio?: () => void;
+  onOpenShortcutsModal?: () => void;
   searchQuery?: string;
   onSelectSearchQuery?: (query: string) => void;
   viewMode?: PlatformViewMode;
@@ -77,6 +79,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenRemoteModal,
   onOpenAdminPortal,
   onOpenBrandStudio,
+  onOpenShortcutsModal,
   searchQuery = '',
   onSelectSearchQuery,
   viewMode = 'desktop',
@@ -217,6 +220,21 @@ export const Header: React.FC<HeaderProps> = ({
               <Palette className="w-3.5 h-3.5" />
               <span>Brand Studio & Mockups</span>
             </button>
+            {onOpenShortcutsModal && (
+              <>
+                <span className="text-emerald-800 hidden lg:inline">|</span>
+                <button
+                  type="button"
+                  data-testid="header-shortcuts-btn"
+                  onClick={onOpenShortcutsModal}
+                  className="hidden lg:flex text-emerald-200 hover:text-white items-center gap-1 transition-colors cursor-pointer text-[11px] font-semibold"
+                  title="Keyboard Shortcuts (Press ?)"
+                >
+                  <Keyboard className="w-3.5 h-3.5" />
+                  <span>Shortcuts</span>
+                </button>
+              </>
+            )}
             {isAdminLoggedIn && (
               <>
                 <span className="text-emerald-800">|</span>
