@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   ShieldAlert,
   Clock,
+  UserPlus,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const ADMIN_MAX_LOGIN_ATTEMPTS = 3;
@@ -98,11 +100,17 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
   onReturnPublic,
   isStandalone = false,
 }) => {
-  const { adminLogin } = useJobContext();
+  const { adminLogin, isAdminRegistered } = useJobContext();
 
+  const [gatewayMode, setGatewayMode] = useState<'login' | 'register'>('login');
+  const [adminAccountRegistered, setAdminAccountRegistered] = useState<boolean>(() =>
+    Boolean(isAdminRegistered)
+  );
+  const [adminName, setAdminName] = useState('');
   // Security hardened: Never prefill credentials or expose plain-text hints
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   // Bot-honeypot trap field (must remain empty for human users)
   const [honeypotUrl, setHoneypotUrl] = useState('');
 
@@ -114,6 +122,29 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
   const [loading, setLoading] = useState(false);
 
   const lockoutStatus = isAdminLoginLockedOut(securityState, nowMs);
+
+  useEffect(() => {
+    let active = true;
+    if (typeof fetch !== 'function') return;
+    fetch('/api/admin/registration-status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active && data && typeof data.registered === 'boolean') {
+          setAdminAccountRegistered(data.registered);
+          try {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem('dominica_admin_registered', String(data.registered));
+            }
+          } catch {
+            // ignore
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Tick countdown timer every second while locked out
   useEffect(() => {
@@ -167,22 +198,58 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
     setLoading(true);
     setErrorMessage(null);
 
+    if (gatewayMode === 'register') {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (normalizedEmail !== 'info@natureislecareers.com') {
+        setLoading(false);
+        setErrorMessage('Single admin registration is strictly restricted to info@natureislecareers.com.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setLoading(false);
+        setErrorMessage('Password confirmation does not match.');
+        return;
+      }
+    }
+
     let serverErrorMsg: string | null = null;
 
     try {
-      const res = await fetch('/api/admin/verify', {
+      const endpoint = gatewayMode === 'register' ? '/api/admin/register' : '/api/admin/verify';
+      const payload =
+        gatewayMode === 'register'
+          ? {
+              email: email.trim(),
+              password,
+              confirmPassword,
+              name: adminName.trim() || 'Dominica Labour Administrator',
+              honeypot: honeypotUrl,
+            }
+          : {
+              username: email.trim(),
+              password,
+              honeypot: honeypotUrl,
+            };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: email.trim(),
-          password,
-          honeypot: honeypotUrl,
-        }),
+        body: JSON.stringify(payload),
       });
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const data = await res.json();
         if (res.ok && data.authorized) {
+          if (gatewayMode === 'register') {
+            setAdminAccountRegistered(true);
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('dominica_admin_registered', 'true');
+              }
+            } catch {
+              // ignore
+            }
+          }
           if (data.token) {
             sessionStorage.setItem('natureisland_admin_token', data.token);
           }
@@ -196,6 +263,15 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
           } else {
             setErrorMessage('Single-login access is restricted to info@natureislecareers.com.');
           }
+          return;
+        }
+        if (res.status === 409 || data?.alreadyRegistered) {
+          setAdminAccountRegistered(true);
+          setLoading(false);
+          setErrorMessage(
+            data?.error ||
+              'Single administrator account (info@natureislecareers.com) is already registered.'
+          );
           return;
         }
         serverErrorMsg = data?.error || 'Authentication failed.';
@@ -212,6 +288,7 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
     setSecurityState(updatedState);
     saveAdminSecurityState(updatedState);
     setPassword('');
+    setConfirmPassword('');
 
     const nextLock = isAdminLoginLockedOut(updatedState, Date.now());
     if (nextLock.locked) {
@@ -236,10 +313,46 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
         <Lock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
         <div className="leading-relaxed">
           <strong className="text-white">Single-Login Administrative Gateway:</strong> Restricted to{' '}
-          <span className="font-mono text-emerald-300">info@natureislecareers.com</span>. One login
-          unlocks the standalone Admin Portal webpage and all Merchant Payment Portals with automated
-          brute-force lockout protection.
+          <span className="font-mono text-emerald-300">info@natureislecareers.com</span>. Allows a
+          single admin registration and unlocks the Admin Portal and Merchant Payment Portals with
+          automated brute-force lockout protection.
         </div>
+      </div>
+
+      {/* Mode Switcher: Sign In vs Single Admin Registration */}
+      <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+        <button
+          type="button"
+          data-testid="admin-mode-signin-btn"
+          onClick={() => {
+            setGatewayMode('login');
+            setErrorMessage(null);
+          }}
+          className={`py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+            gatewayMode === 'login'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <KeyRound className="w-3.5 h-3.5" />
+          <span>Admin Sign In</span>
+        </button>
+        <button
+          type="button"
+          data-testid="admin-mode-register-btn"
+          onClick={() => {
+            setGatewayMode('register');
+            setErrorMessage(null);
+          }}
+          className={`py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+            gatewayMode === 'register'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <UserPlus className="w-3.5 h-3.5" />
+          <span>Register Single Admin</span>
+        </button>
       </div>
 
       {/* Temporary Brute-Force Lockout Banner */}
@@ -274,125 +387,208 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate={false}>
-        {/* Bot-Honeypot Field (Hidden from human users, traps automated form fillers) */}
+      {gatewayMode === 'register' && adminAccountRegistered ? (
         <div
-          aria-hidden="true"
-          className="sr-only overflow-hidden h-0 w-0 opacity-0 pointer-events-none"
+          data-testid="admin-already-registered-notice"
+          className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-3 text-emerald-950"
         >
-          <label htmlFor="admin_verification_website_url">
-            Organization Website Verification (Leave blank)
-          </label>
-          <input
-            id="admin_verification_website_url"
-            name="admin_verification_website_url"
-            data-testid="admin-honeypot-input"
-            type="text"
-            tabIndex={-1}
-            autoComplete="off"
-            value={honeypotUrl}
-            onChange={(e) => setHoneypotUrl(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="admin-login-email"
-            className="block font-semibold text-slate-900 mb-1.5"
-          >
-            Administrator Identifier *
-          </label>
-          <input
-            id="admin-login-email"
-            data-testid="admin-email-input"
-            type="email"
-            required
-            disabled={lockoutStatus.locked || loading}
-            autoComplete="off"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="info@natureislecareers.com"
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="admin-login-password"
-            className="block font-semibold text-slate-900 mb-1.5"
-          >
-            Master Security Passphrase *
-          </label>
-          <input
-            id="admin-login-password"
-            data-testid="admin-password-input"
-            type="password"
-            required
-            disabled={lockoutStatus.locked || loading}
-            autoComplete="off"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••••••••••"
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-        </div>
-
-        {/* Attempt Counter Indicator */}
-        {securityState.failedAttempts > 0 && !lockoutStatus.locked && (
-          <div
-            data-testid="admin-attempt-tracker"
-            className="flex items-center justify-between text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg"
-          >
-            <span>Failed attempts recorded:</span>
-            <span className="font-mono font-bold">
-              {securityState.failedAttempts} / {ADMIN_MAX_LOGIN_ATTEMPTS}
-            </span>
+          <div className="flex items-start gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+            <div className="space-y-1 text-[11px]">
+              <div className="font-bold text-xs">Single Admin Account Already Registered</div>
+              <p className="text-emerald-900/90">
+                The single administrator registration for{' '}
+                <span className="font-mono font-semibold">info@natureislecareers.com</span> has
+                already been completed. Additional admin registrations are permanently disabled.
+              </p>
+            </div>
           </div>
-        )}
-
-        {errorMessage && (
-          <div
-            data-testid="admin-login-error"
-            role="alert"
-            className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-2 text-[11px]"
-          >
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        <div className="pt-2 flex items-center justify-between gap-3">
-          {onReturnPublic ? (
-            <button
-              type="button"
-              onClick={onReturnPublic}
-              data-testid="admin-return-public-btn"
-              className="px-4 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-medium cursor-pointer hover:bg-slate-100 transition-colors inline-flex items-center gap-1.5"
-            >
-              {isStandalone && <ArrowLeft className="w-3.5 h-3.5" />}
-              <span>{isStandalone ? 'Exit to Public Site' : 'Cancel'}</span>
-            </button>
-          ) : (
-            <span />
-          )}
-
           <button
-            type="submit"
-            data-testid="admin-submit-btn"
-            disabled={loading || lockoutStatus.locked}
-            className="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            type="button"
+            data-testid="switch-to-admin-signin-btn"
+            onClick={() => {
+              setGatewayMode('login');
+              setErrorMessage(null);
+            }}
+            className="w-full py-2 px-3 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-semibold text-xs cursor-pointer transition-colors"
           >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>
-              {lockoutStatus.locked
-                ? `Locked (${lockoutStatus.remainingSeconds}s)`
-                : loading
-                ? 'Authenticating...'
-                : 'Authenticate Console'}
-            </span>
+            Proceed to Admin Sign In
           </button>
         </div>
-      </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate={false}>
+          {/* Bot-Honeypot Field (Hidden from human users, traps automated form fillers) */}
+          <div
+            aria-hidden="true"
+            className="sr-only overflow-hidden h-0 w-0 opacity-0 pointer-events-none"
+          >
+            <label htmlFor="admin_verification_website_url">
+              Organization Website Verification (Leave blank)
+            </label>
+            <input
+              id="admin_verification_website_url"
+              name="admin_verification_website_url"
+              data-testid="admin-honeypot-input"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypotUrl}
+              onChange={(e) => setHoneypotUrl(e.target.value)}
+            />
+          </div>
+
+          {gatewayMode === 'register' && (
+            <div>
+              <label
+                htmlFor="admin-register-name"
+                className="block font-semibold text-slate-900 mb-1.5"
+              >
+                Administrator Display Name
+              </label>
+              <input
+                id="admin-register-name"
+                data-testid="admin-register-name-input"
+                type="text"
+                disabled={lockoutStatus.locked || loading}
+                autoComplete="off"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                placeholder="Dominica Labour Administrator"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+          )}
+
+          <div>
+            <label
+              htmlFor="admin-login-email"
+              className="block font-semibold text-slate-900 mb-1.5"
+            >
+              Administrator Identifier *
+            </label>
+            <input
+              id="admin-login-email"
+              data-testid="admin-email-input"
+              type="email"
+              required
+              disabled={lockoutStatus.locked || loading}
+              autoComplete="off"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="info@natureislecareers.com"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="admin-login-password"
+              className="block font-semibold text-slate-900 mb-1.5"
+            >
+              Master Security Passphrase *
+            </label>
+            <input
+              id="admin-login-password"
+              data-testid="admin-password-input"
+              type="password"
+              required
+              disabled={lockoutStatus.locked || loading}
+              autoComplete="off"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••••••••••"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+          </div>
+
+          {gatewayMode === 'register' && (
+            <div>
+              <label
+                htmlFor="admin-confirm-password"
+                className="block font-semibold text-slate-900 mb-1.5"
+              >
+                Confirm Passphrase *
+              </label>
+              <input
+                id="admin-confirm-password"
+                data-testid="admin-confirm-password-input"
+                type="password"
+                required
+                disabled={lockoutStatus.locked || loading}
+                autoComplete="off"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••••••••••"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+          )}
+
+          {/* Attempt Counter Indicator */}
+          {securityState.failedAttempts > 0 && !lockoutStatus.locked && (
+            <div
+              data-testid="admin-attempt-tracker"
+              className="flex items-center justify-between text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg"
+            >
+              <span>Failed attempts recorded:</span>
+              <span className="font-mono font-bold">
+                {securityState.failedAttempts} / {ADMIN_MAX_LOGIN_ATTEMPTS}
+              </span>
+            </div>
+          )}
+
+          {errorMessage && (
+            <div
+              data-testid="admin-login-error"
+              role="alert"
+              className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-2 text-[11px]"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          <div className="pt-2 flex items-center justify-between gap-3">
+            {onReturnPublic ? (
+              <button
+                type="button"
+                onClick={onReturnPublic}
+                data-testid="admin-return-public-btn"
+                className="px-4 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-medium cursor-pointer hover:bg-slate-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                {isStandalone && <ArrowLeft className="w-3.5 h-3.5" />}
+                <span>{isStandalone ? 'Exit to Public Site' : 'Cancel'}</span>
+              </button>
+            ) : (
+              <span />
+            )}
+
+            <button
+              type="submit"
+              data-testid="admin-submit-btn"
+              disabled={loading || lockoutStatus.locked}
+              className="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {gatewayMode === 'register' ? (
+                <UserPlus className="w-3.5 h-3.5" />
+              ) : (
+                <KeyRound className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {lockoutStatus.locked
+                  ? `Locked (${lockoutStatus.remainingSeconds}s)`
+                  : loading
+                  ? gatewayMode === 'register'
+                    ? 'Registering Admin...'
+                    : 'Authenticating...'
+                  : gatewayMode === 'register'
+                  ? 'Register Single Admin'
+                  : 'Authenticate Console'}
+              </span>
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 };

@@ -183,7 +183,16 @@ interface ActiveAdminSession {
   lastSeenAt: number;
 }
 
+interface RegisteredAdminProfile {
+  name: string;
+  email: string;
+  parish: string;
+  registeredAt: string;
+}
+
 let activeAdminSession: ActiveAdminSession | null = null;
+let adminAccountRegistered = false;
+let registeredAdminProfile: RegisteredAdminProfile | null = null;
 
 function timingSafeEqualStrings(aStr: string, bStr: string): boolean {
   const a = Buffer.from(aStr, 'utf8');
@@ -1740,6 +1749,134 @@ app.post('/api/admin/verify', (req, res) => {
   });
 });
 
+app.get('/api/admin/registration-status', (_req, res) => {
+  return res.json({
+    allowedEmail: ALLOWED_ADMIN_EMAIL,
+    registered: adminAccountRegistered,
+    singleAdminOnly: true,
+    registeredAt: registeredAdminProfile?.registeredAt || null,
+  });
+});
+
+app.post('/api/admin/register', (req, res) => {
+  const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0].trim() || 'unknown-admin-ip';
+  const now = Date.now();
+  const honeypot = typeof req.body?.honeypot === 'string' ? req.body.honeypot.trim() : '';
+
+  if (honeypot.length > 0) {
+    adminLoginAttemptsMap.set(ip, { failedAttempts: 3, lockoutUntil: now + 30000 });
+    return res.status(403).json({
+      authorized: false,
+      error: 'Automated bot submission rejected by security honeypot.',
+    });
+  }
+
+  const attemptRecord = adminLoginAttemptsMap.get(ip) || { failedAttempts: 0, lockoutUntil: null };
+  if (attemptRecord.lockoutUntil && attemptRecord.lockoutUntil > now) {
+    const remainingSeconds = Math.ceil((attemptRecord.lockoutUntil - now) / 1000);
+    return res.status(429).json({
+      authorized: false,
+      lockedOut: true,
+      remainingSeconds,
+      error: `Too many failed attempts. Gateway locked for ${remainingSeconds}s.`,
+    });
+  }
+
+  const rawEmail = req.body?.email ?? req.body?.username;
+  const email = sanitizeString(rawEmail, 100).toLowerCase();
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const confirmPassword =
+    typeof req.body?.confirmPassword === 'string' ? req.body.confirmPassword : undefined;
+  const adminName = sanitizeString(req.body?.name, 100) || 'Dominica Labour Administrator';
+
+  if (email !== ALLOWED_ADMIN_EMAIL) {
+    return res.status(403).json({
+      authorized: false,
+      singleAdminOnly: true,
+      error: `Single admin registration is strictly restricted to ${ALLOWED_ADMIN_EMAIL}.`,
+    });
+  }
+
+  if (adminAccountRegistered) {
+    return res.status(409).json({
+      authorized: false,
+      alreadyRegistered: true,
+      registered: true,
+      singleAdminOnly: true,
+      error: `Single administrator account (${ALLOWED_ADMIN_EMAIL}) is already registered. Only one admin registration is permitted.`,
+    });
+  }
+
+  if (confirmPassword !== undefined && confirmPassword !== password) {
+    return res.status(400).json({
+      authorized: false,
+      error: 'Password confirmation does not match.',
+    });
+  }
+
+  const isValidPassword = verifyAdminMasterPassword(password);
+  if (!isValidPassword) {
+    const baseFailed =
+      attemptRecord.lockoutUntil && attemptRecord.lockoutUntil <= now ? 0 : attemptRecord.failedAttempts;
+    const nextFailed = baseFailed + 1;
+    const lockoutUntil = nextFailed >= 3 ? now + 30000 : null;
+    adminLoginAttemptsMap.set(ip, { failedAttempts: nextFailed, lockoutUntil });
+
+    return res.status(401).json({
+      authorized: false,
+      failedAttempts: nextFailed,
+      lockedOut: Boolean(lockoutUntil),
+      error: 'Invalid master authorization password for single admin registration.',
+    });
+  }
+
+  adminLoginAttemptsMap.delete(ip);
+  const registeredAt = new Date().toISOString();
+  adminAccountRegistered = true;
+  registeredAdminProfile = {
+    name: adminName,
+    email: ALLOWED_ADMIN_EMAIL,
+    parish: 'St. George',
+    registeredAt,
+  };
+
+  const sessionToken = `adm_${crypto.randomBytes(24).toString('hex')}`;
+  activeAdminSession = {
+    token: sessionToken,
+    email: ALLOWED_ADMIN_EMAIL,
+    issuedAt: now,
+    lastSeenAt: now,
+  };
+
+  backendAuditLogs.push({
+    id: `log_admin_reg_${now}`,
+    timestamp: registeredAt,
+    level: 'success',
+    service: 'Auth Guard',
+    message: `Single administrator registration completed for ${ALLOWED_ADMIN_EMAIL}. Duplicate admin registrations locked.`,
+  });
+  recordAdminAuditTrail(
+    'Single Admin Registered',
+    `Exclusive single administrator registration completed for ${ALLOWED_ADMIN_EMAIL} (${adminName}).`,
+    'Session & Security',
+    ALLOWED_ADMIN_EMAIL
+  );
+
+  return res.status(201).json({
+    authorized: true,
+    registered: true,
+    singleAdminOnly: true,
+    token: sessionToken,
+    user: {
+      name: adminName,
+      email: ALLOWED_ADMIN_EMAIL,
+      role: 'super_admin',
+      parish: 'St. George',
+      registeredAt,
+    },
+  });
+});
+
 app.post('/api/admin/logout', requireAdminAuth, (_req, res) => {
   activeAdminSession = null;
   backendAuditLogs.push({
@@ -2394,6 +2531,8 @@ app.post('/api/admin/run-diagnostics', requireAdminAuth, async (_req, res) => {
 app.get('/api/admin/routes', requireAdminAuth, (_req, res) => {
   res.json({
     routes: [
+      { method: 'GET', path: '/api/admin/registration-status', auth: 'Public Gateway Status', category: 'Admin Auth' },
+      { method: 'POST', path: '/api/admin/register', auth: 'Single Admin (info@natureislecareers.com)', category: 'Admin Auth' },
       { method: 'POST', path: '/api/admin/verify', auth: 'Single Login (info@natureislecareers.com)', category: 'Admin Auth' },
       { method: 'POST', path: '/api/admin/logout', auth: 'Admin Token', category: 'Admin Auth' },
       { method: 'POST', path: '/api/admin/rotate-password', auth: 'Admin Token', category: 'Admin Auth' },

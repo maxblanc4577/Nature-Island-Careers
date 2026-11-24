@@ -285,4 +285,39 @@ describe('Master Admin Password Security Hardening', () => {
     expect(serverSrc).toContain('verifyAdminMasterPassword');
     expect(serverSrc).toContain("app.post('/api/admin/rotate-password', requireAdminAuth");
   });
+
+  it('allows single admin registration exclusively for info@natureislecareers.com and blocks duplicates or public signups', () => {
+    const html = renderToStaticMarkup(
+      <JobProvider>
+        <StandaloneAdminLoginPage onSuccess={() => {}} onReturnPublic={() => {}} />
+      </JobProvider>
+    );
+    expect(html).toContain('data-testid="admin-mode-signin-btn"');
+    expect(html).toContain('data-testid="admin-mode-register-btn"');
+
+    const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
+    expect(serverSrc).toContain("app.get('/api/admin/registration-status'");
+    expect(serverSrc).toContain("app.post('/api/admin/register'");
+    expect(serverSrc).toContain('let adminAccountRegistered = false');
+    expect(serverSrc).toContain('if (email !== ALLOWED_ADMIN_EMAIL)');
+    expect(serverSrc).toContain('if (adminAccountRegistered)');
+    expect(serverSrc).toContain('alreadyRegistered: true');
+
+    const ctxSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/context/JobContext.tsx'), 'utf8');
+    expect(ctxSrc).toContain('registerSingleAdmin');
+    expect(ctxSrc).toContain('isAdminRegistered');
+    expect(ctxSrc).toContain(
+      "info@natureislecareers.com is reserved exclusively for single administrator registration."
+    );
+
+    const authSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/AuthModal.tsx'),
+      'utf8'
+    );
+    expect(authSrc).toContain("info@natureislecareers.com");
+    expect(authSrc).toContain(
+      'info@natureislecareers.com is reserved exclusively for single administrator registration via the Admin Console Gateway.'
+    );
+  });
 });
+

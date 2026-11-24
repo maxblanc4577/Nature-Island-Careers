@@ -199,9 +199,20 @@ interface JobContextType {
 
   // Admin Portal Single Login, Activity Log & Idle Session Security
   isAdminLoggedIn: boolean;
+  isAdminRegistered: boolean;
   adminEmail: string | null;
   adminSessionToken: string | null;
   adminLogin: (email: string, pass: string, serverToken?: string) => boolean;
+  registerSingleAdmin: (
+    email: string,
+    password: string,
+    confirmPassword?: string,
+    name?: string
+  ) => Promise<{
+    success: boolean;
+    alreadyRegistered?: boolean;
+    error?: string;
+  }>;
   adminLogout: () => void;
   adminActivityLogs: AdminActivityLogEntry[];
   logAdminActivity: (
@@ -976,6 +987,17 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
+  const [isAdminRegistered, setIsAdminRegistered] = useState<boolean>(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        return localStorage.getItem('dominica_admin_registered') === 'true';
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
+
   const [adminActivityLogs, setAdminActivityLogs] = useState<AdminActivityLogEntry[]>(() =>
     loadAdminActivityLogsFromStorage()
   );
@@ -1662,6 +1684,9 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     autoMatchEmailsEnabled?: boolean;
   }) => {
     const cleanEmail = data.email.trim();
+    if (cleanEmail.toLowerCase() === 'info@natureislecareers.com') {
+      throw new Error('info@natureislecareers.com is reserved exclusively for single administrator registration.');
+    }
     const existing = users.find(
       (u) => u.email.toLowerCase() === cleanEmail.toLowerCase() && u.role === 'jobseeker'
     );
@@ -1722,6 +1747,9 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedPlan?: SubscriptionPlan;
   }) => {
     const cleanEmail = data.email.trim();
+    if (cleanEmail.toLowerCase() === 'info@natureislecareers.com') {
+      throw new Error('info@natureislecareers.com is reserved exclusively for single administrator registration.');
+    }
     const cleanCompany = data.companyName.trim();
     const existingRecruiter = recruiters.find(
       (r) =>
@@ -2417,6 +2445,100 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'Session & Security'
     );
     return true;
+  };
+
+  const registerSingleAdmin = async (
+    email: string,
+    password: string,
+    confirmPassword?: string,
+    name?: string
+  ): Promise<{ success: boolean; alreadyRegistered?: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail !== 'info@natureislecareers.com') {
+      return {
+        success: false,
+        error: 'Single admin registration is strictly restricted to info@natureislecareers.com.',
+      };
+    }
+
+    if (confirmPassword !== undefined && confirmPassword !== password) {
+      return {
+        success: false,
+        error: 'Password confirmation does not match.',
+      };
+    }
+
+    if (isAdminRegistered) {
+      return {
+        success: false,
+        alreadyRegistered: true,
+        error: 'Single administrator account (info@natureislecareers.com) is already registered.',
+      };
+    }
+
+    try {
+      const res = await fetch('/api/admin/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password,
+          confirmPassword,
+          name: name?.trim() || 'Dominica Labour Administrator',
+        }),
+      });
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') ? await res.json() : {};
+
+      if (res.ok && data?.authorized && data?.token) {
+        setIsAdminRegistered(true);
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('dominica_admin_registered', 'true');
+          }
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem('natureisland_admin_token', data.token);
+          }
+        } catch {
+          // ignore storage errors
+        }
+        adminLogin('info@natureislecareers.com', password, data.token);
+        logAdminActivity(
+          'Single Admin Registered',
+          'Exclusive single administrator registration completed for info@natureislecareers.com.',
+          'Session & Security'
+        );
+        return { success: true };
+      }
+
+      if (res.status === 409 || data?.alreadyRegistered) {
+        setIsAdminRegistered(true);
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('dominica_admin_registered', 'true');
+          }
+        } catch {
+          // ignore
+        }
+        return {
+          success: false,
+          alreadyRegistered: true,
+          error:
+            data?.error ||
+            'Single administrator account (info@natureislecareers.com) is already registered.',
+        };
+      }
+
+      return {
+        success: false,
+        error: data?.error || 'Single admin registration failed.',
+      };
+    } catch {
+      return {
+        success: false,
+        error: 'Admin registration server is unreachable. Please ensure the server is running.',
+      };
+    }
   };
 
   const adminLogout = () => {
@@ -4534,9 +4656,11 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         requestPasswordReset,
         confirmPasswordReset,
         isAdminLoggedIn,
+        isAdminRegistered,
         adminEmail,
         adminSessionToken,
         adminLogin,
+        registerSingleAdmin,
         adminLogout,
         adminActivityLogs,
         logAdminActivity,

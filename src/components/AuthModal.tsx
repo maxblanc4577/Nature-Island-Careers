@@ -310,6 +310,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setFormError('Please enter a valid email address.');
       return;
     }
+    if (jsEmail.trim().toLowerCase() === 'info@natureislecareers.com') {
+      setFormError(
+        'info@natureislecareers.com is reserved exclusively for single administrator registration via the Admin Console Gateway.'
+      );
+      return;
+    }
     if (jsPassword && jsPassword.length < 6) {
       setFormError('Password must be at least 6 characters long.');
       return;
@@ -359,6 +365,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setFormError('Please enter a valid business email address.');
       return;
     }
+    if (clEmail.trim().toLowerCase() === 'info@natureislecareers.com') {
+      setFormError(
+        'info@natureislecareers.com is reserved exclusively for single administrator registration via the Admin Console Gateway.'
+      );
+      return;
+    }
     if (clPassword && clPassword.length < 6) {
       setFormError('Password must be at least 6 characters long.');
       return;
@@ -393,6 +405,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     const trimmedEmail = loginEmail.trim().toLowerCase();
     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
       setLoginError('Please enter a valid registered email address.');
+      return;
+    }
+    if (trimmedEmail === 'info@natureislecareers.com') {
+      setLoginError(
+        'Administrator access for info@natureislecareers.com is restricted to the Admin Console Security Gateway.'
+      );
       return;
     }
 
