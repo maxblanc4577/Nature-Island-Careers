@@ -141,6 +141,85 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint for EmployerInvoice (/users/{userId}/invoices/{invoiceId})
+    function isValidEmployerInvoice(data) {
+      return data.keys().hasAll([
+          'id',
+          'uid',
+          'recruiterId',
+          'companyName',
+          'invoiceNumber',
+          'date',
+          'plan',
+          'amountXCD',
+          'amountUSD',
+          'billingInterval',
+          'status',
+          'paymentMethod',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'uid',
+          'recruiterId',
+          'companyName',
+          'recipientEmail',
+          'invoiceNumber',
+          'date',
+          'expiryDate',
+          'plan',
+          'description',
+          'amountXCD',
+          'amountUSD',
+          'billingInterval',
+          'status',
+          'paymentMethod',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.id is string
+        && data.id.size() >= 1
+        && data.id.size() <= 128
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid is string
+        && data.uid == request.auth.uid
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.recruiterId is string
+        && data.recruiterId.size() >= 1
+        && data.recruiterId.size() <= 128
+        && data.companyName is string
+        && data.companyName.size() >= 1
+        && data.companyName.size() <= 140
+        && (!('recipientEmail' in data) || (data.recipientEmail is string && data.recipientEmail.size() >= 3 && data.recipientEmail.size() <= 160))
+        && data.invoiceNumber is string
+        && data.invoiceNumber.size() >= 3
+        && data.invoiceNumber.size() <= 64
+        && data.date is string
+        && data.date.size() >= 4
+        && data.date.size() <= 40
+        && (!('expiryDate' in data) || (data.expiryDate is string && data.expiryDate.size() >= 4 && data.expiryDate.size() <= 64))
+        && data.plan is string
+        && data.plan.size() >= 2
+        && data.plan.size() <= 140
+        && (!('description' in data) || (data.description is string && data.description.size() >= 2 && data.description.size() <= 400))
+        && data.amountXCD is number
+        && data.amountXCD >= 0
+        && data.amountUSD is number
+        && data.amountUSD >= 0
+        && data.billingInterval is string
+        && (data.billingInterval == 'monthly' || data.billingInterval == 'one_time' || data.billingInterval == 'annual')
+        && data.status is string
+        && (data.status == 'Paid' || data.status == 'Pending' || data.status == 'Processing' || data.status == 'Renewal Pending' || data.status == 'Failed' || data.status == 'Canceled' || data.status == 'Refunded')
+        && data.paymentMethod is string
+        && data.paymentMethod.size() >= 2
+        && data.paymentMethod.size() <= 120
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     match /users/{userId} {
       // Strictly isolated PII: only document owner can get; collection list is forbidden
       allow get: if isOwner(userId) && isValidId(userId);
@@ -212,6 +291,46 @@ service cloud.firestore {
         allow delete: if isOwner(userId)
           && isValidId(userId)
           && isValidId(subscriptionId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      // Isolated Employer Invoices Subcollection
+      match /invoices/{invoiceId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(invoiceId);
+        allow list: if isOwner(userId) && isValidId(userId) && resource.data.uid == request.auth.uid;
+
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(invoiceId)
+          && isValidEmployerInvoice(incoming())
+          && incoming().id == invoiceId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(invoiceId)
+          && isValidEmployerInvoice(incoming())
+          && incoming().id == existing().id
+          && incoming().uid == existing().uid
+          && incoming().recruiterId == existing().recruiterId
+          && incoming().invoiceNumber == existing().invoiceNumber
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status',
+            'paymentMethod',
+            'expiryDate',
+            'description',
+            'recipientEmail',
+            'updatedAt'
+          ]);
+
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(invoiceId)
           && exists(/databases/$(database)/documents/users/$(userId));
       }
     }

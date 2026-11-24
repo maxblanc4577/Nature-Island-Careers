@@ -7,6 +7,8 @@ import { CandidateCoverLetterGenerator } from './CandidateCoverLetterGenerator';
 import { CandidateLinkedInExportTool } from './CandidateLinkedInExportTool';
 import { CandidatePrivacySettingsPanel } from './CandidatePrivacySettingsPanel';
 import { PaymentHistory } from './PaymentHistory';
+import { InvoiceHistoryTab } from './InvoiceHistoryTab';
+import { StripePaymentModal } from './StripePaymentModal';
 import { isValidEmail, isValidPhone } from '../utils/paymentValidation';
 import {
   Parish,
@@ -14,6 +16,7 @@ import {
   ResumeExperience,
   ResumeEducation,
   UserAccount,
+  EmployerInvoice,
 } from '../types';
 import {
   User,
@@ -71,7 +74,8 @@ export type CandidateHubSubTab =
   | 'interview_prep'
   | 'privacy'
   | 'job_alerts'
-  | 'payment_history';
+  | 'payment_history'
+  | 'invoice_history';
 
 export interface ParsedResumeProfileData {
   fullName?: string;
@@ -1180,6 +1184,10 @@ interface CandidateProfileHubProps {
   onBrowseJobs: () => void;
   onSelectJob: (jobId: string) => void;
   initialSubTab?: CandidateHubSubTab;
+  requestedSubTab?: CandidateHubSubTab | null;
+  requestedSubTabNonce?: number;
+  highlightedInvoiceId?: string | null;
+  onRetryInvoicePayment?: (invoice: EmployerInvoice) => void;
   onOpenAuth?: (mode?: 'jobseeker_register' | 'client_register' | 'login') => void;
 }
 
@@ -1214,6 +1222,10 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   onBrowseJobs,
   onSelectJob,
   initialSubTab = 'overview',
+  requestedSubTab = null,
+  requestedSubTabNonce = 0,
+  highlightedInvoiceId = null,
+  onRetryInvoicePayment,
   onOpenAuth,
 }) => {
   const {
@@ -1238,12 +1250,19 @@ export const CandidateProfileHub: React.FC<CandidateProfileHubProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<CandidateHubSubTab>(initialSubTab);
   const [selectedFolderId, setSelectedFolderId] = useState<string>('all');
   const [newFolderNameInput, setNewFolderNameInput] = useState('');
+  const [retryInvoiceTarget, setRetryInvoiceTarget] = useState<EmployerInvoice | null>(null);
 
   useEffect(() => {
     if (initialSubTab) {
       setActiveSubTab(initialSubTab);
     }
   }, [initialSubTab]);
+
+  useEffect(() => {
+    if (requestedSubTab) {
+      setActiveSubTab(requestedSubTab);
+    }
+  }, [requestedSubTab, requestedSubTabNonce]);
 
   // Synchronize candidate form fields when currentUser changes (e.g., on account creation or login)
   useEffect(() => {
@@ -3788,7 +3807,7 @@ END:VCALENDAR`;
           type="button"
           data-testid="subtab-payment-history"
           onClick={() => setActiveSubTab('payment_history')}
-          className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+          className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
             activeSubTab === 'payment_history'
               ? 'bg-emerald-800 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -3796,6 +3815,20 @@ END:VCALENDAR`;
         >
           <CreditCard className="w-4 h-4" />
           <span>Payment History</span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="subtab-invoice-history"
+          onClick={() => setActiveSubTab('invoice_history')}
+          className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+            activeSubTab === 'invoice_history'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Invoice History</span>
         </button>
       </div>
 
@@ -5367,6 +5400,28 @@ END:VCALENDAR`;
           <PaymentHistory />
         </div>
       )}
+
+      {/* SECTION 10: EMPLOYER INVOICE HISTORY */}
+      {activeSubTab === 'invoice_history' && (
+        <div className="animate-in fade-in">
+          <InvoiceHistoryTab
+            highlightedInvoiceId={highlightedInvoiceId}
+            onRetryPayment={(invoice) => {
+              if (onRetryInvoicePayment) {
+                onRetryInvoicePayment(invoice);
+              } else {
+                setRetryInvoiceTarget(invoice);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      <StripePaymentModal
+        isOpen={Boolean(retryInvoiceTarget)}
+        retryInvoice={retryInvoiceTarget}
+        onClose={() => setRetryInvoiceTarget(null)}
+      />
     </div>
   );
 };

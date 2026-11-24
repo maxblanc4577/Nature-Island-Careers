@@ -22,7 +22,7 @@ import { ExportPdfReportModal } from './components/ExportPdfReportModal';
 import { StripePaymentModal } from './components/StripePaymentModal';
 import { AdminMasterPortalModal, StandaloneAdminPortalPage } from './components/AdminMasterPortalModal';
 import { ShareJobModal } from './components/ShareJobModal';
-import { CandidateProfileHub } from './components/CandidateProfileHub';
+import { CandidateProfileHub, CandidateHubSubTab } from './components/CandidateProfileHub';
 import { MyApplicationsDashboard } from './components/MyApplicationsDashboard';
 import { RecruiterPortal } from './components/RecruiterPortal';
 import { AdminAnalytics } from './components/AdminAnalytics';
@@ -45,6 +45,7 @@ import {
   EmploymentType,
   WorkModel,
   DatePostedFilter,
+  EmployerInvoice,
 } from './types';
 import {
   Briefcase,
@@ -167,9 +168,27 @@ function DominicaJobBoardContent() {
   const [isRemoteModalOpen, setIsRemoteModalOpen] = useState(false);
   const [isExportPdfOpen, setIsExportPdfOpen] = useState(false);
   const [isStripeModalOpen, setIsStripeModalOpen] = useState(false);
+  const [invoiceToRetry, setInvoiceToRetry] = useState<EmployerInvoice | null>(null);
+  const [profileRequestedSubTab, setProfileRequestedSubTab] = useState<CandidateHubSubTab | null>(null);
+  const [profileRequestedNonce, setProfileRequestedNonce] = useState(0);
+  const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
   const [isMasterAdminOpen, setIsMasterAdminOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [jobToShare, setJobToShare] = useState<JobListing | null>(null);
+
+  const handleViewInvoiceInProfile = React.useCallback(
+    (invoiceIdOrNumber?: string) => {
+      if (currentPath !== '/') {
+        navigateToPath('/');
+      }
+      setActiveTab('profile');
+      setProfileRequestedSubTab('invoice_history');
+      setProfileRequestedNonce((n) => n + 1);
+      setHighlightedInvoiceId(invoiceIdOrNumber || null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [currentPath, navigateToPath]
+  );
 
   // Auto-open job detail if URL query param ?job=<id> is present
   React.useEffect(() => {
@@ -741,7 +760,7 @@ function DominicaJobBoardContent() {
           </div>
         )}
 
-        {/* UNIFIED CANDIDATE PROFILE HUB (Personal Details, Photo, Applications, Resume Builder, Saved Jobs) */}
+        {/* UNIFIED CANDIDATE PROFILE HUB (Personal Details, Photo, Applications, Resume Builder, Saved Jobs, Invoice History) */}
         {(activeTab === 'profile' || activeTab === 'applications' || activeTab === 'resume_builder') && (
           <CandidateProfileHub
             initialSubTab={
@@ -751,6 +770,13 @@ function DominicaJobBoardContent() {
                 ? 'resume_builder'
                 : 'details'
             }
+            requestedSubTab={profileRequestedSubTab}
+            requestedSubTabNonce={profileRequestedNonce}
+            highlightedInvoiceId={highlightedInvoiceId}
+            onRetryInvoicePayment={(inv) => {
+              setInvoiceToRetry(inv);
+              setIsStripeModalOpen(true);
+            }}
             onBrowseJobs={() => setActiveTab('jobs')}
             onSelectJob={(jobId) => {
               const j = jobs.find((item) => item.id === jobId);
@@ -835,7 +861,10 @@ function DominicaJobBoardContent() {
       />
 
       {/* Floating Simulated Email Alert Toast */}
-      <EmailAlertToast onSelectJob={(job) => setSelectedJobForDetail(job)} />
+      <EmailAlertToast
+        onSelectJob={(job) => setSelectedJobForDetail(job)}
+        onViewInvoiceInProfile={handleViewInvoiceInProfile}
+      />
 
       {/* Floating Compare Action Dock */}
       {comparedJobIds.length > 0 && (
@@ -907,7 +936,11 @@ function DominicaJobBoardContent() {
       {/* Stripe Payment Portal Modal */}
       <StripePaymentModal
         isOpen={isStripeModalOpen}
-        onClose={() => setIsStripeModalOpen(false)}
+        retryInvoice={invoiceToRetry}
+        onClose={() => {
+          setIsStripeModalOpen(false);
+          setInvoiceToRetry(null);
+        }}
       />
 
       {/* Master Admin Portal Modal (Manage All Changes to App) */}
@@ -967,6 +1000,7 @@ function DominicaJobBoardContent() {
       <NotificationDrawer
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
+        onViewInvoiceInProfile={handleViewInvoiceInProfile}
       />
 
       <AuthModal

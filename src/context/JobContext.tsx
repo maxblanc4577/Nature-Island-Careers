@@ -50,6 +50,7 @@ import {
   SocialAuthProviderType,
   signOutFromFirebase,
   syncAuthenticatedUserToFirestore,
+  syncInvoiceToFirestore,
   sendFirebasePasswordReset,
 } from '../firebase';
 import { getMembershipPlanDetails } from '../utils/membershipPlans';
@@ -66,11 +67,34 @@ interface JobContextType {
   // Invoices & Stripe Billing
   invoices: EmployerInvoice[];
   addInvoice: (invoice: Omit<EmployerInvoice, 'id'>) => EmployerInvoice;
+  markInvoicePaid: (
+    invoiceId: string,
+    paymentDetails: {
+      paymentIntentId?: string;
+      paymentMethod: string;
+      receiptUrl?: string;
+      recipientEmail?: string;
+      companyName?: string;
+      idempotencyKey?: string;
+      portalUsed?: string;
+    }
+  ) => EmployerInvoice | null;
+  triggerMockEmailReceipt: (
+    invoice: EmployerInvoice,
+    recipientEmail?: string,
+    portalUsed?: string
+  ) => EmailNotification;
   notifyEmployerPaymentSuccess: (
     invoice: EmployerInvoice,
     recipientEmail?: string,
     portalUsed?: string
   ) => EmailNotification;
+  notifyEmployerInvoiceGenerated: (invoice: EmployerInvoice) => EmailNotification;
+  notifyEmployerPendingDeadline48h: (
+    invoice: EmployerInvoice,
+    hoursRemaining: number
+  ) => EmailNotification;
+  runPendingInvoiceDeadlineCheck: () => number;
   stripeSettings: StripeSettings;
   updateStripeSettings: (settings: Partial<StripeSettings>) => void;
   toggleRecruiterAutoRenew: (recruiterId: string, enabled: boolean) => void;
@@ -986,8 +1010,30 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [invoices, setInvoices] = useState<EmployerInvoice[]>(() => {
     try {
-      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('dominica_employer_invoices') : null;
-      return saved ? JSON.parse(saved) : INITIAL_INVOICES;
+      const saved =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem('dominica_employer_invoices')
+          : null;
+      if (!saved) return INITIAL_INVOICES;
+      const parsed: EmployerInvoice[] = JSON.parse(saved);
+      if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_INVOICES;
+      const initialById = new Map(INITIAL_INVOICES.map((item) => [item.id, item]));
+      const enriched = parsed.map((inv) => {
+        const seed = initialById.get(inv.id);
+        return seed
+          ? {
+              ...seed,
+              ...inv,
+              description: inv.description || seed.description,
+              recipientEmail: inv.recipientEmail || seed.recipientEmail,
+              expiryDate:
+                inv.status === 'Paid' ? undefined : inv.expiryDate || seed.expiryDate,
+            }
+          : inv;
+      });
+      const existingIds = new Set(enriched.map((inv) => inv.id));
+      const missingSeeds = INITIAL_INVOICES.filter((seed) => !existingIds.has(seed.id));
+      return missingSeeds.length > 0 ? [...missingSeeds, ...enriched] : enriched;
     } catch {
       return INITIAL_INVOICES;
     }
@@ -2600,6 +2646,219 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return paymentReceiptNotif;
   };
 
+  const triggerMockEmailReceipt = (
+    invoice: EmployerInvoice,
+    recipientEmail?: string,
+    portalUsed: string = 'Stripe Card Checkout'
+  ): EmailNotification => {
+    return notifyEmployerPaymentSuccess(invoice, recipientEmail, portalUsed);
+  };
+
+  const resolveEmployerContactEmail = (invoice: {
+    recruiterId?: string;
+    companyName?: string;
+    recipientEmail?: string;
+  }): { email: string; contactPerson: string } => {
+    const matchedRecruiter = recruiters.find(
+      (r) =>
+        (invoice.recruiterId && r.id === invoice.recruiterId) ||
+        (invoice.companyName &&
+          r.companyName.toLowerCase() === invoice.companyName.toLowerCase())
+    );
+    const matchedUser = usersRef.current.find(
+      (u) =>
+        u.role === 'client' &&
+        ((invoice.recruiterId && u.recruiterId === invoice.recruiterId) ||
+          (invoice.recipientEmail &&
+            u.email.toLowerCase() === invoice.recipientEmail.toLowerCase()) ||
+          (invoice.companyName &&
+            u.companyName?.toLowerCase() === invoice.companyName.toLowerCase()))
+    );
+    const email =
+      invoice.recipientEmail?.trim() ||
+      matchedUser?.email ||
+      matchedRecruiter?.email ||
+      getSiteContactEmail();
+    const contactPerson =
+      matchedUser?.name || matchedRecruiter?.contactPerson || invoice.companyName || 'Employer';
+    return { email, contactPerson };
+  };
+
+  const notifyEmployerInvoiceGenerated = (invoice: EmployerInvoice): EmailNotification => {
+    const { email: targetEmail, contactPerson } = resolveEmployerContactEmail(invoice);
+    const sentAtIso = new Date().toISOString();
+    const formattedTime = sentAtIso.replace('T', ' ').substring(0, 16);
+    const expiryLabel = invoice.expiryDate
+      ? new Date(invoice.expiryDate).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : 'Upon receipt';
+
+    const generatedNotif: EmailNotification = {
+      id: `notif-inv-gen-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      recipientEmail: targetEmail,
+      recipientName: invoice.contactPerson || contactPerson,
+      subject: `New Membership Invoice Generated: ${invoice.invoiceNumber} (${invoice.plan})`,
+      previewText: `A new ${invoice.status.toLowerCase()} invoice (${invoice.invoiceNumber}) for ${invoice.plan} — EC$ ${invoice.amountXCD.toLocaleString()} has been issued for ${invoice.companyName}.${invoice.expiryDate ? ` Payment deadline: ${expiryLabel}.` : ''}`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; border: 1px solid #cbd5e1; border-radius: 10px;">
+          <div style="border-bottom: 2px solid #065f46; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: #065f46; margin: 0;">Nature Island Careers · New Employer Invoice Issued</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automated Billing Notification · ${invoice.invoiceNumber}</p>
+          </div>
+          <p style="font-size: 14px; color: #1e293b;">Dear ${invoice.contactPerson || contactPerson},</p>
+          <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+            A new membership invoice has been generated for <strong>${invoice.companyName}</strong>.
+          </p>
+          <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            <p style="margin: 0; color: #0f172a;"><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Plan / Service:</strong> ${invoice.plan}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Amount Due:</strong> EC$ ${invoice.amountXCD.toLocaleString()} XCD (~$${invoice.amountUSD.toFixed(2)} USD)</p>
+            <p style="margin: 4px 0 0 0; color: #c2410c;"><strong>Status:</strong> ${invoice.status}</p>
+            ${invoice.expiryDate ? `<p style="margin: 4px 0 0 0; color: #b91c1c;"><strong>Payment Expiry Date:</strong> ${expiryLabel}</p>` : ''}
+          </div>
+          <p style="font-size: 12px; color: #64748b;">
+            View or settle this invoice directly from your Invoice History tab inside your Profile Hub.
+          </p>
+        </div>
+      `,
+      type: 'invoice_generated',
+      timestamp: formattedTime,
+      isRead: false,
+      relatedInvoiceId: invoice.invoiceNumber,
+    };
+
+    dispatchEmail(generatedNotif);
+
+    setInvoices((prev) =>
+      prev.map((inv) =>
+        inv.id === invoice.id ? { ...inv, generatedAlertSentAt: sentAtIso } : inv
+      )
+    );
+
+    logAdminActivity(
+      'Employer Invoice Notification Sent',
+      `Automated new invoice alert sent to ${targetEmail} for ${invoice.invoiceNumber} (${invoice.companyName} · ${invoice.status}).`,
+      'Payment Update'
+    );
+
+    try {
+      if (typeof fetch !== 'undefined' && typeof window !== 'undefined') {
+        fetch('/api/employer/invoice-alerts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alertKind: 'invoice_generated',
+            employerName: invoice.companyName,
+            recipientEmail: targetEmail,
+            planName: invoice.plan,
+            invoiceId: invoice.invoiceNumber,
+            amountXCD: invoice.amountXCD,
+            amountUSD: invoice.amountUSD,
+            expiryDate: invoice.expiryDate,
+          }),
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore non-browser test environments
+    }
+
+    return generatedNotif;
+  };
+
+  const notifyEmployerPendingDeadline48h = (
+    invoice: EmployerInvoice,
+    hoursRemaining: number
+  ): EmailNotification => {
+    const { email: targetEmail, contactPerson } = resolveEmployerContactEmail(invoice);
+    const sentAtIso = new Date().toISOString();
+    const formattedTime = sentAtIso.replace('T', ' ').substring(0, 16);
+    const roundedHours = Math.max(1, Math.round(hoursRemaining));
+    const expiryLabel = invoice.expiryDate
+      ? new Date(invoice.expiryDate).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : 'Within 48 hours';
+
+    const deadlineNotif: EmailNotification = {
+      id: `notif-inv-48h-${invoice.id}-${Date.now()}`,
+      recipientEmail: targetEmail,
+      recipientName: invoice.contactPerson || contactPerson,
+      subject: `Action Required: Pending Invoice ${invoice.invoiceNumber} Expires in ${roundedHours}h`,
+      previewText: `Reminder for ${invoice.companyName}: pending payment of EC$ ${invoice.amountXCD.toLocaleString()} (${invoice.plan}) expires in ${roundedHours} hours (${expiryLabel}). Complete payment via Stripe to keep listings active.`,
+      bodyHtml: `
+        <div style="font-family: sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; border: 1px solid #fed7aa; border-radius: 10px;">
+          <div style="border-bottom: 2px solid #ea580c; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="color: #c2410c; margin: 0;">Nature Island Careers · 48-Hour Payment Deadline Reminder</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Automated Invoice Deadline Monitor · ${invoice.invoiceNumber}</p>
+          </div>
+          <p style="font-size: 14px; color: #1e293b;">Dear ${invoice.contactPerson || contactPerson},</p>
+          <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+            Your pending employer membership invoice for <strong>${invoice.companyName}</strong> has a payment deadline within <strong>48 hours</strong> (${roundedHours} hours remaining).
+          </p>
+          <div style="background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            <p style="margin: 0; color: #0f172a;"><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+            <p style="margin: 4px 0 0 0; color: #0f172a;"><strong>Selected Membership:</strong> ${invoice.plan}</p>
+            <p style="margin: 4px 0 0 0; color: #c2410c;"><strong>Amount Due:</strong> EC$ ${invoice.amountXCD.toLocaleString()} XCD (~$${invoice.amountUSD.toFixed(2)} USD)</p>
+            <p style="margin: 4px 0 0 0; color: #b91c1c;"><strong>Expiry Deadline:</strong> ${expiryLabel} (~${roundedHours}h remaining)</p>
+          </div>
+          <p style="font-size: 12px; color: #64748b;">
+            Open the Invoice History tab in your Profile Hub and click <strong>Retry Payment</strong> to settle via Stripe immediately.
+          </p>
+        </div>
+      `,
+      type: 'payment_deadline_48h',
+      timestamp: formattedTime,
+      isRead: false,
+      relatedInvoiceId: invoice.invoiceNumber,
+    };
+
+    dispatchEmail(deadlineNotif);
+
+    setInvoices((prev) =>
+      prev.map((inv) =>
+        inv.id === invoice.id ? { ...inv, deadlineAlert48hSentAt: sentAtIso } : inv
+      )
+    );
+
+    logAdminActivity(
+      '48h Pending Invoice Reminder Sent',
+      `Automated 48-hour deadline alert sent to ${targetEmail} for pending invoice ${invoice.invoiceNumber} (${roundedHours}h left).`,
+      'Payment Update'
+    );
+
+    try {
+      if (typeof fetch !== 'undefined' && typeof window !== 'undefined') {
+        fetch('/api/employer/invoice-alerts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alertKind: 'payment_deadline_48h',
+            employerName: invoice.companyName,
+            recipientEmail: targetEmail,
+            planName: invoice.plan,
+            invoiceId: invoice.invoiceNumber,
+            amountXCD: invoice.amountXCD,
+            amountUSD: invoice.amountUSD,
+            expiryDate: invoice.expiryDate,
+          }),
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore non-browser test environments
+    }
+
+    return deadlineNotif;
+  };
+
   const addInvoice = (invoiceData: Omit<EmployerInvoice, 'id'>) => {
     const matchedRecruiter = recruiters.find(
       (r) =>
@@ -2624,11 +2883,21 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const defaultRenewsAt =
       invoiceData.renewsAt ||
       new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+    const isPending =
+      invoiceData.status === 'Pending' ||
+      invoiceData.status === 'Renewal Pending' ||
+      invoiceData.status === 'Processing';
+    const defaultExpiryDate =
+      isPending && !invoiceData.expiryDate
+        ? new Date(Date.now() + 48 * 3600 * 1000).toISOString()
+        : invoiceData.expiryDate;
 
     const newInvoice: EmployerInvoice = {
       ...invoiceData,
       id: `inv-${Date.now()}`,
       recipientEmail: resolvedRecipient,
+      description: invoiceData.description || planMeta.tagline,
+      expiryDate: defaultExpiryDate,
       contactPerson:
         invoiceData.contactPerson ||
         matchedUser?.name ||
@@ -2649,6 +2918,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : planMeta.features,
       renewsAt: defaultRenewsAt,
       notifiedAt: invoiceData.status === 'Paid' ? nowIso : undefined,
+      generatedAlertSentAt: nowIso,
       signupVerifiedAt: invoiceData.status === 'Paid' ? nowIso : undefined,
       verificationChannel:
         invoiceData.verificationChannel || invoiceData.paymentMethod || 'Stripe Card Checkout',
@@ -2664,6 +2934,8 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         Number(((invoiceData.amountXCD * 0.029) + 0.81).toFixed(2)),
     };
     setInvoices((prev) => [newInvoice, ...prev]);
+    syncInvoiceToFirestore(newInvoice).catch(() => {});
+
     logAdminActivity(
       'Payment Update: Employer Invoice Generated',
       `Billed ${newInvoice.companyName} EC$${newInvoice.amountXCD} (${newInvoice.plan} · ${newInvoice.invoiceNumber}).`,
@@ -2671,7 +2943,7 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (newInvoice.status === 'Paid') {
-      notifyEmployerPaymentSuccess(
+      triggerMockEmailReceipt(
         newInvoice,
         resolvedRecipient,
         newInvoice.paymentMethod || 'Stripe Card Checkout'
@@ -2693,9 +2965,101 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           syncToServer: false,
         });
       }
+    } else {
+      notifyEmployerInvoiceGenerated(newInvoice);
     }
 
     return newInvoice;
+  };
+
+  const markInvoicePaid = (
+    invoiceId: string,
+    paymentDetails: {
+      paymentIntentId?: string;
+      paymentMethod: string;
+      receiptUrl?: string;
+      recipientEmail?: string;
+      companyName?: string;
+      idempotencyKey?: string;
+      portalUsed?: string;
+    }
+  ): EmployerInvoice | null => {
+    const existingInv = invoices.find((inv) => inv.id === invoiceId);
+    if (!existingInv) return null;
+
+    const nowIso = new Date().toISOString();
+    const renewsAt = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+    const updatedInvoice: EmployerInvoice = {
+      ...existingInv,
+      status: 'Paid',
+      expiryDate: undefined,
+      paymentMethod: paymentDetails.paymentMethod || existingInv.paymentMethod,
+      paymentIntentId: paymentDetails.paymentIntentId || existingInv.paymentIntentId,
+      receiptUrl: paymentDetails.receiptUrl || existingInv.receiptUrl,
+      recipientEmail: paymentDetails.recipientEmail || existingInv.recipientEmail,
+      companyName: paymentDetails.companyName || existingInv.companyName,
+      idempotencyKey: paymentDetails.idempotencyKey || existingInv.idempotencyKey,
+      notifiedAt: nowIso,
+      signupVerifiedAt: existingInv.signupVerifiedAt || nowIso,
+      renewsAt,
+      verificationChannel: paymentDetails.portalUsed || 'Stripe Retry Checkout',
+    };
+
+    setInvoices((prev) =>
+      prev.map((inv) => (inv.id === invoiceId ? updatedInvoice : inv))
+    );
+    syncInvoiceToFirestore(updatedInvoice).catch(() => {});
+
+    triggerMockEmailReceipt(
+      updatedInvoice,
+      updatedInvoice.recipientEmail,
+      paymentDetails.portalUsed || 'Stripe Card Checkout'
+    );
+
+    sendAdminEmailAlert({
+      eventType: 'stripe_payment_finalized',
+      subject: `[Admin Stripe Alert] Pending Invoice Settled: ${updatedInvoice.companyName} — EC$ ${updatedInvoice.amountXCD.toLocaleString()} (${updatedInvoice.invoiceNumber})`,
+      summary: `Pending invoice ${updatedInvoice.invoiceNumber} (${updatedInvoice.plan}) settled via Stripe retry checkout for EC$ ${updatedInvoice.amountXCD.toLocaleString()}.`,
+      relatedInvoiceId: updatedInvoice.invoiceNumber,
+      amountXCD: updatedInvoice.amountXCD,
+      syncToServer: false,
+    });
+
+    return updatedInvoice;
+  };
+
+  const runPendingInvoiceDeadlineCheck = (): number => {
+    const nowMs = Date.now();
+    const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
+    let triggeredCount = 0;
+
+    invoices.forEach((inv) => {
+      const isPending =
+        inv.status === 'Pending' ||
+        inv.status === 'Renewal Pending' ||
+        inv.status === 'Processing';
+      if (!isPending || !inv.expiryDate) return;
+
+      const expiryMs = new Date(inv.expiryDate).getTime();
+      if (Number.isNaN(expiryMs)) return;
+
+      const msRemaining = expiryMs - nowMs;
+      if (msRemaining > 0 && msRemaining <= FORTY_EIGHT_HOURS_MS) {
+        const alertKey = `notified_invoice_48h_${inv.id}_${inv.expiryDate}`;
+        const alreadySentInSession =
+          typeof sessionStorage !== 'undefined' && sessionStorage.getItem(alertKey);
+        if (!alreadySentInSession && !inv.deadlineAlert48hSentAt) {
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(alertKey, 'true');
+          }
+          const hoursRemaining = msRemaining / (60 * 60 * 1000);
+          notifyEmployerPendingDeadline48h(inv, hoursRemaining);
+          triggeredCount += 1;
+        }
+      }
+    });
+
+    return triggeredCount;
   };
 
   const notifySubscriptionExpired = (employerName: string, plan: string, expiryDate?: string) => {
@@ -4122,6 +4486,16 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [users]);
 
+  // Background service: monitor pending invoices and email employer if payment deadline is within 48 hours
+  useEffect(() => {
+    runPendingInvoiceDeadlineCheck();
+    if (typeof window === 'undefined') return;
+    const intervalId = window.setInterval(() => {
+      runPendingInvoiceDeadlineCheck();
+    }, 60000);
+    return () => window.clearInterval(intervalId);
+  }, [invoices]);
+
   return (
     <JobContext.Provider
       value={{
@@ -4134,7 +4508,12 @@ export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Invoices & Stripe Billing
         invoices,
         addInvoice,
+        markInvoicePaid,
+        triggerMockEmailReceipt,
         notifyEmployerPaymentSuccess,
+        notifyEmployerInvoiceGenerated,
+        notifyEmployerPendingDeadline48h,
+        runPendingInvoiceDeadlineCheck,
         stripeSettings,
         updateStripeSettings,
         toggleRecruiterAutoRenew,

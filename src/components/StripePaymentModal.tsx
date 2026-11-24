@@ -3,10 +3,10 @@ import { loadStripe, Stripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
-import { SubscriptionPlan } from '../types';
+import { SubscriptionPlan, EmployerInvoice } from '../types';
 import { convertXcdToUsd, generateIdempotencyKey, stripSecretFromIntentId } from '../utils/paymentValidation';
 import { PaymentForm, PaymentCompletionPayload } from './PaymentForm';
-import { X, Lock, Sparkles, AlertCircle, BookOpen, RefreshCw } from 'lucide-react';
+import { X, Lock, Sparkles, AlertCircle, BookOpen, RefreshCw, Clock } from 'lucide-react';
 
 const STRIPE_PUBLISHABLE_KEY =
   (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string) ||
@@ -27,6 +27,7 @@ interface StripePaymentModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   initialPlan?: SubscriptionPlan;
+  retryInvoice?: EmployerInvoice | null;
 }
 
 interface PricingPackage {
@@ -94,17 +95,26 @@ const PACKAGES: PricingPackage[] = [
   },
 ];
 
+function inferPlanKeyFromInvoice(planName: string): SubscriptionPlan {
+  const normalized = (planName || '').toLowerCase();
+  if (normalized.includes('enterprise')) return 'Enterprise Growth Partner';
+  if (normalized.includes('nep')) return 'NEP Partner Tier';
+  return 'Standard Local Employer';
+}
+
 export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
   initialPlan,
+  retryInvoice = null,
 }) => {
   const {
     currentRecruiter,
     currentUser,
     subscribeClientPlan,
     addInvoice,
+    markInvoicePaid,
     toggleRecruiterAutoRenew,
     stripeSettings,
   } = useJobContext();
@@ -131,16 +141,39 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
   const [retryTrigger, setRetryTrigger] = useState(0);
   const [showWebhookGuide, setShowWebhookGuide] = useState(false);
 
-  const currentPkg = PACKAGES.find((p) => p.id === selectedPkgId) || PACKAGES[1];
+  const selectedStandardPkg = PACKAGES.find((p) => p.id === selectedPkgId) || PACKAGES[1];
+
+  const currentPkg: PricingPackage = retryInvoice
+    ? {
+        id: `retry-${retryInvoice.id}`,
+        name: retryInvoice.plan,
+        planKey: inferPlanKeyFromInvoice(retryInvoice.plan),
+        priceXCD: retryInvoice.amountXCD,
+        description:
+          retryInvoice.description ||
+          `Pending invoice settlement for ${retryInvoice.companyName} (${retryInvoice.invoiceNumber})`,
+        features:
+          retryInvoice.membershipFeatures && retryInvoice.membershipFeatures.length > 0
+            ? retryInvoice.membershipFeatures
+            : selectedStandardPkg.features,
+      }
+    : selectedStandardPkg;
+
   const priceUSDNumber = convertXcdToUsd(currentPkg.priceXCD, currencyPeg);
   const stripePromise = useMemo(() => getStripePromise(isSandboxMode), [isSandboxMode]);
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedPkgId(resolveInitialPkgId(initialPlan));
+      if (retryInvoice) {
+        const inferredPlan = inferPlanKeyFromInvoice(retryInvoice.plan);
+        setSelectedPkgId(resolveInitialPkgId(inferredPlan));
+        setBillingCadence(retryInvoice.billingInterval === 'one_time' ? 'one_time' : 'monthly');
+      } else {
+        setSelectedPkgId(resolveInitialPkgId(initialPlan));
+      }
       setShowWebhookGuide(false);
     }
-  }, [isOpen, initialPlan]);
+  }, [isOpen, initialPlan, retryInvoice]);
 
   useEffect(() => {
     if (!isOpen || !isStripePortalEnabled) return;
@@ -193,7 +226,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [isOpen, isStripePortalEnabled, selectedPkgId, billingCadence, currentPkg.name, currentPkg.priceXCD, retryTrigger]);
+  }, [isOpen, isStripePortalEnabled, selectedPkgId, billingCadence, currentPkg.name, currentPkg.priceXCD, retryTrigger, retryInvoice?.id]);
 
   const handlePaymentSuccess = (result: PaymentCompletionPayload) => {
     if (currentUser) {
@@ -203,30 +236,42 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
       });
     }
 
-    addInvoice({
-      recruiterId: currentRecruiter?.id || currentUser?.recruiterId || 'rec_fort_young',
-      companyName: result.cardholderName,
-      recipientEmail: result.billingEmail,
-      contactPerson: currentUser?.name || currentRecruiter?.contactPerson || result.cardholderName,
-      dssRegistrationNo: currentUser?.dssRegistrationNo || currentRecruiter?.dssRegistrationNo || 'DSS-DOM-VERIFIED',
-      parish: result.billingParish || currentUser?.parish || currentRecruiter?.parish || 'St. George',
-      paymentIntentId: result.paymentIntentId,
-      idempotencyKey: result.idempotencyKey,
-      invoiceNumber: result.invoiceNumber,
-      date: new Date().toISOString().split('T')[0],
-      plan: currentPkg.name,
-      amountXCD: currentPkg.priceXCD,
-      amountUSD: result.amountUSD,
-      billingInterval: billingCadence,
-      status: 'Paid',
-      paymentMethod: result.paymentMethodLabel,
-      receiptUrl: result.receiptUrl,
-      membershipFeatures: currentPkg.features,
-      stripeSubscriptionId:
-        billingCadence === 'monthly'
-          ? `sub_stripe_${result.paymentIntentId.slice(-8)}`
-          : undefined,
-    });
+    if (retryInvoice) {
+      markInvoicePaid(retryInvoice.id, {
+        paymentIntentId: result.paymentIntentId,
+        paymentMethod: result.paymentMethodLabel,
+        receiptUrl: result.receiptUrl,
+        recipientEmail: result.billingEmail,
+        companyName: result.cardholderName,
+        idempotencyKey: result.idempotencyKey,
+        portalUsed: 'Stripe Retry Checkout',
+      });
+    } else {
+      addInvoice({
+        recruiterId: currentRecruiter?.id || currentUser?.recruiterId || 'rec_fort_young',
+        companyName: result.cardholderName,
+        recipientEmail: result.billingEmail,
+        contactPerson: currentUser?.name || currentRecruiter?.contactPerson || result.cardholderName,
+        dssRegistrationNo: currentUser?.dssRegistrationNo || currentRecruiter?.dssRegistrationNo || 'DSS-DOM-VERIFIED',
+        parish: result.billingParish || currentUser?.parish || currentRecruiter?.parish || 'St. George',
+        paymentIntentId: result.paymentIntentId,
+        idempotencyKey: result.idempotencyKey,
+        invoiceNumber: result.invoiceNumber,
+        date: new Date().toISOString().split('T')[0],
+        plan: currentPkg.name,
+        amountXCD: currentPkg.priceXCD,
+        amountUSD: result.amountUSD,
+        billingInterval: billingCadence,
+        status: 'Paid',
+        paymentMethod: result.paymentMethodLabel,
+        receiptUrl: result.receiptUrl,
+        membershipFeatures: currentPkg.features,
+        stripeSubscriptionId:
+          billingCadence === 'monthly'
+            ? `sub_stripe_${result.paymentIntentId.slice(-8)}`
+            : undefined,
+      });
+    }
 
     if (billingCadence === 'monthly' && currentRecruiter && result.savePaymentMethod) {
       toggleRecruiterAutoRenew(currentRecruiter.id, true);
@@ -237,13 +282,17 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const initialName = currentRecruiter
+  const initialName = retryInvoice
+    ? retryInvoice.companyName
+    : currentRecruiter
     ? currentRecruiter.companyName
     : currentUser
     ? currentUser.name
     : 'Dominica Employer Ltd';
 
-  const initialEmail = currentRecruiter
+  const initialEmail = retryInvoice?.recipientEmail
+    ? retryInvoice.recipientEmail
+    : currentRecruiter
     ? currentRecruiter.email
     : currentUser
     ? currentUser.email
@@ -251,6 +300,33 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
 
   const topControls = (
     <div className="space-y-5">
+      {retryInvoice && (
+        <div
+          data-testid="stripe-retry-invoice-banner"
+          className="p-4 rounded-xl bg-orange-50 border border-orange-200 space-y-1.5 text-xs"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 font-extrabold text-orange-800 uppercase tracking-wider text-[11px]">
+              <Clock className="w-3.5 h-3.5 text-orange-600" />
+              Retrying Pending Invoice · {retryInvoice.invoiceNumber}
+            </span>
+            <span className="font-mono font-black text-slate-900">
+              EC$ {retryInvoice.amountXCD.toLocaleString()} (~${priceUSDNumber.toFixed(2)} USD)
+            </span>
+          </div>
+          <p className="font-bold text-slate-900">
+            {retryInvoice.plan} — {retryInvoice.companyName}
+          </p>
+          {retryInvoice.description && (
+            <p className="text-slate-600">{retryInvoice.description}</p>
+          )}
+          {retryInvoice.expiryDate && (
+            <p className="text-[11px] font-semibold text-orange-700 font-mono tabular-nums">
+              Payment Deadline: {new Date(retryInvoice.expiryDate).toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
       {sessionLoading && (
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2.5 text-xs text-slate-700">
           <div className="w-4 h-4 border-2 border-indigo-200 border-t-[#635BFF] rounded-full animate-spin shrink-0" />
@@ -276,78 +352,82 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
         </div>
       )}
 
-      {/* Billing Cadence Toggle */}
-      <div className="bg-slate-100 p-1.5 rounded-xl flex gap-1 text-xs font-bold border border-slate-200">
-        <button
-          type="button"
-          onClick={() => setBillingCadence('monthly')}
-          className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            billingCadence === 'monthly'
-              ? 'bg-[#635BFF] text-white shadow-xs font-black'
-              : 'text-slate-600 hover:text-slate-950'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-          <span>Monthly Recurring Subscription (Auto-Renew)</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setBillingCadence('one_time')}
-          className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            billingCadence === 'one_time'
-              ? 'bg-slate-900 text-white shadow-xs font-black'
-              : 'text-slate-600 hover:text-slate-950'
-          }`}
-        >
-          <span>Single 30-Day Listing Pass</span>
-        </button>
-      </div>
+      {!retryInvoice && (
+        <>
+          {/* Billing Cadence Toggle */}
+          <div className="bg-slate-100 p-1.5 rounded-xl flex gap-1 text-xs font-bold border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setBillingCadence('monthly')}
+              className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                billingCadence === 'monthly'
+                  ? 'bg-[#635BFF] text-white shadow-xs font-black'
+                  : 'text-slate-600 hover:text-slate-950'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Monthly Recurring Subscription (Auto-Renew)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setBillingCadence('one_time')}
+              className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                billingCadence === 'one_time'
+                  ? 'bg-slate-900 text-white shadow-xs font-black'
+                  : 'text-slate-600 hover:text-slate-950'
+              }`}
+            >
+              <span>Single 30-Day Listing Pass</span>
+            </button>
+          </div>
 
-      {/* Step 1: Select Classified Package */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
-            1. Choose Employer Package
-          </span>
-          <span className="text-[11px] text-emerald-700 font-semibold">
-            Pegged Currency: EC$ {currencyPeg.toFixed(2)} : $1 USD
-            {sessionId ? ` · Session ${sessionId.slice(0, 12)}` : ''}
-          </span>
-        </div>
+          {/* Step 1: Select Classified Package */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                1. Choose Employer Package
+              </span>
+              <span className="text-[11px] text-emerald-700 font-semibold">
+                Pegged Currency: EC$ {currencyPeg.toFixed(2)} : $1 USD
+                {sessionId ? ` · Session ${sessionId.slice(0, 12)}` : ''}
+              </span>
+            </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {PACKAGES.map((pkg) => {
-            const isSelected = selectedPkgId === pkg.id;
-            const usd = convertXcdToUsd(pkg.priceXCD, currencyPeg).toFixed(2);
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {PACKAGES.map((pkg) => {
+                const isSelected = selectedPkgId === pkg.id;
+                const usd = convertXcdToUsd(pkg.priceXCD, currencyPeg).toFixed(2);
 
-            return (
-              <button
-                type="button"
-                key={pkg.id}
-                onClick={() => setSelectedPkgId(pkg.id)}
-                aria-pressed={isSelected}
-                className={`relative p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                  isSelected
-                    ? 'border-[#635BFF] bg-[#635BFF]/5 ring-2 ring-[#635BFF]/20 shadow-xs'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                {pkg.popular && (
-                  <span className="absolute top-2.5 right-2.5 bg-amber-400 text-slate-950 font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
-                    Popular
-                  </span>
-                )}
-                <h4 className="font-bold text-xs text-slate-900 pr-12">{pkg.name}</h4>
-                <div className="mt-1 flex items-baseline gap-1.5">
-                  <span className="text-lg font-black text-slate-900">EC$ {pkg.priceXCD}</span>
-                  <span className="text-[11px] text-slate-500 font-medium">≈ ${usd} USD</span>
-                </div>
-                <p className="text-[11px] text-slate-600 mt-1 line-clamp-1">{pkg.description}</p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+                return (
+                  <button
+                    type="button"
+                    key={pkg.id}
+                    onClick={() => setSelectedPkgId(pkg.id)}
+                    aria-pressed={isSelected}
+                    className={`relative p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-[#635BFF] bg-[#635BFF]/5 ring-2 ring-[#635BFF]/20 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    {pkg.popular && (
+                      <span className="absolute top-2.5 right-2.5 bg-amber-400 text-slate-950 font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
+                        Popular
+                      </span>
+                    )}
+                    <h4 className="font-bold text-xs text-slate-900 pr-12">{pkg.name}</h4>
+                    <div className="mt-1 flex items-baseline gap-1.5">
+                      <span className="text-lg font-black text-slate-900">EC$ {pkg.priceXCD}</span>
+                      <span className="text-[11px] text-slate-500 font-medium">≈ ${usd} USD</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-1 line-clamp-1">{pkg.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 

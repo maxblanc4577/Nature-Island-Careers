@@ -22,7 +22,7 @@ export interface PaymentHistoryRecord {
   amountXCD: number;
   amountUSD: number;
   billingInterval: 'annual' | 'monthly' | 'one_time';
-  status: 'Paid' | 'Processing' | 'Renewal Pending' | 'Failed' | 'Canceled' | 'Refunded';
+  status: 'Paid' | 'Pending' | 'Processing' | 'Renewal Pending' | 'Failed' | 'Canceled' | 'Refunded';
   paymentMethod: string;
   paymentIntentId?: string;
 }
@@ -197,6 +197,8 @@ export const PaymentHistory: React.FC = () => {
     switch (status) {
       case 'Paid':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Pending':
+        return 'bg-orange-100 text-orange-700 border-orange-200';
       case 'Processing':
       case 'Renewal Pending':
         return 'bg-amber-100 text-amber-800 border-amber-200';

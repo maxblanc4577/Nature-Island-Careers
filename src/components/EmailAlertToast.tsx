@@ -21,6 +21,7 @@ import {
   Sparkles,
   Clock,
   SlidersHorizontal,
+  FileText,
 } from 'lucide-react';
 
 export interface SubscriptionMatchResult {
@@ -177,6 +178,7 @@ export function createSubscriptionEmailNotification(
 
 interface EmailAlertToastProps {
   onSelectJob?: (job: JobListing) => void;
+  onViewInvoiceInProfile?: (invoiceId?: string) => void;
   periodicIntervalMs?: number;
 }
 
@@ -184,6 +186,7 @@ const DISPATCHED_STORAGE_KEY = 'dominica_mock_email_dispatched_pairs';
 
 export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
   onSelectJob,
+  onViewInvoiceInProfile,
   periodicIntervalMs = 20000,
 }) => {
   const {
@@ -597,7 +600,21 @@ export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
     buildCriteriaSubscription();
 
   const isJobAlert = displayedEmail.type === 'job_alert';
+  const isBillingReceipt = displayedEmail.type === 'employer_membership_verified';
+  const isInvoiceGenerated = displayedEmail.type === 'invoice_generated';
+  const isPaymentDeadline48h = displayedEmail.type === 'payment_deadline_48h';
+  const isBillingNotification = isBillingReceipt || isInvoiceGenerated || isPaymentDeadline48h || Boolean(displayedEmail.relatedInvoiceId);
   const activeRulesCount = alertPreferences.filter((r) => r.active).length;
+
+  const toastHeaderLabel = isBillingReceipt
+    ? 'Stripe Payment Receipt'
+    : isInvoiceGenerated
+    ? 'New Invoice Generated'
+    : isPaymentDeadline48h
+    ? '48h Payment Deadline Alert'
+    : isJobAlert
+    ? 'Subscription Match Alert'
+    : 'Email Dispatch Simulated';
 
   const handleDismiss = () => {
     dismissLatestEmail();
@@ -609,6 +626,7 @@ export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
     <div
       role="status"
       aria-live="polite"
+      data-testid="email-alert-toast"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className="fixed bottom-5 right-5 z-50 max-w-sm w-full bg-slate-900 text-white rounded-2xl shadow-2xl border border-emerald-500/40 p-4 animate-in slide-in-from-bottom duration-300"
@@ -617,16 +635,27 @@ export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center space-x-2.5">
           <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/40 shrink-0">
-            {isJobAlert ? <BellRing className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
+            {isBillingNotification ? (
+              <FileText className="w-4 h-4" />
+            ) : isJobAlert ? (
+              <BellRing className="w-4 h-4" />
+            ) : (
+              <Mail className="w-4 h-4" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                {isJobAlert ? 'Subscription Match Alert' : 'Email Dispatch Simulated'}
+                {toastHeaderLabel}
               </span>
-              {matchedSub && (
+              {!isBillingNotification && matchedSub && (
                 <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-950 text-amber-300 border border-emerald-700/60">
                   {matchedSub.frequency}
+                </span>
+              )}
+              {displayedEmail.relatedInvoiceId && (
+                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">
+                  {displayedEmail.relatedInvoiceId}
                 </span>
               )}
             </div>
@@ -760,6 +789,21 @@ export const EmailAlertToast: React.FC<EmailAlertToastProps> = ({
             >
               <Sparkles className="w-3 h-3" />
               Next ({pendingMatches.length})
+            </button>
+          )}
+
+          {displayedEmail.relatedInvoiceId && onViewInvoiceInProfile && (
+            <button
+              type="button"
+              data-testid="toast-view-invoice-btn"
+              onClick={() => {
+                onViewInvoiceInProfile(displayedEmail.relatedInvoiceId);
+                handleDismiss();
+              }}
+              className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-bold cursor-pointer whitespace-nowrap"
+            >
+              <span>View Invoice in Profile</span>
+              <ExternalLink className="w-3 h-3" />
             </button>
           )}
 

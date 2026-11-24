@@ -1,14 +1,15 @@
 import React from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
-import { X, Bell, Check, CheckCheck, Info, CheckCircle2, AlertTriangle, Calendar, Mail } from 'lucide-react';
+import { X, Bell, Check, CheckCheck, Info, CheckCircle2, AlertTriangle, Calendar, Mail, FileText, ExternalLink } from 'lucide-react';
 
 interface NotificationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  onViewInvoiceInProfile?: (invoiceId?: string) => void;
 }
 
-export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose }) => {
+export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose, onViewInvoiceInProfile }) => {
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead, requestBrowserNotificationPermission } = useJobContext();
   const modalRef = useModalKeyboard({ isOpen, onClose });
   const [browserPerm, setBrowserPerm] = React.useState<NotificationPermission>(() => {
@@ -33,6 +34,10 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
     switch (type) {
       case 'interview_invite':
         return <Calendar className="w-4 h-4 text-amber-500 shrink-0" />;
+      case 'payment_deadline_48h':
+        return <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />;
+      case 'invoice_generated':
+        return <FileText className="w-4 h-4 text-emerald-700 shrink-0" />;
       case 'employer_membership_verified':
       case 'status_update':
       case 'application_received':
@@ -160,9 +165,26 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
                     )}
                   </div>
                   <p className="text-xs text-slate-600 pl-6 leading-relaxed">{notif.previewText}</p>
-                  <p className="text-[10px] text-slate-600 pl-6 mt-2 font-medium">
-                    {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Dominica Local Time
-                  </p>
+                  <div className="pl-6 mt-2 flex items-center justify-between gap-2">
+                    <p className="text-[10px] text-slate-600 font-medium">
+                      {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Dominica Local Time
+                    </p>
+                    {notif.relatedInvoiceId && onViewInvoiceInProfile && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markNotificationAsRead(notif.id);
+                          onViewInvoiceInProfile(notif.relatedInvoiceId);
+                          onClose();
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
+                      >
+                        <span>View Invoice</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))
             )}

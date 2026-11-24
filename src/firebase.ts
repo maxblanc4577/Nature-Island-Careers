@@ -19,7 +19,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
-import { Parish, JobSector, UserAccount } from './types';
+import { Parish, JobSector, UserAccount, EmployerInvoice } from './types';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -226,6 +226,152 @@ export function sanitizeEmailSubscriptionForFirestore(input: {
   };
 
   return payload;
+}
+
+export const EMPLOYER_INVOICE_CONSTRAINTS = {
+  ID_MAX_LENGTH: 128,
+  ID_PATTERN: /^[a-zA-Z0-9_\-]+$/,
+  UID_MAX_LENGTH: 128,
+  RECRUITER_ID_MAX_LENGTH: 128,
+  COMPANY_MAX_LENGTH: 140,
+  EMAIL_MIN_LENGTH: 3,
+  EMAIL_MAX_LENGTH: 160,
+  INVOICE_NUM_MIN_LENGTH: 3,
+  INVOICE_NUM_MAX_LENGTH: 64,
+  DATE_MIN_LENGTH: 4,
+  DATE_MAX_LENGTH: 40,
+  EXPIRY_MAX_LENGTH: 64,
+  PLAN_MIN_LENGTH: 2,
+  PLAN_MAX_LENGTH: 140,
+  DESC_MIN_LENGTH: 2,
+  DESC_MAX_LENGTH: 400,
+  PAYMENT_METHOD_MIN_LENGTH: 2,
+  PAYMENT_METHOD_MAX_LENGTH: 120,
+};
+
+export function sanitizeInvoiceForFirestore(
+  uid: string,
+  invoice: EmployerInvoice
+): Record<string, unknown> {
+  const cleanId =
+    invoice.id.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, EMPLOYER_INVOICE_CONSTRAINTS.ID_MAX_LENGTH) ||
+    `inv_${Date.now()}`;
+  const cleanUid = uid
+    .replace(/[^a-zA-Z0-9_\-]/g, '')
+    .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.UID_MAX_LENGTH);
+
+  const payload: Record<string, unknown> = {
+    id: cleanId,
+    uid: cleanUid,
+    recruiterId: (invoice.recruiterId || 'rec_default')
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.RECRUITER_ID_MAX_LENGTH),
+    companyName: (invoice.companyName || 'Dominica Employer')
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.COMPANY_MAX_LENGTH),
+    invoiceNumber: (invoice.invoiceNumber || 'INV-DOM-0001')
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.INVOICE_NUM_MAX_LENGTH),
+    date: (invoice.date || new Date().toISOString().split('T')[0])
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.DATE_MAX_LENGTH),
+    plan: (invoice.plan || 'Standard Local Employer')
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.PLAN_MAX_LENGTH),
+    amountXCD: Math.max(0, Number(invoice.amountXCD) || 0),
+    amountUSD: Math.max(0, Number(invoice.amountUSD) || 0),
+    billingInterval: ['monthly', 'one_time', 'annual'].includes(invoice.billingInterval)
+      ? invoice.billingInterval
+      : 'monthly',
+    status: [
+      'Paid',
+      'Pending',
+      'Processing',
+      'Renewal Pending',
+      'Failed',
+      'Canceled',
+      'Refunded',
+    ].includes(invoice.status)
+      ? invoice.status
+      : 'Pending',
+    paymentMethod: (invoice.paymentMethod || 'Stripe Card Checkout')
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.PAYMENT_METHOD_MAX_LENGTH),
+  };
+
+  if (
+    invoice.recipientEmail &&
+    invoice.recipientEmail.trim().length >= EMPLOYER_INVOICE_CONSTRAINTS.EMAIL_MIN_LENGTH
+  ) {
+    payload.recipientEmail = invoice.recipientEmail
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.EMAIL_MAX_LENGTH);
+  }
+  if (invoice.expiryDate && invoice.expiryDate.trim().length >= 4) {
+    payload.expiryDate = invoice.expiryDate
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.EXPIRY_MAX_LENGTH);
+  }
+  if (
+    invoice.description &&
+    invoice.description.trim().length >= EMPLOYER_INVOICE_CONSTRAINTS.DESC_MIN_LENGTH
+  ) {
+    payload.description = invoice.description
+      .trim()
+      .slice(0, EMPLOYER_INVOICE_CONSTRAINTS.DESC_MAX_LENGTH);
+  }
+
+  return payload;
+}
+
+export async function syncInvoiceToFirestore(invoice: EmployerInvoice): Promise<void> {
+  const fbUser = auth.currentUser;
+  if (!fbUser || !fbUser.emailVerified) return;
+
+  const cleanId =
+    invoice.id.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, EMPLOYER_INVOICE_CONSTRAINTS.ID_MAX_LENGTH) ||
+    `inv_${Date.now()}`;
+  const docPath = `users/${fbUser.uid}/invoices/${cleanId}`;
+  const docRef = doc(db, 'users', fbUser.uid, 'invoices', cleanId);
+
+  let exists = false;
+  try {
+    const snap = await getDoc(docRef);
+    exists = snap.exists();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, docPath);
+  }
+
+  const basePayload = sanitizeInvoiceForFirestore(fbUser.uid, { ...invoice, id: cleanId });
+
+  if (!exists) {
+    try {
+      await setDoc(docRef, {
+        ...basePayload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, docPath);
+    }
+  } else {
+    const updatePayload: Record<string, unknown> = {
+      status: basePayload.status,
+      paymentMethod: basePayload.paymentMethod,
+      updatedAt: serverTimestamp(),
+    };
+    if (basePayload.expiryDate !== undefined) updatePayload.expiryDate = basePayload.expiryDate;
+    if (basePayload.description !== undefined) updatePayload.description = basePayload.description;
+    if (basePayload.recipientEmail !== undefined) {
+      updatePayload.recipientEmail = basePayload.recipientEmail;
+    }
+
+    try {
+      await updateDoc(docRef, updatePayload);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, docPath);
+    }
+  }
 }
 
 export async function syncAuthenticatedUserToFirestore(user: UserAccount): Promise<void> {

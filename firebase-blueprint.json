@@ -158,6 +158,126 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "EmployerInvoice": {
+      "title": "EmployerInvoice",
+      "description": "Employer membership invoice record including payment status, description, and pending payment expiry date.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique invoice document identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "uid": {
+          "type": "string",
+          "description": "Firebase Authentication UID of the employer owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "recruiterId": {
+          "type": "string",
+          "description": "Recruiter organization identifier.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "companyName": {
+          "type": "string",
+          "description": "Employer company name.",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "recipientEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Employer billing contact email address.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "invoiceNumber": {
+          "type": "string",
+          "description": "Human-readable invoice reference number.",
+          "minLength": 3,
+          "maxLength": 64
+        },
+        "date": {
+          "type": "string",
+          "description": "ISO issue date of the invoice.",
+          "minLength": 4,
+          "maxLength": 40
+        },
+        "expiryDate": {
+          "type": "string",
+          "description": "ISO expiry timestamp or date for pending invoices.",
+          "minLength": 4,
+          "maxLength": 64
+        },
+        "plan": {
+          "type": "string",
+          "description": "Purchased employer membership plan name.",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "description": {
+          "type": "string",
+          "description": "Itemized invoice description for keyword search and audit.",
+          "minLength": 2,
+          "maxLength": 400
+        },
+        "amountXCD": {
+          "type": "number",
+          "description": "Invoice amount in Eastern Caribbean Dollars (XCD)."
+        },
+        "amountUSD": {
+          "type": "number",
+          "description": "Invoice amount in United States Dollars (USD)."
+        },
+        "billingInterval": {
+          "type": "string",
+          "description": "Billing cadence for the membership.",
+          "enum": ["monthly", "one_time", "annual"]
+        },
+        "status": {
+          "type": "string",
+          "description": "Current settlement status of the invoice.",
+          "enum": ["Paid", "Pending", "Processing", "Renewal Pending", "Failed", "Canceled", "Refunded"]
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "Payment channel or card descriptor.",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the invoice was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the invoice was last updated."
+        }
+      },
+      "required": [
+        "id",
+        "uid",
+        "recruiterId",
+        "companyName",
+        "invoiceNumber",
+        "date",
+        "plan",
+        "amountXCD",
+        "amountUSD",
+        "billingInterval",
+        "status",
+        "paymentMethod",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -172,6 +292,12 @@
         "$ref": "#/entities/EmailCategorySubscription"
       },
       "description": "Stores email job category alert subscriptions per verified user for automated vacancy notifications."
+    },
+    "/users/{userId}/invoices/{invoiceId}": {
+      "schema": {
+        "$ref": "#/entities/EmployerInvoice"
+      },
+      "description": "Stores employer membership invoices, payment statuses, and pending expiry dates isolated by account owner."
     }
   }
 }

@@ -120,8 +120,10 @@ export interface EmployerInvoice {
   amountXCD: number;
   amountUSD: number;
   billingInterval: 'monthly' | 'one_time' | 'annual';
-  status: 'Paid' | 'Processing' | 'Renewal Pending' | 'Failed' | 'Canceled' | 'Refunded';
+  status: 'Paid' | 'Pending' | 'Processing' | 'Renewal Pending' | 'Failed' | 'Canceled' | 'Refunded';
   paymentMethod: string;
+  description?: string;
+  expiryDate?: string;
   receiptUrl?: string;
   stripeSubscriptionId?: string;
   paymentIntentId?: string;
@@ -131,6 +133,8 @@ export interface EmployerInvoice {
   stripeFeeXCD?: number;
   currency?: string;
   notifiedAt?: string;
+  generatedAlertSentAt?: string;
+  deadlineAlert48hSentAt?: string;
   dssRegistrationNo?: string;
   parish?: string;
   contactPerson?: string;
@@ -317,7 +321,9 @@ export interface EmailNotification {
     | 'job_alert'
     | 'recruiter_new_applicant'
     | 'feedback_received'
-    | 'employer_membership_verified';
+    | 'employer_membership_verified'
+    | 'invoice_generated'
+    | 'payment_deadline_48h';
   timestamp: string;
   isRead: boolean;
   relatedJobId?: string;

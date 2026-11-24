@@ -1871,7 +1871,9 @@ interface BackendAuditLog {
     | 'Job Dispatcher'
     | 'Auth Guard'
     | 'System Core'
-    | 'Cache Engine';
+    | 'Cache Engine'
+    | 'Employer Billing & Verification'
+    | 'Automated Invoice Notifier';
   message: string;
   details?: Record<string, any>;
 }
@@ -3200,6 +3202,74 @@ app.get('/api/employer/notifications', (req, res) => {
   return res.json({
     count: filtered.length,
     notifications: filtered.slice(0, 50),
+  });
+});
+
+// Automated Background Service Endpoint: Employer New Invoice & 48h Payment Deadline Alerts
+app.post('/api/employer/invoice-alerts', (req, res) => {
+  const alertKind = sanitizeString(req.body?.alertKind, 40) || 'invoice_generated';
+  const employerName = sanitizeString(req.body?.employerName, 160) || 'Dominica Employer Partner';
+  const recipientEmail = sanitizeString(req.body?.recipientEmail, 160);
+  const planName = sanitizeString(req.body?.planName, 160) || 'Standard Local Employer';
+  const invoiceId = sanitizeString(req.body?.invoiceId, 100) || `INV-DOM-${Date.now()}`;
+  const expiryDate = sanitizeString(req.body?.expiryDate, 64) || undefined;
+  const amountXCD = Math.max(0, Number(req.body?.amountXCD) || 0);
+  const amountUSD =
+    Math.round((Number(req.body?.amountUSD) || amountXCD / merchantPortalConfig.currencyPeg) * 100) /
+    100;
+
+  if (!recipientEmail || !recipientEmail.includes('@')) {
+    return res.status(400).json({ error: 'Valid employer recipientEmail is required.' });
+  }
+
+  const record: EmployerPaymentNotificationRecord = {
+    id: `emp_inv_alert_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+    employerName,
+    recipientEmail,
+    planName,
+    membershipTier: planName,
+    amountXCD,
+    amountUSD,
+    invoiceId,
+    portalUsed:
+      alertKind === 'payment_deadline_48h'
+        ? 'Automated 48h Payment Deadline Monitor'
+        : 'Automated Invoice Generation Service',
+    signupVerified: alertKind !== 'payment_deadline_48h',
+    renewsAt: expiryDate,
+    sentAt: new Date().toISOString(),
+    status: 'sent',
+  };
+
+  employerPaymentNotifications.unshift(record);
+  if (employerPaymentNotifications.length > 100) employerPaymentNotifications.pop();
+
+  backendAuditLogs.push({
+    id: `log_inv_alert_${Date.now()}`,
+    timestamp: record.sentAt,
+    level: alertKind === 'payment_deadline_48h' ? 'warn' : 'info',
+    service: 'Automated Invoice Notifier',
+    message:
+      alertKind === 'payment_deadline_48h'
+        ? `48h payment deadline reminder dispatched to ${recipientEmail} for ${invoiceId} (${employerName}, expires ${expiryDate || 'soon'}).`
+        : `New invoice notification dispatched to ${recipientEmail} for ${invoiceId} (${employerName} · EC$ ${amountXCD}).`,
+  });
+
+  return res.json({
+    success: true,
+    alertKind,
+    notification: record,
+  });
+});
+
+app.get('/api/employer/invoice-alerts', (req, res) => {
+  const emailFilter = sanitizeString(req.query?.email, 160).toLowerCase();
+  const filtered = employerPaymentNotifications.filter((item) =>
+    emailFilter ? item.recipientEmail.toLowerCase() === emailFilter : true
+  );
+  return res.json({
+    count: filtered.length,
+    alerts: filtered.slice(0, 50),
   });
 });
 
