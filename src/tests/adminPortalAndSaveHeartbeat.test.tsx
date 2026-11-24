@@ -294,11 +294,14 @@ describe('Master Admin Password Security Hardening', () => {
     );
     expect(html).toContain('data-testid="admin-mode-signin-btn"');
     expect(html).toContain('data-testid="admin-mode-register-btn"');
+    expect(html).toContain('data-testid="admin-first-time-register-banner"');
 
     const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
     expect(serverSrc).toContain("app.get('/api/admin/registration-status'");
     expect(serverSrc).toContain("app.post('/api/admin/register'");
     expect(serverSrc).toContain('let adminAccountRegistered = false');
+    expect(serverSrc).toContain('loadPersistedAdminRegistration');
+    expect(serverSrc).toContain('savePersistedAdminRegistration');
     expect(serverSrc).toContain('if (email !== ALLOWED_ADMIN_EMAIL)');
     expect(serverSrc).toContain('if (adminAccountRegistered)');
     expect(serverSrc).toContain('alreadyRegistered: true');
@@ -314,7 +317,8 @@ describe('Master Admin Password Security Hardening', () => {
       path.resolve(process.cwd(), 'src/components/AuthModal.tsx'),
       'utf8'
     );
-    expect(authSrc).toContain("info@natureislecareers.com");
+    expect(authSrc).toContain('info@natureislecareers.com');
+    expect(authSrc).toContain('auth-open-admin-gateway-btn');
     expect(authSrc).toContain(
       'info@natureislecareers.com is reserved exclusively for single administrator registration via the Admin Console Gateway.'
     );

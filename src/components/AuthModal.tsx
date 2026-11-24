@@ -39,6 +39,7 @@ interface AuthModalProps {
   onRequireSubscription: () => void;
   initialMode?: AuthModalMode;
   onAuthSuccess?: (role: 'jobseeker' | 'client') => void;
+  onOpenAdminGateway?: (initialMode?: 'login' | 'register') => void;
 }
 
 const PARISHES: Parish[] = [
@@ -208,6 +209,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onRequireSubscription,
   initialMode = 'login',
   onAuthSuccess,
+  onOpenAdminGateway,
 }) => {
   const {
     currentUser,
@@ -754,7 +756,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start gap-2"
             >
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span>{formError}</span>
+              <div className="space-y-1.5">
+                <span className="block">{formError}</span>
+                {onOpenAdminGateway && formError.includes('info@natureislecareers.com') && (
+                  <button
+                    type="button"
+                    data-testid="auth-open-admin-gateway-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenAdminGateway('register');
+                    }}
+                    className="inline-flex items-center gap-1 font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                  >
+                    <span>Open Single Admin Registration Gateway</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -1388,13 +1406,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 )}
 
                 {loginError && (
-                  <p
+                  <div
                     role="alert"
                     data-testid="login-error-message"
-                    className="text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5 text-[11px]"
+                    className="text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5 text-[11px] space-y-1.5"
                   >
-                    {loginError}
-                  </p>
+                    <p>{loginError}</p>
+                    {onOpenAdminGateway && loginError.includes('info@natureislecareers.com') && (
+                      <button
+                        type="button"
+                        data-testid="auth-open-admin-gateway-btn"
+                        onClick={() => {
+                          onClose();
+                          onOpenAdminGateway('login');
+                        }}
+                        className="inline-flex items-center gap-1 font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                      >
+                        <span>Open Admin Console Security Gateway</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 <button

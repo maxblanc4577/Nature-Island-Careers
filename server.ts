@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
 import express from 'express';
 import path from 'path';
@@ -193,6 +194,58 @@ interface RegisteredAdminProfile {
 let activeAdminSession: ActiveAdminSession | null = null;
 let adminAccountRegistered = false;
 let registeredAdminProfile: RegisteredAdminProfile | null = null;
+
+const ADMIN_RUNTIME_DATA_DIR = path.resolve(__dirname, '.data');
+const ADMIN_REGISTRATION_STATE_FILE = path.resolve(
+  ADMIN_RUNTIME_DATA_DIR,
+  'single-admin-registration.json'
+);
+
+function loadPersistedAdminRegistration(): void {
+  try {
+    if (!ADMIN_REGISTRATION_STATE_FILE.startsWith(ADMIN_RUNTIME_DATA_DIR + path.sep)) return;
+    if (!fs.existsSync(ADMIN_REGISTRATION_STATE_FILE)) return;
+    const raw = fs.readFileSync(ADMIN_REGISTRATION_STATE_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      parsed.registered === true &&
+      typeof parsed.email === 'string' &&
+      parsed.email.toLowerCase() === ALLOWED_ADMIN_EMAIL &&
+      typeof parsed.registeredAt === 'string'
+    ) {
+      adminAccountRegistered = true;
+      registeredAdminProfile = {
+        name: sanitizeString(parsed.name, 100) || 'Dominica Labour Administrator',
+        email: ALLOWED_ADMIN_EMAIL,
+        parish: sanitizeString(parsed.parish, 64) || 'St. George',
+        registeredAt: parsed.registeredAt,
+      };
+    }
+  } catch {
+    // ignore corrupt or unreadable runtime state
+  }
+}
+
+function savePersistedAdminRegistration(profile: RegisteredAdminProfile): void {
+  try {
+    if (!ADMIN_REGISTRATION_STATE_FILE.startsWith(ADMIN_RUNTIME_DATA_DIR + path.sep)) return;
+    fs.mkdirSync(ADMIN_RUNTIME_DATA_DIR, { recursive: true });
+    // Persist ONLY non-secret registration lock metadata (never passwords, hashes, or session tokens)
+    const nonSecretRecord = {
+      registered: true,
+      email: profile.email,
+      name: profile.name,
+      parish: profile.parish,
+      registeredAt: profile.registeredAt,
+    };
+    fs.writeFileSync(ADMIN_REGISTRATION_STATE_FILE, JSON.stringify(nonSecretRecord, null, 2), 'utf8');
+  } catch {
+    // ignore disk persistence failures in read-only environments
+  }
+}
+
+loadPersistedAdminRegistration();
 
 function timingSafeEqualStrings(aStr: string, bStr: string): boolean {
   const a = Buffer.from(aStr, 'utf8');
@@ -1839,6 +1892,7 @@ app.post('/api/admin/register', (req, res) => {
     parish: 'St. George',
     registeredAt,
   };
+  savePersistedAdminRegistration(registeredAdminProfile);
 
   const sessionToken = `adm_${crypto.randomBytes(24).toString('hex')}`;
   activeAdminSession = {

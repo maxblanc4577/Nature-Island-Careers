@@ -93,16 +93,33 @@ interface AdminGatewayFormProps {
   onSuccess: () => void;
   onReturnPublic?: () => void;
   isStandalone?: boolean;
+  initialMode?: 'login' | 'register';
 }
 
 const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
   onSuccess,
   onReturnPublic,
   isStandalone = false,
+  initialMode = 'login',
 }) => {
   const { adminLogin, isAdminRegistered } = useJobContext();
 
-  const [gatewayMode, setGatewayMode] = useState<'login' | 'register'>('login');
+  const [gatewayMode, setGatewayMode] = useState<'login' | 'register'>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('mode') === 'register') return 'register';
+      }
+    } catch {
+      // ignore
+    }
+    return initialMode;
+  });
+
+  useEffect(() => {
+    setGatewayMode(initialMode);
+    setErrorMessage(null);
+  }, [initialMode]);
   const [adminAccountRegistered, setAdminAccountRegistered] = useState<boolean>(() =>
     Boolean(isAdminRegistered)
   );
@@ -355,6 +372,26 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
         </button>
       </div>
 
+      {gatewayMode === 'login' && !adminAccountRegistered && (
+        <div
+          data-testid="admin-first-time-register-banner"
+          className="px-3.5 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-[11px] text-emerald-950"
+        >
+          <span>First-time setup? Register the single admin account once.</span>
+          <button
+            type="button"
+            data-testid="admin-banner-switch-register-btn"
+            onClick={() => {
+              setGatewayMode('register');
+              setErrorMessage(null);
+            }}
+            className="font-bold text-emerald-800 hover:text-emerald-950 underline shrink-0 cursor-pointer"
+          >
+            Register &rarr;
+          </button>
+        </div>
+      )}
+
       {/* Temporary Brute-Force Lockout Banner */}
       {lockoutStatus.locked && (
         <div
@@ -596,11 +633,13 @@ const AdminGatewayForm: React.FC<AdminGatewayFormProps> = ({
 export interface StandaloneAdminLoginPageProps {
   onSuccess: () => void;
   onReturnPublic: () => void;
+  initialMode?: 'login' | 'register';
 }
 
 export const StandaloneAdminLoginPage: React.FC<StandaloneAdminLoginPageProps> = ({
   onSuccess,
   onReturnPublic,
+  initialMode = 'login',
 }) => {
   return (
     <div
@@ -644,6 +683,7 @@ export const StandaloneAdminLoginPage: React.FC<StandaloneAdminLoginPageProps> =
             onSuccess={onSuccess}
             onReturnPublic={onReturnPublic}
             isStandalone={true}
+            initialMode={initialMode}
           />
         </div>
       </main>
@@ -660,12 +700,14 @@ interface AdminLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialMode?: 'login' | 'register';
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  initialMode = 'login',
 }) => {
   const modalRef = useModalKeyboard({ isOpen, onClose });
 
@@ -711,6 +753,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           }}
           onReturnPublic={onClose}
           isStandalone={false}
+          initialMode={initialMode}
         />
       </div>
     </div>

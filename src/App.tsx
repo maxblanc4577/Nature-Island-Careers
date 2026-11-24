@@ -136,6 +136,7 @@ function DominicaJobBoardContent() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState<AuthModalMode>('login');
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [adminLoginInitialMode, setAdminLoginInitialMode] = useState<'login' | 'register'>('login');
 
   const handleOpenAuthModal = (mode: AuthModalMode = 'login') => {
     setAuthInitialMode(mode);
@@ -1018,13 +1019,23 @@ function DominicaJobBoardContent() {
           setIsAuthOpen(false);
           setIsSubscriptionCheckoutOpen(true);
         }}
+        onOpenAdminGateway={(targetMode = 'login') => {
+          setIsAuthOpen(false);
+          setAdminLoginInitialMode(targetMode);
+          setIsAdminLoginOpen(true);
+        }}
       />
 
       <AdminLoginModal
         isOpen={isAdminLoginOpen}
-        onClose={() => setIsAdminLoginOpen(false)}
+        initialMode={adminLoginInitialMode}
+        onClose={() => {
+          setIsAdminLoginOpen(false);
+          setAdminLoginInitialMode('login');
+        }}
         onSuccess={() => {
           setIsAdminLoginOpen(false);
+          setAdminLoginInitialMode('login');
           navigateToPath('/admin');
         }}
       />
