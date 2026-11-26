@@ -3783,7 +3783,7 @@ app.post('/api/stripe/trigger-test', (req, res) => {
 const getStripe = () => {
   const key = process.env.STRIPE_SECRET_KEY || '';
   if (!key) return null;
-  return new Stripe(key, { apiVersion: '2025-02-24.acacia' as any });
+  return new Stripe(key, { apiVersion: '2026-03-25.dahlia' as any });
 };
 
 // Create real or simulated Stripe PaymentIntent
@@ -4179,18 +4179,18 @@ const handleCreateCheckoutSession = async (req: express.Request, res: express.Re
             },
           ];
 
-      const sessionParams: any = {
+      const mode = 'payment' as Stripe.Checkout.SessionCreateParams.Mode;
+      const sessionParams: Stripe.Checkout.SessionCreateParams = {
+        ui_mode: 'form',
+        mode,
+        billing_address_collection: 'auto',
+        phone_number_collection: { enabled: false },
+        automatic_tax: { enabled: false },
+        submit_type: 'auto',
+        integration_identifier: 'custom_embedded_web_0001',
         line_items: lineItems,
-        mode: 'payment',
+        ...(mode === 'subscription' ? { payment_method_collection: 'always' as const } : {}),
       };
-
-      if (ui_mode === 'embedded' || ui_mode === 'form') {
-        sessionParams.ui_mode = ui_mode;
-        sessionParams.return_url = returnUrl || `${req.headers.origin || 'http://localhost:3000'}/?session_id={CHECKOUT_SESSION_ID}`;
-      } else {
-        sessionParams.success_url = successUrl || `${req.headers.origin || 'http://localhost:3000'}/?payment_success=true`;
-        sessionParams.cancel_url = cancelUrl || `${req.headers.origin || 'http://localhost:3000'}/?payment_cancelled=true`;
-      }
 
       const session = await stripe.checkout.sessions.create(
         sessionParams,

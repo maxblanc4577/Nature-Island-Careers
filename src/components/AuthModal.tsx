@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
-import { Parish, JobSector, SubscriptionPlan } from '../types';
-import { evaluatePasswordStrength } from '../utils/passwordStrength';
+import { Parish, JobSector } from '../types';
 import { isValidEmail } from '../utils/paymentValidation';
-import { EMPLOYER_MEMBERSHIP_PLANS } from '../utils/membershipPlans';
 import { sendFirebasePasswordReset } from '../firebase';
+import { PasswordStrengthIndicator } from './PasswordStrengthIndicator';
+import { EmployerRegisterForm } from './EmployerRegisterForm';
+
+export { PasswordStrengthIndicator };
 import {
   X,
   User,
@@ -40,6 +42,7 @@ interface AuthModalProps {
   initialMode?: AuthModalMode;
   onAuthSuccess?: (role: 'jobseeker' | 'client') => void;
   onOpenAdminGateway?: (initialMode?: 'login' | 'register') => void;
+  onOpenEmployerDashboard?: () => void;
 }
 
 const PARISHES: Parish[] = [
@@ -68,141 +71,6 @@ const SECTORS: JobSector[] = [
   'Public Sector & Cooperatives',
 ];
 
-export const PasswordStrengthIndicator: React.FC<{
-  password: string;
-  confirmPassword?: string;
-  testIdPrefix?: string;
-}> = ({ password, confirmPassword, testIdPrefix = 'password' }) => {
-  const strength = evaluatePasswordStrength(password);
-  const hasConfirm = typeof confirmPassword === 'string' && confirmPassword.length > 0;
-  const passwordsMatch = hasConfirm && password === confirmPassword;
-
-  const barColorMap: Record<0 | 1 | 2 | 3 | 4, string> = {
-    0: 'bg-stone-200',
-    1: 'bg-rose-600',
-    2: 'bg-amber-500',
-    3: 'bg-emerald-500',
-    4: 'bg-emerald-700',
-  };
-
-  const textColorMap: Record<0 | 1 | 2 | 3 | 4, string> = {
-    0: 'text-stone-500',
-    1: 'text-rose-700',
-    2: 'text-amber-700',
-    3: 'text-emerald-700',
-    4: 'text-emerald-800',
-  };
-
-  const checklistItems = [
-    {
-      key: 'minLength',
-      label: '8+ characters',
-      met: strength.criteria.minLength,
-    },
-    {
-      key: 'mixedCase',
-      label: 'Upper & lowercase (A-z)',
-      met: strength.criteria.hasUppercase && strength.criteria.hasLowercase,
-    },
-    {
-      key: 'hasNumber',
-      label: 'At least 1 number (0-9)',
-      met: strength.criteria.hasNumber,
-    },
-    {
-      key: 'hasSpecial',
-      label: 'Special symbol (!@#$)',
-      met: strength.criteria.hasSpecial,
-    },
-  ];
-
-  return (
-    <div
-      data-testid="password-strength-indicator"
-      data-strength-prefix={testIdPrefix}
-      className="p-2.5 bg-stone-50 border border-stone-200 rounded-xl space-y-2"
-    >
-      <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="font-semibold text-stone-700 flex items-center gap-1">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-          <span>Password Strength</span>
-        </span>
-        <span
-          data-testid="password-strength-label"
-          className={`font-bold tabular-nums ${textColorMap[strength.score]}`}
-        >
-          {strength.label}
-        </span>
-      </div>
-
-      {/* 4-Segment Progress Bar */}
-      <div
-        role="progressbar"
-        aria-label="Password strength"
-        aria-valuenow={strength.score}
-        aria-valuemin={0}
-        aria-valuemax={4}
-        className="grid grid-cols-4 gap-1.5"
-      >
-        {[1, 2, 3, 4].map((segment) => (
-          <div
-            key={segment}
-            className={`h-1.5 rounded-full transition-colors duration-150 ${
-              strength.score >= segment ? barColorMap[strength.score] : 'bg-stone-200'
-            }`}
-          />
-        ))}
-      </div>
-
-      <p className="text-[10px] text-stone-600 leading-snug">{strength.guidance}</p>
-
-      {/* Real-Time Criteria Checklist */}
-      <div
-        data-testid="password-strength-checklist"
-        className="grid grid-cols-2 gap-x-2 gap-y-1 pt-0.5"
-      >
-        {checklistItems.map((item) => (
-          <div
-            key={item.key}
-            data-testid={`password-criterion-${item.key}`}
-            className={`flex items-center gap-1 text-[10px] ${
-              item.met ? 'text-emerald-800 font-semibold' : 'text-stone-500'
-            }`}
-          >
-            <CheckCircle2
-              className={`w-3 h-3 shrink-0 ${
-                item.met ? 'text-emerald-600' : 'text-stone-300'
-              }`}
-            />
-            <span>{item.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {hasConfirm && (
-        <div
-          data-testid="password-match-indicator"
-          className={`pt-1 border-t border-stone-200/80 flex items-center gap-1.5 text-[10px] font-semibold ${
-            passwordsMatch ? 'text-emerald-700' : 'text-rose-700'
-          }`}
-        >
-          {passwordsMatch ? (
-            <>
-              <CheckCircle2 className="w-3 h-3 shrink-0 text-emerald-600" />
-              <span>Passwords match</span>
-            </>
-          ) : (
-            <>
-              <AlertCircle className="w-3 h-3 shrink-0 text-rose-600" />
-              <span>Password confirmation does not match yet</span>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
@@ -210,11 +78,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'login',
   onAuthSuccess,
   onOpenAdminGateway,
+  onOpenEmployerDashboard,
 }) => {
   const {
     currentUser,
     registerJobseeker,
-    registerClient,
     loginUser,
     authenticateWithGoogle,
     authenticateWithGithub,
@@ -273,19 +141,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [jsSector, setJsSector] = useState<JobSector>('Renewable Energy & Geothermal');
   const [jsMinSalary, setJsMinSalary] = useState('4500');
   const [jsSkills, setJsSkills] = useState('Project Management, SCADA Systems, Eco-Tourism');
-
-  // Employer (Client) registration fields
-  const [clCompany, setClCompany] = useState('');
-  const [clName, setClName] = useState('');
-  const [clEmail, setClEmail] = useState('');
-  const [clPassword, setClPassword] = useState('');
-  const [clConfirmPassword, setClConfirmPassword] = useState('');
-  const [clPhone, setClPhone] = useState('+1 (767) 448-');
-  const [clParish, setClParish] = useState<Parish>('St. George');
-  const [clDss, setClDss] = useState('DSS-DOM-90124');
-  const [clIndustry, setClIndustry] = useState<JobSector>('Eco-Tourism & Hospitality');
-  const [clSelectedPlan, setClSelectedPlan] = useState<SubscriptionPlan>('Enterprise Growth Partner');
-  const [proceedToCheckout, setProceedToCheckout] = useState(true);
 
   // Login fields
   const [loginAccountType, setLoginAccountType] = useState<'all' | 'jobseeker' | 'client'>('all');
@@ -351,55 +206,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     onClose();
   };
 
-  const handleClientSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    if (!clCompany.trim() || clCompany.trim().length < 2) {
-      setFormError('Please enter your company or organization name.');
-      return;
-    }
-    if (!clName.trim() || clName.trim().length < 2) {
-      setFormError('Please enter the contact person or HR lead name.');
-      return;
-    }
-    if (!isValidEmail(clEmail)) {
-      setFormError('Please enter a valid business email address.');
-      return;
-    }
-    if (clEmail.trim().toLowerCase() === 'info@natureislecareers.com') {
-      setFormError(
-        'info@natureislecareers.com is reserved exclusively for single administrator registration via the Admin Console Gateway.'
-      );
-      return;
-    }
-    if (clPassword && clPassword.length < 6) {
-      setFormError('Password must be at least 6 characters long.');
-      return;
-    }
-    if (clPassword !== clConfirmPassword) {
-      setFormError('Passwords do not match. Please verify your password confirmation.');
-      return;
-    }
-
-    registerClient({
-      companyName: clCompany.trim(),
-      name: clName.trim(),
-      email: clEmail.trim(),
-      phone: clPhone.trim() || '+1 (767) 448-0100',
-      parish: clParish,
-      dssRegistrationNo: clDss.trim() || 'DSS-DOM-90124',
-      industry: clIndustry,
-      password: clPassword || undefined,
-      selectedPlan: clSelectedPlan,
-    });
-    onAuthSuccess?.('client');
-    onClose();
-    if (proceedToCheckout) {
-      onRequireSubscription();
-    }
-  };
-
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -460,13 +266,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoginError(null);
     setIsGoogleLoading(true);
     try {
-      const account = await authenticateWithGoogle(role, {
-        companyName: role === 'client' ? clCompany || undefined : undefined,
-        dssRegistrationNo: role === 'client' ? clDss || undefined : undefined,
-        parish: role === 'client' ? clParish : jsParish,
-        phone: role === 'client' ? clPhone : jsPhone,
-        careerSector: role === 'client' ? clIndustry : jsSector,
-      });
+      const account = await authenticateWithGoogle(
+        role,
+        role === 'jobseeker'
+          ? {
+              parish: jsParish,
+              phone: jsPhone,
+              careerSector: jsSector,
+            }
+          : undefined
+      );
       onAuthSuccess?.(account.role === 'client' ? 'client' : 'jobseeker');
       onClose();
     } catch (err: any) {
@@ -489,13 +298,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoginError(null);
     setIsGithubLoading(true);
     try {
-      const account = await authenticateWithGithub(role, {
-        companyName: role === 'client' ? clCompany || undefined : undefined,
-        dssRegistrationNo: role === 'client' ? clDss || undefined : undefined,
-        parish: role === 'client' ? clParish : jsParish,
-        phone: role === 'client' ? clPhone : jsPhone,
-        careerSector: role === 'client' ? clIndustry : jsSector,
-      });
+      const account = await authenticateWithGithub(
+        role,
+        role === 'jobseeker'
+          ? {
+              parish: jsParish,
+              phone: jsPhone,
+              careerSector: jsSector,
+            }
+          : undefined
+      );
       onAuthSuccess?.(account.role === 'client' ? 'client' : 'jobseeker');
       onClose();
     } catch (err: any) {
@@ -693,7 +505,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         )}
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-3 border-b border-stone-200 bg-white text-xs font-semibold">
+        <div className="grid grid-cols-2 border-b border-stone-200 bg-white text-xs font-semibold">
           <button
             type="button"
             data-testid="auth-tab-login"
@@ -727,23 +539,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           >
             <User className="w-3.5 h-3.5" />
             <span>New Candidate</span>
-          </button>
-          <button
-            type="button"
-            data-testid="auth-tab-employer-register"
-            onClick={() => {
-              setMode('client_register');
-              setFormError(null);
-              setLoginError(null);
-            }}
-            className={`py-2.5 px-2 text-center transition-colors cursor-pointer border-b-2 flex items-center justify-center gap-1.5 ${
-              mode === 'client_register'
-                ? 'border-emerald-800 text-emerald-950 bg-emerald-50/50 font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900'
-            }`}
-          >
-            <Building className="w-3.5 h-3.5" />
-            <span>New Employer</span>
           </button>
         </div>
 
@@ -1007,288 +802,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </form>
           )}
 
-          {/* 2. Employer / Client Registration Form */}
+          {/* 2. Employer / Client Registration Form (fallback if opened directly with initialMode='client_register') */}
           {mode === 'client_register' && (
-            <form onSubmit={handleClientSubmit} className="space-y-3.5" data-testid="employer-register-form">
-              <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-[11px] text-amber-950 space-y-1">
-                <div className="font-semibold flex items-center gap-1">
-                  <ShieldCheck className="w-4 h-4 text-amber-800" />
-                  Dominica Employer & Recruiter Account
-                </div>
-                <p>
-                  Register your organization with your Dominica Social Security (DSS) employer number to access the Employer Command Center, post vacancies, and manage applicants.
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="cl-company" className="block font-semibold text-stone-900 mb-1">
-                  Company / Organization Name *
-                </label>
-                <input
-                  id="cl-company"
-                  data-testid="employer-register-company"
-                  type="text"
-                  required
-                  value={clCompany}
-                  onChange={(e) => setClCompany(e.target.value)}
-                  placeholder="e.g. Rosalie Bay Eco-Resort & Spa"
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="cl-name" className="block font-semibold text-stone-900 mb-1">
-                    Contact Person / HR Lead *
-                  </label>
-                  <input
-                    id="cl-name"
-                    data-testid="employer-register-name"
-                    type="text"
-                    required
-                    value={clName}
-                    onChange={(e) => setClName(e.target.value)}
-                    placeholder="e.g. Marise Shillingford"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="cl-email" className="block font-semibold text-stone-900 mb-1">
-                    Business Email Address *
-                  </label>
-                  <input
-                    id="cl-email"
-                    data-testid="employer-register-email"
-                    type="email"
-                    required
-                    value={clEmail}
-                    onChange={(e) => setClEmail(e.target.value)}
-                    placeholder="hr@rosaliebay.dm"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="cl-password" className="block font-semibold text-stone-900 mb-1">
-                    Employer Password *
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="cl-password"
-                      data-testid="employer-register-password"
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      minLength={6}
-                      value={clPassword}
-                      onChange={(e) => setClPassword(e.target.value)}
-                      placeholder="Min. 6 characters"
-                      className="w-full pl-3 pr-16 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                    />
-                    <button
-                      type="button"
-                      data-testid="toggle-employer-password-btn"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      aria-pressed={showPassword}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600 hover:text-stone-900 rounded flex items-center gap-1 cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      <span>{showPassword ? 'Hide' : 'Show'}</span>
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="cl-confirm-password" className="block font-semibold text-stone-900 mb-1">
-                    Confirm Password *
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="cl-confirm-password"
-                      data-testid="employer-register-confirm-password"
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      required
-                      minLength={6}
-                      value={clConfirmPassword}
-                      onChange={(e) => setClConfirmPassword(e.target.value)}
-                      placeholder="Re-enter password"
-                      className="w-full pl-3 pr-16 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                    />
-                    <button
-                      type="button"
-                      data-testid="toggle-employer-confirm-password-btn"
-                      onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-                      aria-pressed={showConfirmPassword}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600 hover:text-stone-900 rounded flex items-center gap-1 cursor-pointer"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      <span>{showConfirmPassword ? 'Hide' : 'Show'}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <PasswordStrengthIndicator
-                password={clPassword}
-                confirmPassword={clConfirmPassword}
-                testIdPrefix="employer"
-              />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="cl-phone" className="block font-semibold text-stone-900 mb-1">
-                    Business Phone *
-                  </label>
-                  <input
-                    id="cl-phone"
-                    data-testid="employer-register-phone"
-                    type="tel"
-                    required
-                    value={clPhone}
-                    onChange={(e) => setClPhone(e.target.value)}
-                    placeholder="+1 (767) 448-5000"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="cl-dss" className="block font-semibold text-stone-900 mb-1">
-                    DSS Registration Number *
-                  </label>
-                  <input
-                    id="cl-dss"
-                    data-testid="employer-register-dss"
-                    type="text"
-                    required
-                    value={clDss}
-                    onChange={(e) => setClDss(e.target.value)}
-                    placeholder="DSS-DOM-XXXXX"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="cl-parish" className="block font-semibold text-stone-900 mb-1">
-                    Parish Headquarters *
-                  </label>
-                  <select
-                    id="cl-parish"
-                    data-testid="employer-register-parish"
-                    value={clParish}
-                    onChange={(e) => setClParish(e.target.value as Parish)}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                  >
-                    {PARISHES.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="cl-industry" className="block font-semibold text-stone-900 mb-1">
-                    Primary Industry Sector
-                  </label>
-                  <select
-                    id="cl-industry"
-                    data-testid="employer-register-industry"
-                    value={clIndustry}
-                    onChange={(e) => setClIndustry(e.target.value as JobSector)}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs"
-                  >
-                    {SECTORS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Select Employer Membership Plan */}
-              <div data-testid="employer-register-membership-section" className="space-y-1.5">
-                <span className="block font-semibold text-stone-900">
-                  Select Employer Membership Tier *
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {EMPLOYER_MEMBERSHIP_PLANS.map((tier) => {
-                    const isSelected = clSelectedPlan === tier.plan;
-                    return (
-                      <button
-                        key={tier.plan}
-                        type="button"
-                        data-testid={`employer-register-plan-${tier.plan.replace(/\s+/g, '-').toLowerCase()}`}
-                        aria-pressed={isSelected}
-                        onClick={() => setClSelectedPlan(tier.plan)}
-                        className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'border-emerald-800 bg-emerald-50 text-emerald-950'
-                            : 'border-stone-200 bg-white hover:bg-stone-50 text-stone-800'
-                        }`}
-                      >
-                        <div className="font-bold text-[11px] leading-tight">{tier.shortLabel}</div>
-                        <div className="font-mono font-extrabold text-sm text-emerald-900 tabular-nums mt-0.5">
-                          EC${tier.priceXCD}
-                          <span className="text-[10px] font-normal text-stone-500">/mo</span>
-                        </div>
-                        <div className="text-[10px] text-stone-600 mt-0.5 leading-snug">
-                          {tier.quotaPostings >= 999
-                            ? 'Unlimited Vacancies · WIN Remote'
-                            : `${tier.quotaPostings} Active Vacancies`}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <label className="flex items-center gap-2 text-[11px] text-stone-700 cursor-pointer pt-1">
-                <input
-                  type="checkbox"
-                  data-testid="employer-proceed-to-checkout-checkbox"
-                  checked={proceedToCheckout}
-                  onChange={(e) => setProceedToCheckout(e.target.checked)}
-                  className="rounded border-stone-300 text-emerald-700 focus:ring-emerald-600"
-                />
-                <span>Proceed to payment verification &amp; generate membership invoice after signup</span>
-              </label>
-
-              <div className="pt-2 space-y-2.5">
-                <button
-                  type="submit"
-                  data-testid="submit-employer-register-btn"
-                  className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  <Building className="w-4 h-4" />
-                  <span>Create Employer Account</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    data-testid="employer-google-auth-btn"
-                    disabled={isGoogleLoading || isGithubLoading}
-                    onClick={() => handleGoogleSignIn('client')}
-                    className="w-full py-2 px-3 bg-white hover:bg-stone-50 text-stone-800 border border-stone-300 rounded-xl font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 text-[11px]"
-                  >
-                    <span>Continue with Google</span>
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="employer-github-auth-btn"
-                    disabled={isGoogleLoading || isGithubLoading}
-                    onClick={() => handleGithubSignIn('client')}
-                    className="w-full py-2 px-3 bg-stone-900 hover:bg-stone-800 text-white border border-stone-900 rounded-xl font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 text-[11px]"
-                  >
-                    <span>Continue with GitHub</span>
-                  </button>
-                </div>
-              </div>
-            </form>
+            <EmployerRegisterForm
+              onOpenAdminGateway={
+                onOpenAdminGateway
+                  ? (targetMode) => {
+                      onClose();
+                      onOpenAdminGateway(targetMode);
+                    }
+                  : undefined
+              }
+              onSuccess={(shouldCheckout) => {
+                onAuthSuccess?.('client');
+                onClose();
+                if (shouldCheckout) {
+                  onRequireSubscription();
+                }
+              }}
+            />
           )}
 
           {/* 3. Sign In Form (Supports both Candidates and Employers) */}
@@ -1566,6 +1098,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                   )}
               </div>
+
+              {onOpenEmployerDashboard && (
+                <div className="pt-2 border-t border-stone-200 flex items-center justify-between gap-2 text-[11px] bg-amber-50/60 px-3 py-2 rounded-xl border">
+                  <span className="text-stone-700 font-medium">
+                    Hiring for a Dominica organization?
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="auth-login-go-employer-dashboard-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenEmployerDashboard();
+                    }}
+                    className="inline-flex items-center gap-1 font-bold text-amber-900 hover:text-emerald-900 underline cursor-pointer shrink-0"
+                  >
+                    <span>New Employer Dashboard</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { JobProvider } from '../context/JobContext';
 import { AuthModal } from '../components/AuthModal';
+import { RecruiterPortal } from '../components/RecruiterPortal';
 import { Header } from '../components/Header';
 import { MobilePlatformViews } from '../components/MobilePlatformViews';
 import { JobCard } from '../components/JobCard';
@@ -350,7 +351,7 @@ describe('Firestore Security Rules & Employer/Candidate Account Management', () 
     ).toThrow(/Missing or insufficient permissions/);
   });
 
-  it('renders AuthModal with Login, New Candidate, and New Employer tabs and Header Log Out controls', () => {
+  it('renders AuthModal with Login and New Candidate tabs, and moves New Employer tab into RecruiterPortal', () => {
     const loginHtml = renderToStaticMarkup(
       React.createElement(
         JobProvider,
@@ -365,7 +366,7 @@ describe('Firestore Security Rules & Employer/Candidate Account Management', () 
     );
     expect(loginHtml).toContain('Log In to Account');
     expect(loginHtml).toContain('New Candidate');
-    expect(loginHtml).toContain('New Employer');
+    expect(loginHtml).not.toContain('auth-tab-employer-register');
     expect(loginHtml).toContain('Log Out');
 
     const candidateRegisterHtml = renderToStaticMarkup(
@@ -381,6 +382,23 @@ describe('Firestore Security Rules & Employer/Candidate Account Management', () 
       )
     );
     expect(candidateRegisterHtml).toContain('Create Candidate Account');
+
+    const employerDashboardHtml = renderToStaticMarkup(
+      React.createElement(
+        JobProvider,
+        null,
+        React.createElement(RecruiterPortal, {
+          onOpenSubscription: () => {},
+          onScheduleInterview: () => {},
+          requestedPortalTab: 'new-employer',
+          requestedPortalTabNonce: 1,
+        })
+      )
+    );
+    expect(employerDashboardHtml).toContain('employer-portal-new-employer-tab');
+    expect(employerDashboardHtml).toContain('New Employer');
+    expect(employerDashboardHtml).toContain('employer-dashboard-new-employer-panel');
+    expect(employerDashboardHtml).toContain('Create Employer Account');
 
     const employerRegisterHtml = renderToStaticMarkup(
       React.createElement(

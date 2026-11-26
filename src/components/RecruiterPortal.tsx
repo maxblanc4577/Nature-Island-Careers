@@ -3,6 +3,7 @@ import { useJobContext } from '../context/JobContext';
 import { ApplicationStatus, JobApplication, JobListing } from '../types';
 import { BillingHistory } from './BillingHistory';
 import { PostJobModal } from './PostJobModal';
+import { EmployerRegisterForm } from './EmployerRegisterForm';
 import {
   Building,
   PlusCircle,
@@ -651,6 +652,9 @@ interface RecruiterPortalProps {
   ) => void;
   onOpenStripe?: () => void;
   onOpenAuth?: (mode?: 'jobseeker_register' | 'client_register' | 'login') => void;
+  onOpenAdminGateway?: (initialMode?: 'login' | 'register') => void;
+  requestedPortalTab?: 'candidates' | 'schedule' | 'billing' | 'new-employer' | null;
+  requestedPortalTabNonce?: number;
 }
 
 export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
@@ -659,6 +663,9 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
   onScheduleInterview,
   onOpenStripe,
   onOpenAuth,
+  onOpenAdminGateway,
+  requestedPortalTab = null,
+  requestedPortalTabNonce = 0,
 }) => {
   const {
     currentUser,
@@ -688,7 +695,15 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
     }
   };
 
-  const [activePortalTab, setActivePortalTab] = useState<'candidates' | 'schedule' | 'billing'>('candidates');
+  const [activePortalTab, setActivePortalTab] = useState<
+    'candidates' | 'schedule' | 'billing' | 'new-employer'
+  >(requestedPortalTab || 'candidates');
+
+  useEffect(() => {
+    if (requestedPortalTab) {
+      setActivePortalTab(requestedPortalTab);
+    }
+  }, [requestedPortalTab, requestedPortalTabNonce]);
   const [selectedJobId, setSelectedJobId] = useState<string | 'all'>('all');
   const [interviewModeFilter, setInterviewModeFilter] = useState<'All' | 'In-person' | 'Virtual Video Call'>('All');
   const [reminderStatusMsg, setReminderStatusMsg] = useState<string | null>(null);
@@ -2015,17 +2030,15 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {onOpenAuth && (
-                <button
-                  type="button"
-                  data-testid="employer-portal-switch-account-btn"
-                  onClick={() => onOpenAuth('client_register')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>New / Switch Employer</span>
-                </button>
-              )}
+              <button
+                type="button"
+                data-testid="employer-portal-switch-account-btn"
+                onClick={() => setActivePortalTab('new-employer')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5 text-emerald-700" />
+                <span>New / Switch Employer</span>
+              </button>
 
               <button
                 type="button"
@@ -2058,28 +2071,26 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
 
             <div className="flex flex-wrap items-center gap-2">
               {onOpenAuth && (
-                <>
-                  <button
-                    type="button"
-                    data-testid="employer-portal-login-btn"
-                    onClick={() => onOpenAuth('login')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    <LogIn className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Employer Log In</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    data-testid="employer-portal-register-btn"
-                    onClick={() => onOpenAuth('client_register')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Create Employer Account</span>
-                  </button>
-                </>
+                <button
+                  type="button"
+                  data-testid="employer-portal-login-btn"
+                  onClick={() => onOpenAuth('login')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Employer Log In</span>
+                </button>
               )}
+
+              <button
+                type="button"
+                data-testid="employer-portal-register-btn"
+                onClick={() => setActivePortalTab('new-employer')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Create Employer Account</span>
+              </button>
 
               {currentUser && (
                 <button
@@ -2226,6 +2237,20 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
             </span>
           )}
         </button>
+
+        <button
+          type="button"
+          data-testid="employer-portal-new-employer-tab"
+          onClick={() => setActivePortalTab('new-employer')}
+          className={`py-3 px-5 text-sm font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            activePortalTab === 'new-employer'
+              ? 'border-emerald-700 text-emerald-900 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>New Employer</span>
+        </button>
       </div>
 
       {/* Recruiter Switcher */}
@@ -2254,7 +2279,45 @@ export const RecruiterPortal: React.FC<RecruiterPortalProps> = ({
         </div>
       </div>
 
-      {activePortalTab === 'billing' ? (
+      {activePortalTab === 'new-employer' ? (
+        <div
+          data-testid="employer-dashboard-new-employer-panel"
+          className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5 max-w-3xl"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                <Building className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">
+                  Create Employer Account (New Employer)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Register a Dominica organization to post vacancies, screen applicants, and manage billing.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActivePortalTab('candidates')}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs cursor-pointer self-start sm:self-auto"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+
+          <EmployerRegisterForm
+            onOpenAdminGateway={onOpenAdminGateway}
+            onSuccess={(proceedToCheckout) => {
+              setActivePortalTab('candidates');
+              if (proceedToCheckout) {
+                onOpenSubscription();
+              }
+            }}
+          />
+        </div>
+      ) : activePortalTab === 'billing' ? (
         <BillingHistory onOpenStripe={onOpenStripe || onOpenSubscription} />
       ) : activePortalTab === 'schedule' ? (
         renderInterviewCalendarSection()

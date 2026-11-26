@@ -56,6 +56,23 @@ export interface PaymentCompletionPayload {
   savePaymentMethod: boolean;
 }
 
+export const STRIPE_CHECKOUT_FORM_APPEARANCE = {
+  theme: 'stripe',
+  labels: 'auto',
+  inputs: 'spaced',
+  variables: {
+    borderRadius: '4px',
+    colorBackground: '#ffffff',
+    colorDanger: '#df1b41',
+    colorPrimary: '#0570de',
+    colorSuccess: '#00c853',
+    colorText: '#30313d',
+    fontFamily: 'default',
+    fontSizeBase: '16px',
+    spacingUnit: '4px',
+  },
+} as const;
+
 interface PaymentFormProps {
   pkg: PaymentPackageSummary;
   currencyPeg: number;
@@ -65,12 +82,113 @@ interface PaymentFormProps {
   initialEmail: string;
   clientSecret?: string | null;
   hasLiveElements?: boolean;
+  useCheckoutFormSdk?: boolean;
   onSuccess: (result: PaymentCompletionPayload) => void;
   onClose: () => void;
   retryBackoffBaseMs?: number;
   maxRetries?: number;
   renderTopControls?: React.ReactNode;
 }
+
+interface DahliaCheckoutFormSectionProps {
+  publishableKey: string;
+  clientSecret: string;
+  onConfirmStart: () => void;
+  onConfirmSuccess: (session: any) => void;
+  onConfirmError: (err: any) => void;
+}
+
+const DahliaCheckoutFormSection: React.FC<DahliaCheckoutFormSectionProps> = ({
+  publishableKey,
+  clientSecret,
+  onConfirmStart,
+  onConfirmSuccess,
+  onConfirmError,
+}) => {
+  const [mountError, setMountError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !clientSecret) return;
+    let cancelled = false;
+    let mountedForm: { unmount?: () => void; destroy?: () => void } | null = null;
+
+    const mountCheckoutForm = async () => {
+      try {
+        const stripeGlobal = (window as any).Stripe;
+        if (typeof stripeGlobal !== 'function') {
+          throw new Error(
+            'Stripe.js (https://js.stripe.com/dahlia/stripe.js) has not loaded yet. Please refresh and try again.'
+          );
+        }
+
+        const stripe = stripeGlobal(publishableKey);
+        const clientSecretPromise = Promise.resolve(clientSecret);
+        const checkout = stripe.initCheckoutFormSdk({
+          clientSecret: clientSecretPromise,
+          appearance: STRIPE_CHECKOUT_FORM_APPEARANCE,
+        });
+
+        const form = checkout.createForm({ layout: 'expanded' });
+        mountedForm = form;
+        form.mount('#checkout-form');
+
+        const loadActionsResult = await checkout.loadActions();
+        if (!cancelled && loadActionsResult.type === 'success') {
+          form.on('confirm', async (event: any) => {
+            try {
+              onConfirmStart();
+              const confirmResult = await loadActionsResult.actions.confirm({
+                formConfirmEvent: event,
+              });
+              if (confirmResult?.type === 'error') {
+                onConfirmError(confirmResult.error);
+                return;
+              }
+              onConfirmSuccess(confirmResult?.session);
+            } catch (error) {
+              console.error('Payment confirmation error:', error);
+              onConfirmError(error);
+            }
+          });
+        } else if (!cancelled && loadActionsResult?.type === 'error') {
+          setMountError(loadActionsResult.error?.message || 'Unable to load Stripe Checkout actions.');
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setMountError(err?.message || 'Unable to mount Stripe Embedded Checkout form.');
+        }
+      }
+    };
+
+    mountCheckoutForm();
+
+    return () => {
+      cancelled = true;
+      try {
+        mountedForm?.unmount?.();
+        mountedForm?.destroy?.();
+      } catch {
+        // Ignore cleanup errors if element already unmounted
+      }
+    };
+  }, [publishableKey, clientSecret]);
+
+  return (
+    <div className="space-y-3" data-testid="stripe-dahlia-checkout-container">
+      {mountError && (
+        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{mountError}</span>
+        </div>
+      )}
+      <div
+        id="checkout-form"
+        data-testid="stripe-dahlia-checkout-form"
+        className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs min-h-[240px]"
+      />
+    </div>
+  );
+};
 
 interface StripeElementsFieldsProps {
   billingEmail: string;
@@ -117,6 +235,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   initialEmail,
   clientSecret,
   hasLiveElements = false,
+  useCheckoutFormSdk = false,
   onSuccess,
   onClose,
   retryBackoffBaseMs = 350,
@@ -572,7 +691,57 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
           </div>
         </div>
 
-        {hasLiveElements && !isSandboxMode && clientSecret ? (
+        {useCheckoutFormSdk && Boolean(clientSecret) && !clientSecret?.includes('sandbox') ? (
+          <DahliaCheckoutFormSection
+            publishableKey={publishableKey}
+            clientSecret={clientSecret!}
+            onConfirmStart={() => {
+              setStatus('processing');
+              setErrorInfo(null);
+            }}
+            onConfirmSuccess={(session) => {
+              const safeIntentId = stripSecretFromIntentId(
+                session?.id || clientSecret || `cs_live_${Date.now()}`
+              );
+              const payload: PaymentCompletionPayload = {
+                chargeId: `ch_live_${safeIntentId.slice(-8).toUpperCase()}`,
+                paymentIntentId: safeIntentId,
+                invoiceNumber: `INV-DOM-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+                amountXCD: pkg.priceXCD,
+                amountUSD: pkg.priceUSDNumber,
+                billingInterval: pkg.billingCadence,
+                paymentMethodLabel: 'Stripe Embedded Checkout Form',
+                receiptUrl: `https://pay.stripe.com/receipts/invoices/${safeIntentId}`,
+                cardholderName: cardholderName.trim(),
+                billingEmail: billingEmail.trim(),
+                billingParish,
+                idempotencyKey: idempotencyKeyRef.current,
+                savePaymentMethod,
+              };
+              setReceipt({
+                chargeId: payload.chargeId,
+                paymentIntentId: payload.paymentIntentId,
+                invoiceNumber: payload.invoiceNumber,
+                amountXCD: payload.amountXCD,
+                amountUSD: payload.amountUSD,
+                date: new Date().toLocaleString(),
+                packageName: pkg.name,
+                billingInterval: payload.billingInterval,
+                paymentMethodLabel: payload.paymentMethodLabel,
+              });
+              setStatus('succeeded');
+              onSuccess(payload);
+            }}
+            onConfirmError={(err) => {
+              const mapped = mapStripeErrorCode(err?.code || err?.message, {
+                code: err?.code,
+                message: err?.message,
+              });
+              setErrorInfo(mapped);
+              setStatus('error');
+            }}
+          />
+        ) : hasLiveElements && !isSandboxMode && clientSecret ? (
           <LiveStripeElementsFields
             billingEmail={billingEmail}
             onEmailChange={(email) => setBillingEmail(email)}
@@ -862,59 +1031,61 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       </div>
 
       {/* Total and Submit */}
-      <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-300">Selected: {pkg.name}</span>
-          <span className="font-bold text-amber-300">EC$ {pkg.priceXCD}</span>
-        </div>
-        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
-          <span className="text-slate-400">Processing Fee (Stripe Dominica):</span>
-          <span className="text-emerald-400 font-semibold">Waived (EC$ 0.00)</span>
-        </div>
-        <div className="flex items-center justify-between font-black text-base">
-          <span>Total Due:</span>
-          <div className="text-right">
-            <span className="text-white">EC$ {pkg.priceXCD}</span>
-            <span className="block text-xs font-normal text-slate-400">
-              ≈ ${pkg.priceUSDNumber.toFixed(2)} USD
-            </span>
+      {!(useCheckoutFormSdk && Boolean(clientSecret) && !clientSecret?.includes('sandbox')) && (
+        <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-300">Selected: {pkg.name}</span>
+            <span className="font-bold text-amber-300">EC$ {pkg.priceXCD}</span>
+          </div>
+          <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
+            <span className="text-slate-400">Processing Fee (Stripe Dominica):</span>
+            <span className="text-emerald-400 font-semibold">Waived (EC$ 0.00)</span>
+          </div>
+          <div className="flex items-center justify-between font-black text-base">
+            <span>Total Due:</span>
+            <div className="text-right">
+              <span className="text-white">EC$ {pkg.priceXCD}</span>
+              <span className="block text-xs font-normal text-slate-400">
+                ≈ ${pkg.priceUSDNumber.toFixed(2)} USD
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCancelCheckout}
+              disabled={status === 'processing'}
+              className="px-4 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-bold text-xs rounded-xl cursor-pointer transition-colors"
+            >
+              Cancel Charge
+            </button>
+            <button
+              type="submit"
+              disabled={status === 'processing'}
+              data-testid="stripe-submit-btn"
+              className="flex-1 py-3 bg-[#635BFF] hover:bg-[#5349e0] disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-black text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              {status === 'processing' ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>
+                    {retryState.retrying
+                      ? `Retrying (${retryState.attempt}/${retryState.maxRetries})...`
+                      : 'Authorizing Charge with Stripe...'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Pay EC$ {pkg.priceXCD} with Stripe</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
           </div>
         </div>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={handleCancelCheckout}
-            disabled={status === 'processing'}
-            className="px-4 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-bold text-xs rounded-xl cursor-pointer transition-colors"
-          >
-            Cancel Charge
-          </button>
-          <button
-            type="submit"
-            disabled={status === 'processing'}
-            data-testid="stripe-submit-btn"
-            className="flex-1 py-3 bg-[#635BFF] hover:bg-[#5349e0] disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-black text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
-          >
-            {status === 'processing' ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>
-                  {retryState.retrying
-                    ? `Retrying (${retryState.attempt}/${retryState.maxRetries})...`
-                    : 'Authorizing Charge with Stripe...'}
-                </span>
-              </>
-            ) : (
-              <>
-                <Lock className="w-4 h-4" />
-                <span>Pay EC$ {pkg.priceXCD} with Stripe</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </div>
-      </div>
+      )}
 
       <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500">
         <span className="flex items-center gap-1">

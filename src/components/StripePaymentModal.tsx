@@ -1,6 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { loadStripe, Stripe } from '@stripe/stripe-js';
-import { Elements } from '@stripe/react-stripe-js';
+import React, { useState, useEffect } from 'react';
 import { useJobContext } from '../context/JobContext';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import { SubscriptionPlan, EmployerInvoice } from '../types';
@@ -11,16 +9,6 @@ import { X, Lock, Sparkles, AlertCircle, BookOpen, RefreshCw, Clock } from 'luci
 const STRIPE_PUBLISHABLE_KEY =
   (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string) ||
   'pk_test_51MockDominicaNatureIslandCareersKey2026';
-
-let cachedStripePromise: Promise<Stripe | null> | null = null;
-function getStripePromise(isSandboxMode: boolean): Promise<Stripe | null> | null {
-  if (typeof window === 'undefined') return null;
-  if (isSandboxMode || STRIPE_PUBLISHABLE_KEY.includes('Mock')) return null;
-  if (!cachedStripePromise) {
-    cachedStripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY);
-  }
-  return cachedStripePromise;
-}
 
 interface StripePaymentModalProps {
   isOpen: boolean;
@@ -121,8 +109,11 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
 
   const isStripePortalEnabled = stripeSettings?.merchantPortalsEnabled?.stripe !== false;
   const currencyPeg = stripeSettings?.currencyPeg || 2.7;
-  const isSandboxMode =
-    stripeSettings?.mode !== 'live' || STRIPE_PUBLISHABLE_KEY.startsWith('pk_test_');
+  const isMockPublishableKey =
+    !STRIPE_PUBLISHABLE_KEY ||
+    STRIPE_PUBLISHABLE_KEY.includes('Mock') ||
+    STRIPE_PUBLISHABLE_KEY === 'pk_test_sample';
+  const isSandboxMode = stripeSettings?.mode !== 'live' || isMockPublishableKey;
   const modalRef = useModalKeyboard({ isOpen, onClose });
 
   const resolveInitialPkgId = (plan?: SubscriptionPlan) =>
@@ -136,6 +127,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
   const [billingCadence, setBillingCadence] = useState<'monthly' | 'one_time'>('monthly');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionMode, setSessionMode] = useState<'live' | 'sandbox_simulator'>('sandbox_simulator');
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [retryTrigger, setRetryTrigger] = useState(0);
@@ -160,7 +152,6 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
     : selectedStandardPkg;
 
   const priceUSDNumber = convertXcdToUsd(currentPkg.priceXCD, currencyPeg);
-  const stripePromise = useMemo(() => getStripePromise(isSandboxMode), [isSandboxMode]);
 
   useEffect(() => {
     if (isOpen) {
@@ -206,6 +197,11 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
         if (secret || data.id) {
           setClientSecret(secret);
           setSessionId(stripSecretFromIntentId(data.id || secret || ''));
+          setSessionMode(
+            data.mode === 'sandbox_simulator' || String(secret || '').includes('sandbox')
+              ? 'sandbox_simulator'
+              : 'live'
+          );
           setSessionError(null);
         } else {
           throw new Error('Server did not return a valid checkout session identifier.');
@@ -431,8 +427,11 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
     </div>
   );
 
-  const canMountLiveElements = Boolean(
-    stripePromise && clientSecret && !isSandboxMode && !clientSecret.includes('sandbox')
+  const canMountLiveCheckoutForm = Boolean(
+    !isMockPublishableKey &&
+      clientSecret &&
+      !clientSecret.includes('sandbox') &&
+      sessionMode !== 'sandbox_simulator'
   );
 
   const pkgSummary = {
@@ -553,31 +552,6 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
               Close
             </button>
           </div>
-        ) : canMountLiveElements && stripePromise && clientSecret ? (
-          <Elements
-            stripe={stripePromise}
-            options={{
-              clientSecret,
-              appearance: {
-                theme: 'stripe',
-                variables: { colorPrimary: '#635BFF' },
-              },
-            }}
-          >
-            <PaymentForm
-              pkg={pkgSummary}
-              currencyPeg={currencyPeg}
-              isSandboxMode={isSandboxMode}
-              publishableKey={STRIPE_PUBLISHABLE_KEY}
-              initialName={initialName}
-              initialEmail={initialEmail}
-              clientSecret={clientSecret}
-              hasLiveElements={true}
-              onSuccess={handlePaymentSuccess}
-              onClose={onClose}
-              renderTopControls={topControls}
-            />
-          </Elements>
         ) : (
           <PaymentForm
             pkg={pkgSummary}
@@ -588,6 +562,7 @@ export const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
             initialEmail={initialEmail}
             clientSecret={clientSecret}
             hasLiveElements={false}
+            useCheckoutFormSdk={canMountLiveCheckoutForm}
             onSuccess={handlePaymentSuccess}
             onClose={onClose}
             renderTopControls={topControls}

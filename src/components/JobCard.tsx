@@ -1,7 +1,7 @@
 import React from 'react';
 import { JobListing, JobSector } from '../types';
 import { useJobContext } from '../context/JobContext';
-import { ShareJobModal, buildShareViaEmailMailto, buildJobShareUrl } from './ShareJobModal';
+import { ShareJobModal, buildShareViaEmailMailto, buildShareViaWhatsAppUrl, buildJobShareUrl } from './ShareJobModal';
 import {
   Bookmark,
   BookmarkCheck,
@@ -13,6 +13,7 @@ import {
   Zap,
   Share2,
   Mail,
+  MessageCircle,
   Eye,
   ChevronDown,
   ChevronUp,
@@ -80,6 +81,7 @@ export const JobCard: React.FC<JobCardProps> = ({
   const competitiveThreshold = siteSettings?.competitiveSalaryThreshold ?? 8000;
   const isCompetitiveSalary = typeof job.maxSalary === 'number' && job.maxSalary >= competitiveThreshold;
   const [isPulsing, setIsPulsing] = React.useState(false);
+  const [saveBurstKey, setSaveBurstKey] = React.useState(0);
   const [saveToastVisible, setSaveToastVisible] = React.useState(false);
   const [saveToastAction, setSaveToastAction] = React.useState<'saved' | 'removed'>('saved');
   const [showShareModal, setShowShareModal] = React.useState(false);
@@ -184,15 +186,16 @@ export const JobCard: React.FC<JobCardProps> = ({
     restoreDismissedJob(job.id);
   };
 
-  // Feature: Save Toggle with Heart Icon + Heartbeat animation & brief Confirmation Toast
+  // Feature: Save Toggle with Heart Icon + Heart-burst animation & brief Confirmation Toast
   const handleToggleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
     const willBeSaved = !saved;
     setIsPulsing(true);
+    setSaveBurstKey((prev) => prev + 1);
     setSaveToastAction(willBeSaved ? 'saved' : 'removed');
     toggleSaveJob(job.id);
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
-    pulseTimerRef.current = setTimeout(() => setIsPulsing(false), 1000);
+    pulseTimerRef.current = setTimeout(() => setIsPulsing(false), 850);
 
     if (saveToastTimerRef.current) {
       clearTimeout(saveToastTimerRef.current);
@@ -252,6 +255,7 @@ export const JobCard: React.FC<JobCardProps> = ({
   };
 
   const shareViaEmailHref = React.useMemo(() => buildShareViaEmailMailto(job), [job]);
+  const shareViaWhatsAppHref = React.useMemo(() => buildShareViaWhatsAppUrl(job), [job]);
 
   // Feature: 'New' badge or subtle pulse animation for jobs posted within the last 24 hours
   const isNewJob = React.useMemo(() => {
@@ -405,8 +409,8 @@ export const JobCard: React.FC<JobCardProps> = ({
       
       <div>
         {/* Top Kicker: Badges, Status, Compare, and Heart Save Button */}
-        <div className="flex items-start justify-between gap-3 mb-2.5">
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500 font-medium">
+        <div className="flex flex-wrap items-start justify-between gap-2.5 mb-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500 font-medium min-w-0 flex-1">
             <span className="text-stone-900 font-bold">{job.company}</span>
             <span aria-hidden="true" className="text-stone-300">·</span>
             <span className="text-stone-600">{job.parish}</span>
@@ -462,7 +466,7 @@ export const JobCard: React.FC<JobCardProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-w-full">
             {/* Feature: Compare Checkbox */}
             {onToggleCompare && (
               <label
@@ -483,6 +487,22 @@ export const JobCard: React.FC<JobCardProps> = ({
                 <span className="text-[11px]">Compare</span>
               </label>
             )}
+
+            <a
+              href={shareViaWhatsAppHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid={`share-via-whatsapp-btn-${job.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/90 hover:border-emerald-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              title={`Share "${job.title}" via WhatsApp`}
+              aria-label="Share via WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span className="hidden sm:inline">Share via WhatsApp</span>
+            </a>
 
             <a
               href={shareViaEmailHref}
@@ -530,22 +550,57 @@ export const JobCard: React.FC<JobCardProps> = ({
               )}
             </button>
 
-            {/* Feature: 'Save Job' heart button toggling saved status with heartbeat animation */}
+            {/* Feature: 'Save Job' heart button toggling saved status with heart-burst animation */}
             <button
               type="button"
               data-testid={`save-job-btn-${job.id}`}
               data-heartbeat={isPulsing ? 'true' : 'false'}
               onClick={handleToggleSave}
-              className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center border ${
+              className={`relative overflow-visible p-1.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center border ${
                 saved
                   ? 'text-rose-600 bg-rose-50 border-rose-200 shadow-2xs hover:bg-rose-100'
                   : 'text-stone-400 hover:text-rose-500 hover:bg-rose-50/60 border-stone-200/60'
-              } ${isPulsing ? 'ring-2 ring-rose-300/70 scale-110' : ''}`}
+              } ${isPulsing ? 'ring-2 ring-rose-300/80 scale-110' : ''}`}
               title={saved ? 'Saved Job' : 'Save Job'}
               aria-label={saved ? 'Saved Job' : 'Save Job'}
             >
+              {isPulsing && (
+                <span
+                  key={saveBurstKey}
+                  data-testid={`save-job-burst-${job.id}`}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                >
+                  <span className="absolute inset-0 rounded-full border-2 border-rose-400/80 animate-heart-burst-ring" />
+                  <span
+                    className="absolute w-1.5 h-1.5 rounded-full bg-rose-500 animate-heart-burst-spark"
+                    style={{ '--burst-tx': '0px', '--burst-ty': '-16px' } as React.CSSProperties}
+                  />
+                  <span
+                    className="absolute w-1.5 h-1.5 rounded-full bg-amber-400 animate-heart-burst-spark"
+                    style={{ '--burst-tx': '14px', '--burst-ty': '-8px' } as React.CSSProperties}
+                  />
+                  <span
+                    className="absolute w-1.5 h-1.5 rounded-full bg-rose-400 animate-heart-burst-spark"
+                    style={{ '--burst-tx': '14px', '--burst-ty': '8px' } as React.CSSProperties}
+                  />
+                  <span
+                    className="absolute w-1.5 h-1.5 rounded-full bg-amber-500 animate-heart-burst-spark"
+                    style={{ '--burst-tx': '0px', '--burst-ty': '16px' } as React.CSSProperties}
+                  />
+                  <span
+                    className="absolute w-1.5 h-1.5 rounded-full bg-rose-500 animate-heart-burst-spark"
+                    style={{ '--burst-tx': '-14px', '--burst-ty': '8px' } as React.CSSProperties}
+                  />
+                  <span
+                    className="absolute w-1.5 h-1.5 rounded-full bg-amber-400 animate-heart-burst-spark"
+                    style={{ '--burst-tx': '-14px', '--burst-ty': '-8px' } as React.CSSProperties}
+                  />
+                </span>
+              )}
               <Heart
-                className={`w-4 h-4 transition-colors ${
+                key={isPulsing ? `burst-${saveBurstKey}` : 'idle'}
+                className={`relative z-10 w-4 h-4 transition-colors ${
                   saved ? 'fill-rose-500 text-rose-500 stroke-rose-600' : 'fill-none text-stone-400 hover:text-rose-500'
                 } ${isPulsing ? 'animate-heartbeat-burst' : ''}`}
               />

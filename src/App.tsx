@@ -139,6 +139,18 @@ function DominicaJobBoardContent() {
   const [adminLoginInitialMode, setAdminLoginInitialMode] = useState<'login' | 'register'>('login');
 
   const handleOpenAuthModal = (mode: AuthModalMode = 'login') => {
+    if (mode === 'client_register') {
+      if (currentPath !== '/') {
+        navigateToPath('/');
+      }
+      setViewMode('desktop');
+      setActiveTab('recruiter');
+      setRecruiterRequestedTab('new-employer');
+      setRecruiterRequestedNonce((n) => n + 1);
+      setIsAuthOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setAuthInitialMode(mode);
     setIsAuthOpen(true);
   };
@@ -172,6 +184,10 @@ function DominicaJobBoardContent() {
   const [invoiceToRetry, setInvoiceToRetry] = useState<EmployerInvoice | null>(null);
   const [profileRequestedSubTab, setProfileRequestedSubTab] = useState<CandidateHubSubTab | null>(null);
   const [profileRequestedNonce, setProfileRequestedNonce] = useState(0);
+  const [recruiterRequestedTab, setRecruiterRequestedTab] = useState<
+    'candidates' | 'schedule' | 'billing' | 'new-employer' | null
+  >(null);
+  const [recruiterRequestedNonce, setRecruiterRequestedNonce] = useState(0);
   const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
   const [isMasterAdminOpen, setIsMasterAdminOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
@@ -792,6 +808,12 @@ function DominicaJobBoardContent() {
           <RecruiterPortal
             onOpenSubscription={() => setIsSubscriptionCheckoutOpen(true)}
             onOpenAuth={handleOpenAuthModal}
+            onOpenAdminGateway={(targetMode = 'login') => {
+              setAdminLoginInitialMode(targetMode);
+              setIsAdminLoginOpen(true);
+            }}
+            requestedPortalTab={recruiterRequestedTab}
+            requestedPortalTabNonce={recruiterRequestedNonce}
             onScheduleInterview={(applicationId, candidateName, jobTitle, notes = '') => {
               setInterviewData({
                 isOpen: true,
@@ -1024,6 +1046,7 @@ function DominicaJobBoardContent() {
           setAdminLoginInitialMode(targetMode);
           setIsAdminLoginOpen(true);
         }}
+        onOpenEmployerDashboard={() => handleOpenAuthModal('client_register')}
       />
 
       <AdminLoginModal
